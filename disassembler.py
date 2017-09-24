@@ -51,7 +51,6 @@ HEX_EXTEND = {  # For Disassembler.decode(): How many digits are required to rep
     'SA': 1
 }
 
-# todo: see if can get the encoder/decoder to pull functions from this instead of strings to do comparison operations on
 CODE_TYPES = {  # For Disassembler.decode(): The instances in which the parameters will translate to
     'ADDRESS': 'HEX',
     'OFFSET': 'HEX',
@@ -173,7 +172,7 @@ REGISTERS = {  # For Disassembler.decode(): To obtain the names of decoded regis
         'CONTEXT',
         'PAGEMASK',
         'WIRED',
-        'RESERVED0',
+        '*RESERVED0*',
         'BADVADDR',
         'COUNT',
         'ENTRYHI',
@@ -273,7 +272,7 @@ REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of registe
     'CONTEXT': 4,
     'PAGEMASK': 5,
     'WIRED': 6,
-    'RESERVED0': 7,
+    '*RESERVED0*': 7,
     'BADVADDR': 8,
     'COUNT': 9,
     'ENTRYHI': 10,
