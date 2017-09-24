@@ -427,8 +427,11 @@ class Disassembler:
             The decoder will pick everything up as NOP because it will bitwise & every code with 0 to always equal 0
 
 
-            The fitment parameters only "look" like the documentation, but a few things have been changed to better
-              accommodate the encoding and decoding process.
+            The fitment parameters only "look" like the MIPS III documentation, but a few things have been changed to 
+              better accommodate the encoding and decoding process.
+              
+            
+            This is probably not the authentic way to disassemble (I have no idea - I am still learning), but it works.
         '''
 
         # Load and Store instructions
@@ -660,8 +663,8 @@ class Disassembler:
         identifying_bits = ''
         appearance_bit_correspondence = {}
         for i in encoding:
-            code_type = type_of(i)
-            if code_type == 'str':
+            segment_type = type_of(i)
+            if segment_type == 'str':
                 comparable_to_append = '0' * LENGTHS[i]
                 identifying_to_append = '0' * LENGTHS[i]
                 bits_addressed = len(comparable_bits)
@@ -670,7 +673,7 @@ class Disassembler:
                     int('0b' + ('0' * bits_addressed) + ('1' * LENGTHS[i]) + ('0' * shift_amount), 2),
                     shift_amount
                 ]
-            elif code_type == 'int':
+            elif segment_type == 'int':
                 comparable_to_append = '1' * i
                 identifying_to_append = '0' * i
             else:
@@ -807,6 +810,7 @@ class Disassembler:
         return int_result
 
     def split_and_store_bytes(self, int, index):
+        # todo: probably a better way to do this
         ints = get_8_bit_ints_from_32_bit_int(int)
         for i in range(4):
             self.hack_file[(index << 2) + i] = ints[i]
