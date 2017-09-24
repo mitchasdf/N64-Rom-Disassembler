@@ -2,4 +2,4 @@
 
 With Python 3.5
 
-Application is not finished yet. Full of bugs.
+Application is not finished yet. I'm working out the GUI bugs/bottlenecks.
