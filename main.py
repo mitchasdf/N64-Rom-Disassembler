@@ -60,7 +60,7 @@ hack_file_text_box.tag_config('out_of_range', background = 'orange')
 
 
 # [current_buffer_position, [(navigation, cursor_location, text_box_content, immediate_id, game_address_mode), ...]]
-#                                                                          |------for hack buffer only-----|
+#                                                                          |------for hack_buffer only-----|
 hack_buffer = [0, []]
 comments_buffer = [0, []]
 buffer_max = 5000
@@ -201,6 +201,15 @@ def buffer_append(buffer, tuple):
     if diff < 0:
         buffer[0] -= diff
         buffer[1] = buffer[1][diff:]
+
+
+# Puts the windows clipboard back when the user leaves focus
+def replace_clipboard():
+    try:
+        window.clipboard_get()
+    except:
+        if clipboard:
+            window.clipboard_append(clipboard)
 
 
 # Custom keyboard events and textbox behaviour upon any keypress in text boxes
@@ -743,6 +752,52 @@ def set_scroll_amount():
         pickle_data(app_config, CONFIG_FILE)
 
 
+def help_box():
+    message = [
+        '---General Info---',
+        'In order to save ANY changes you have made, all errors must be resolved before the save feature will allow it.',
+        'Trying to save while an error exists will result in your navigation shifting to the next error instead.',
+        '',
+        'In the event of an emergency, press the undo keys to access one of 20,000 buffer frames.',
+        'The buffer itself should only be able to reach 80mb before capping out.',
+        '',
+        '---Syntax errors---',
+        'Red highlighted text: Invalid syntax/Instruction cannot encode',
+        'Orange highlighted text: Immediate value used above it\'s limit',
+        '',
+        '---Keyboard---',
+        'Ctrl+{Comma} (left facing arrow): Undo',
+        'Ctrl+{Fullstop} (right facing arrow): Redo',
+        'F4: Navigate to address',
+        'F5: Toggle mode which displays and handles input addresses using the game\'s entry point'
+    ]
+    simpledialog.messagebox._show('Help','\n'.join(message))
+
+
+def about_box():
+    message = [
+        'Created by Mitchell Parry-Shaw with Python 3.5 over many moons during 2017 sometime.',
+        'There really isn\'t much else to tell you.'
+    ]
+    simpledialog.messagebox._show('Shoutouts to simpleflips', '\n'.join(message))
+
+
+def test_function():
+    if not disasm:
+        return
+    value = simpledialog.askstring('Find jumps to function', 'Start of function is auto-determined')
+    timer_start()
+    print(len(disasm.find_jumps(value)))
+    timer_tick('function mapping')
+    # i = deci('1000')
+    # while True:
+    #     int_word = ints_of_4_byte_aligned_region(disasm.hack_file[i:i+4])[0]
+    #     if disasm.is_mnemonic(int_word, 'BREAK'):
+    #         break
+    #     i += 4
+    # print(hexi(i))
+
+
 menu_bar = tk.Menu(window)
 
 file_menu = tk.Menu(menu_bar, tearoff=0)
@@ -755,6 +810,8 @@ menu_bar.add_cascade(label='File', menu=file_menu)
 tool_menu = tk.Menu(menu_bar, tearoff=0) # todo
 tool_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
 # tool_menu.add_command(label = 'Search (Ctrl+F)')
+file_menu.add_separator()
+tool_menu.add_command(label='Test', command=test_function)
 menu_bar.add_cascade(label='Tools', menu=tool_menu)
 
 opts_menu = tk.Menu(menu_bar, tearoff=0)
@@ -763,9 +820,9 @@ opts_menu.add_command(label='Change immediate value identifier', command=change_
 opts_menu.add_command(label='Set scroll amount', command=set_scroll_amount)
 menu_bar.add_cascade(label='Options', menu=opts_menu)
 
-help_menu = tk.Menu(menu_bar,tearoff=0) # todo
-help_menu.add_command(label='Help')
-help_menu.add_command(label='About')
+help_menu = tk.Menu(menu_bar,tearoff=0)
+help_menu.add_command(label='Help', command=help_box)
+help_menu.add_command(label='About', command=about_box)
 menu_bar.add_cascade(label='Help', menu=help_menu)
 
 window.config(menu=menu_bar)
@@ -782,6 +839,7 @@ hack_file_text_box.place(x=414, y=45, width=315, height=760)
 comments_text_box.place(x=733, y=45, width=597, height=760)
 
 
+window.bind('<FocusOut>', lambda e: replace_clipboard())
 window.protocol('WM_DELETE_WINDOW', close_window)
 window.mainloop()
 

@@ -59,7 +59,11 @@ def keep_within(int, min, max):
 
 
 def get_8_bit_ints_from_32_bit_int(int):
-    return ((int & 4278190080) >> 24, (int & 16711680) >> 16, (int & 65280) >> 8, int & 255)
+    return (int & 4278190080) >> 24, (int & 16711680) >> 16, (int & 65280) >> 8, int & 255
+
+
+def align_value(value, alignment):
+    return value - (value % alignment)
 
 
 # To translate the comments dict into a negotiable text document formatted string

@@ -1,7 +1,7 @@
 
 from function_defs import deci, hexi, type_of, ints_of_4_byte_aligned_region, \
     string_to_dict, extend_zeroes, sign_16_bit_value, unsign_16_bit_value, \
-    get_8_bit_ints_from_32_bit_int
+    get_8_bit_ints_from_32_bit_int, align_value
 from os.path import exists
 
 
@@ -29,7 +29,8 @@ ES = 'ES'  # For identifying instruction
 CODE_10 = 'CODE_10'  # Code (10bit)  -- Numerical Parameter
 CODE_20 = 'CODE_20'  # Code (20bit)  -- Numerical Parameter
 
-ADDRESS_ALIGNMENT = deci('04000000')  # In word-wise form. Byte-wise is 0x10000000
+ADDRESS_ALIGNMENT = deci('04000000')
+ADDRESS_ALIGNMENT_4 = deci('10000000')
 
 MAXIMUM_VALUES = {  # For Disassembler.encode(): How high the limit will be for immediate types of parameters
     'ADDRESS': deci('3FFFFFF'),
@@ -199,6 +200,11 @@ REGISTERS = {  # For Disassembler.decode(): To obtain the names of decoded regis
         '*RESERVED6*'
     ]
 }
+
+CODES_USING_ADDRESSES = \
+    ['BC1F', 'BC1FL', 'BC1T', 'BC1TL', 'BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL',
+     'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL', 'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL',
+     'BNEZ', 'BNEL', 'BNE', 'J', 'JAL']
 
 REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of register names in order to encode
     'R0': 0,
@@ -385,6 +391,7 @@ class Disassembler:
         self.identifying_bits = []
         self.amount = 0
         self.file_length = len(self.base_file)
+        self.disassembled = []
 
         ''' Format: fit(mnemonic, encoding, appearance)
             mnemonic: String
@@ -513,7 +520,7 @@ class Disassembler:
         self.fit('XOR',     [6, RS, RT, RD, 5, [OPCODE, 38]],   [RD, RS, RT])
         self.fit('XORI',    [[OPCODE, 14], RS, RT, IMMEDIATE],  [RT, RS, IMMEDIATE])
 
-        # Jump and Branch Instructions
+        #  Jump and Branch Instructions
         self.fit('BEQ',      [[OPCODE, 4], RS, RT, OFFSET],               [RS, RT, OFFSET])
         self.fit('BEQL',     [[OPCODE, 20], RS, RT, OFFSET],              [RS, RT, OFFSET])
         self.fit('BGEZ',     [[OPCODE, 1], RS, [EX_OPCODE, 1], OFFSET],   [RS, OFFSET])
@@ -694,7 +701,6 @@ class Disassembler:
         if int_word == 0:
             return 'NOP'
         identity = None
-        # Bitwise & the code with each instruction's comparable bits and check it against the corresponding identifying bits
         for i in range(self.amount):
             if int_word & self.comparable_bits[i] == self.identifying_bits[i]:
                 identity = i
@@ -811,10 +817,64 @@ class Disassembler:
             return -2
         return int_result
 
+    def is_mnemonic(self, int_word, string):
+        id = self.mnemonics.index(string)
+        if int_word & self.comparable_bits[id] == self.identifying_bits[id]:
+            return True
+
     def split_and_store_bytes(self, int_word, index):
-        # todo: probably a better way to do this
         ints = get_8_bit_ints_from_32_bit_int(int_word)
         index <<= 2
         for i in range(4):
             self.hack_file[index + i] = ints[i]
 
+    # def decode_jumps(self):
+    #     navigation = self.header_items['Game Code']
+    #     i = 0
+    #     while True:
+
+
+    def find_jumps(self, address):
+        results = []
+        # if not self.jumps_decoded:
+        #     self.decode_jumps()
+        if type_of(address) == 'str':
+            address = deci(address)
+        address = align_value(address, 4)
+        navigation = self.header_items['Game Code']
+
+        i = 0
+        # Locate bottom of previous function
+        while True:
+            int_word = ints_of_4_byte_aligned_region(self.hack_file[address + i:address + i + 4])[0]
+            instruction = self.decode(int_word, (address + i) >> 2)
+            if instruction[:2] == 'JR':
+                # Skip the delay slot
+                i += 4
+                break
+            i -= 4
+
+        # Locate top of target function
+        while True:
+            i += 4
+            int_word = ints_of_4_byte_aligned_region(self.hack_file[address + i:address + i + 4])[0]
+            instruction = self.decode(int_word, (address + i) >> 2)
+            if instruction != 'NOP':
+                address += i
+                break
+
+        print(hexi(address))
+        # Find jumps
+        while navigation < self.file_length:
+            int_word = ints_of_4_byte_aligned_region(self.hack_file[navigation:navigation + 4])[0]
+            # instruction = self.decode(int_word, navigation >> 2)
+            # if instruction == 'UNKNOWN/NOT AN INSTRUCTION':
+            #     break
+            # punc = instruction.find(' ')
+            # mnemonic = instruction[:punc]
+            if self.is_mnemonic(int_word, 'J') or self.is_mnemonic(int_word, 'JAL'):
+                if ((int_word & 65535) << 2) + ((navigation // ADDRESS_ALIGNMENT_4) * ADDRESS_ALIGNMENT_4) == address:
+                    results.append(navigation)
+            # elif self.is_mnemonic(int_word, 'SYNC')
+            navigation += 4
+        return results
