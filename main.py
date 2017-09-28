@@ -1,6 +1,6 @@
 
 import tkinter as tk
-from tkinter import filedialog, simpledialog
+from tkinter import simpledialog, filedialog
 import os
 from binascii import unhexlify as unhex
 from function_defs import *
@@ -43,8 +43,7 @@ else:
       - 1 or more highlighted (or selected) newlines are replaced (or "typed/pasted over")
       - Data containing 1 or more newlines is pasted into the text box
       
-    So this can be done by conditionally managing the data on each keypress.
-      
+    Conditional management of each keypress is required to stop all of those problems from happening.
 '''
 
 window = tk.Tk()
@@ -59,7 +58,9 @@ comments_text_box = tk.Text(window, font = 'Courier')
 hack_file_text_box.tag_config('bad', background = 'red')
 hack_file_text_box.tag_config('out_of_range', background = 'orange')
 
-# [current_buffer_position, [[navigation, cursor_location, text_box_content], ...]]
+
+# [current_buffer_position, [(navigation, cursor_location, text_box_content, immediate_id, game_address_mode), ...]]
+#                                                                          |------for hack buffer only-----|
 hack_buffer = [0, []]
 comments_buffer = [0, []]
 buffer_max = 5000
@@ -163,11 +164,13 @@ def apply_hack_changes(ignore_slot = None):
             encoded_int = disasm.encode(split_text[i], navi)
             if encoded_int >= 0:
                 disasm.split_and_store_bytes(encoded_int, navi)
+                if string_key in user_errors.keys():
+                    del user_errors[string_key]
             else:
-                user_errors[string_key] = [encoded_int, split_text[i]]
+                user_errors[string_key] = (encoded_int, split_text[i])
 
 
-def apply_comment_changes(ignore_slot = None):
+def apply_comment_changes():
     current_text = comments_text_box.get('1.0', tk.END)[:-1]
     split_text = current_text.split('\n')
     for i in range(len(split_text)):
@@ -178,8 +181,29 @@ def apply_comment_changes(ignore_slot = None):
         disasm.comments[string_key] = split_text[i]
 
 
+def buffer_append(buffer, tuple):
+    # buffer[0] is the current buffer frame
+    # buffer[1] is an array containing the buffer frames
+    buffer_length = len(buffer[1])
+    distance_from_end = (buffer_length - 1) - buffer[0]
+
+    # This condition means the user is not currently at the end of the buffer (they have done some undo's)
+    # so delete all buffer frames following the current one so that the current buffer frame is at the top
+    if distance_from_end and buffer_length:
+        buffer[1] = buffer[1][:-distance_from_end]
+        buffer_length -= distance_from_end
+    buffer[1].append(tuple)
+    buffer[0] += 1
+
+    # Start shifting buffer frames down and out of the buffer as the limit as been reached
+    # Added diff slice in case buffer ever overflows
+    diff = buffer_max - buffer[0]
+    if diff < 0:
+        buffer[0] -= diff
+        buffer[1] = buffer[1][diff:]
+
+
 # Custom keyboard events and textbox behaviour upon any keypress in text boxes
-# It seems extensive due to all the black magic I needed to inject
 clipboard = ''
 def keyboard_events(handle, max_char, event, buffer = None, hack_function = False):
     global navigation, max_lines, buffer_max, clipboard
@@ -212,38 +236,29 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     not_arrows = event.keysym not in ['Left', 'Up', 'Right', 'Down']
     vert_arrows = event.keysym in ['Up', 'Down']
 
-    apply_function = apply_hack_changes if hack_function else apply_comment_changes
+    apply_function = apply_hack_changes if hack_function else lambda ignore_slot=None: apply_comment_changes()
 
     # Cause each modification of text box to snap-shot data in order to undo/redo
-    if buffer and not (is_undoing or is_redoing) and has_char and not_arrows:
-        # buffer[0] is the current buffer frame
-        # buffer[1] is an array containing the buffer frames
-        # buffer frames are an array of [current_navigation, cursor_location, text_box_content]
-
-        buffer_length = len(buffer[1])
-        distance_from_end = (buffer_length - 1) - buffer[0]
-        # This condition means the user is not currently at the end of the buffer (they have done some undo's)
-        # so delete all buffer frames following the current one so that the current buffer frame is at the top
-        if distance_from_end and buffer_length:
-            buffer[1] = buffer[1][:-distance_from_end]
-            buffer_length -= distance_from_end
-        buffer[1].append([navigation, cursor, joined_text])
-        buffer[0] += 1
-
-        # Start shifting buffer frames down and out of the buffer as the limit as been reached
-        # Added diff slice in case buffer ever overflows
-        diff = buffer_max - buffer[0]
-        if diff < 0:
-            buffer[0] -= diff
-            buffer[1] = buffer[1][diff:]
+    if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d):
+        print('aye')
+        buffer_frame = (navigation, cursor, joined_text,
+                        app_config['immediate_identifier'],
+                        app_config['game_address_mode'])\
+                        if hack_function else \
+                        (navigation, cursor, joined_text)
+        buffer_append(buffer, buffer_frame)
 
     # Undoing and Redoing code
     if is_undoing or is_redoing:
         if buffer[0] == len(buffer[1]) - 1 and is_undoing:
             part = buffer[1][buffer[0]]
             if part[0] != navigation or part[2] != joined_text:
-                buffer[1].append([navigation, cursor, joined_text])
-                buffer[0] += 1
+                buffer_frame = (navigation, cursor, joined_text,
+                                app_config['immediate_identifier'],
+                                app_config['game_address_mode']) \
+                                if hack_function else \
+                                (navigation, cursor, joined_text)
+                buffer_append(buffer, buffer_frame)
 
         buffer[0] += 1 if is_redoing else -1
         if buffer[0] < 0:
@@ -256,19 +271,32 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             place = buffer[0]
             navigate_to(buffer[1][place][0])
             cursor = buffer[1][place][1]
+            text_content = buffer[1][place][2]
             handle.delete('1.0', tk.END)
-            handle.insert('1.0', buffer[1][place][2])
+            handle.insert('1.0', text_content)
             handle.mark_set(tk.INSERT, cursor)
+
+            if hack_function:
+                immediate_id = buffer[1][place][3]
+                game_address_mode = buffer[1][place][4]
+                if immediate_id != app_config['immediate_identifier']:
+                    app_config['immediate_identifier'] = immediate_id
+                    pickle_data(app_config, CONFIG_FILE)
+                    disasm.immediate_identifier = immediate_id
+                if game_address_mode != app_config['game_address_mode']:
+                    app_config['game_address_mode'] = game_address_mode
+                    pickle_data(app_config, CONFIG_FILE)
+                    disasm.game_address_mode = game_address_mode
             apply_hack_changes()
             apply_comment_changes()
             highlight_errors()
         return
 
     # Copy/Paste and selection handling
-    # Get highlighted text boundaries and cause the bounding line's whole columns to be "selected"
     try:
         selection_start, sel_start_line, sel_start_column = get_cursor(handle, tk.SEL_FIRST)
         selection_end, sel_end_line, sel_end_column = get_cursor(handle, tk.SEL_LAST)
+        # Select whole columns if selecting multiple lines
         if sel_start_line != sel_end_line:
             selection_start = modify_cursor(selection_start, 0, 'min', split_text)
             selection_end = modify_cursor(selection_end, 0, 'max', split_text)
@@ -370,9 +398,12 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     # Make return send the cursor to the end of the next line and validate code
     elif is_returning:
-        if line == max_lines:
-            handle.mark_set(tk.INSERT, modify_cursor(cursor, -1, 'max', split_text))
-
+        move_lines = -1 if line == max_lines else 0
+        cursor = modify_cursor(cursor, move_lines, 'max', split_text)
+        handle.mark_set(tk.INSERT, cursor)
+        handle.delete(cursor)
+        new_cursor = modify_cursor(cursor, 1, 'max', split_text)
+        window.after(after_delay - 1, lambda: (apply_function(), handle.mark_set(tk.INSERT, new_cursor)))
         # if line == max_lines:
         #     seg_1 = line - 1
         #     seg_2 = len(split_text[line - 2])
@@ -474,6 +505,13 @@ def navigate_to(index):
     hack_disassembled = [disasm.decode(ints_in_hack_sample[i], navigation + i) if navigation + i > 15 else \
                          hex_space(extend_zeroes(hexi(ints_in_hack_sample[i]), 8)) \
                          for i in range(len(ints_in_hack_sample))]
+
+    # Replace disassembled data in the hack file with any errors the user has made
+    for i in range(len(hack_disassembled)):
+        navi = navigation + i
+        string_key = '{}'.format(navigation + i)
+        if string_key in user_errors.keys():
+            hack_disassembled[i] = user_errors[string_key][1]
 
     # Display floating Rom Name Change button
     if disasm.header_items['Rom Name'][0] // 4 in range(navigation, limit):
@@ -651,13 +689,24 @@ def open_files(mode = ''):
 
     # Navigate user to first line of code, start the undo buffer frame with the current data on screen
     navigate_to(0)
-    hack_buffer[1].append([navigation, '1.0', hack_file_text_box.get('1.0', tk.END)[:-1]])
-    comments_buffer[1].append([navigation, '1.0', comments_text_box.get('1.0', tk.END)[:-1]])
+    buffer_append(hack_buffer, (navigation,
+                                cursor_value(1, 0),
+                                hack_file_text_box.get('1.0', tk.END)[:-1],
+                                app_config['immediate_identifier'],
+                                app_config['game_address_mode']))
+    buffer_append(comments_buffer, (navigation,
+                                    cursor_value(1, 0),
+                                    comments_text_box.get('1.0', tk.END)[:-1]))
 
-
+# (navigation, cursor_location, text_box_content, immediate_id, game_address_mode)
 def toggle_address_mode():
     apply_hack_changes()
     apply_comment_changes()
+    buffer_append(hack_buffer, (navigation,
+                                hack_file_text_box.index(tk.INSERT),
+                                hack_file_text_box.get('1.0', tk.END)[:-1],
+                                app_config['immediate_identifier'],
+                                app_config['game_address_mode']))
     toggle_to = not app_config['game_address_mode']
     app_config['game_address_mode'] = toggle_to
     if disasm:
@@ -671,6 +720,11 @@ def change_immediate_id():
                                  '=', '+', '-', '_', '*', '&', '^', '%', '$', '#', '.',
                                  '@', '!', '`', '~', '/', '?', '\\']:
         hack_text = hack_file_text_box.get('1.0', tk.END)[:-1]
+        buffer_append(hack_buffer, (navigation,
+                                    hack_file_text_box.index(tk.INSERT),
+                                    hack_text,
+                                    app_config['immediate_identifier'],
+                                    app_config['game_address_mode']))
         hack_text.replace(app_config['immediate_identifier'], symbol[:1])
         hack_file_text_box.delete('1.0', tk.END)
         hack_file_text_box.insert('1.0', hack_text)

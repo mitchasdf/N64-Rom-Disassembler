@@ -751,6 +751,8 @@ class Disassembler:
         if string in ['', 'NOP']:
             return 0
         punc = string.find(' ')
+        if punc < 0:
+            punc = len(string)
         opcode = string[:punc]
         string = string[punc + 1:]
         try:
@@ -809,9 +811,10 @@ class Disassembler:
             return -2
         return int_result
 
-    def split_and_store_bytes(self, int, index):
+    def split_and_store_bytes(self, int_word, index):
         # todo: probably a better way to do this
-        ints = get_8_bit_ints_from_32_bit_int(int)
+        ints = get_8_bit_ints_from_32_bit_int(int_word)
+        index <<= 2
         for i in range(4):
-            self.hack_file[(index << 2) + i] = ints[i]
+            self.hack_file[index + i] = ints[i]
 
