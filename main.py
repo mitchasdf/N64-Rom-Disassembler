@@ -54,8 +54,8 @@ base_file_text_box = tk.Text(window, font = 'Courier')
 hack_file_text_box = tk.Text(window, font = 'Courier')
 comments_text_box = tk.Text(window, font = 'Courier')
 
-hack_file_text_box.tag_config('bad', background = 'red')
-hack_file_text_box.tag_config('out_of_range', background = 'orange red')
+hack_file_text_box.tag_config('bad', background = '#f62010')
+hack_file_text_box.tag_config('out_of_range', background = '#e68010')
 hack_file_text_box.tag_config('liken', background = 'SeaGreen2')
 
 
@@ -125,6 +125,19 @@ def window_geo(window):
     return window_w, window_h, window_x, window_y
 
 
+def get_word_at(list, line, column):
+    line_text = list[line - 1]
+    lower_bound_punc = line_text.rfind('(', 0, column)
+    if lower_bound_punc < 0:
+        lower_bound_punc = line_text.rfind(' ', 0, column)
+    upper_bound_punc = line_text.find(',', column)
+    if upper_bound_punc < 0:
+        upper_bound_punc = line_text.find(')', column)
+    if upper_bound_punc < 0:
+        upper_bound_punc = len(line_text)
+    return list[line - 1][lower_bound_punc + 1: upper_bound_punc]
+
+
 # Is called pretty much after every time apply_hack_changes() is called
 def highlight_stuff():
     # Highlight any errors on screen
@@ -140,37 +153,29 @@ def highlight_stuff():
             tag = 'bad' if err_code > -3 else 'out_of_range'
             hack_file_text_box.tag_add(tag, line_start, line_end)
             
-    # Highlight all of the same registers if targeting one
+    # Highlight all of the same registers on screen if cursor is targeting one
     cursor, line, column = get_cursor(hack_file_text_box)
     hack_file_text_box.tag_remove('liken', '1.0', tk.END)
     text = hack_file_text_box.get('1.0', tk.END)[:-1].split('\n')
-    lower_bound_punc = text[line - 1].rfind('(', 0, column)
-    if lower_bound_punc < 0:
-        lower_bound_punc = text[line - 1].rfind(' ', 0, column)
-
-    upper_bound_punc = text[line - 1].find(',', column)
-    if upper_bound_punc < 0:
-        upper_bound_punc = text[line - 1].find(')', column)
-    if upper_bound_punc < 0:
-        upper_bound_punc = len(text[line - 1])
-
-    targeting = text[line-1][lower_bound_punc + 1:upper_bound_punc]
+    targeting = get_word_at(text, line, column)
     if targeting in REGISTERS_ENCODE.keys():
         for i in range(len(text)):
+            line = i + 1
             begin = 0
             while True:
-                found = text[i].find(targeting, begin)
-                find_immediate = text[i].find('$', begin)
-                if found >= 0 and find_immediate not in range(begin, found):
-                    hack_file_text_box.tag_add('liken',
-                                               cursor_value(i + 1, found),
-                                               cursor_value(i + 1, found + len(targeting)))
+                column = text[i].find(targeting, begin)
+                word_at = get_word_at(text, line, column)
+                if column >= 0:
+                    if word_at[:1] != app_config['immediate_identifier']:
+                        hack_file_text_box.tag_add('liken',
+                                                   cursor_value(i + 1, column),
+                                                   cursor_value(i + 1, column + len(targeting)))
                 else:
                     break
-                begin = found + len(targeting)
+                begin = column + 1
 
 
-# The hacked text box syntax checker, change applier and Disassembler.comments accumulator
+# The hacked text box syntax checker and change applier
 def apply_hack_changes(ignore_slot = None):
     current_text = hack_file_text_box.get('1.0', tk.END)[:-1].upper()
     split_text = current_text.split('\n')
@@ -198,6 +203,7 @@ def apply_hack_changes(ignore_slot = None):
                 user_errors[string_key] = (encoded_int, split_text[i])
 
 
+# Disassembler.comments accumulator
 def apply_comment_changes():
     current_text = comments_text_box.get('1.0', tk.END)[:-1]
     split_text = current_text.split('\n')
@@ -276,7 +282,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     # Cause each modification of text box to snap-shot data in order to undo/redo
     if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d):
-        print('aye')
         buffer_frame = (navigation, cursor, joined_text,
                         app_config['immediate_identifier'],
                         app_config['game_address_mode'])\
@@ -336,9 +341,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         if sel_start_line != sel_end_line:
             selection_start = modify_cursor(selection_start, 0, 'min', split_text)
             selection_end = modify_cursor(selection_end, 0, 'max', split_text)
-            # vars not in use at the moment
-            # sel_start_column = 0
-            # sel_end_column = len(split_text[sel_end_line - 1])
     except:
         selection_start, sel_start_line, sel_start_column = '1.0', 0, 0
         selection_end, sel_end_line, sel_end_column = '1.0', 0, 0
@@ -359,7 +361,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
         if is_copying or is_cutting:
             clipboard = selection_text
-            # So that when user pastes, there aren't duplicates from both clipboards
+            # So that when user pastes, window clipboard won't override clipboard
             window.after(after_delay - 1, window.clipboard_clear)
 
         if selection_removable:
@@ -398,7 +400,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     if lines_diff > 0:
         handle.insert(insertion_place, '\n' * lines_diff)
     elif lines_diff < 0:
-        handle.delete(insertion_place, modify_cursor(insertion_place, lines_diff * -1, 'max', split_text))
+        handle.delete(insertion_place, modify_cursor(insertion_place, -lines_diff, 'max', split_text))
 
     if is_pasting or is_cutting:
         def move_next(handle):
@@ -428,9 +430,13 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     # Make delete do nothing if cursor precedes a new line
     # Make backspace act as left arrow if cursor at column 0 then validate code (ignoring the line if cursor not at column 0)
     elif (is_backspacing and (column == 0 and line > 1)) or (is_deleting and nl_at_cursor):
-        apply_function((line - 1) if not sel_start_line else None)
-        handle.insert(cursor,'\n')
-        handle.mark_set(tk.INSERT, cursor)
+        if is_deleting or sel_start_line:
+            apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
+        if not selection_lines:
+            handle.insert(cursor,'\n')
+            handle.mark_set(tk.INSERT, cursor)
+        if is_backspacing:
+            apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
 
     # Make return send the cursor to the end of the next line and validate code
     elif is_returning:
@@ -440,18 +446,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         handle.delete(cursor)
         new_cursor = modify_cursor(cursor, 1, 'max', split_text)
         window.after(after_delay - 1, lambda: (apply_function(), handle.mark_set(tk.INSERT, new_cursor)))
-        # if line == max_lines:
-        #     seg_1 = line - 1
-        #     seg_2 = len(split_text[line - 2])
-        # else:
-        #     seg_1 = line
-        #     seg_2 = len(split_text[line - 1])
-        # cursor = cursor_value(seg_1, seg_2)
-        # new_cursor = cursor_value(seg_1 + 1, len(split_text[seg_1]))
-        # handle.mark_set(tk.INSERT, cursor)
-        # handle.delete(cursor, cursor_value(line + 1, 0))
-        # # The delay is necessary to stop the syntax checker from noting every subsequent line from the cursor to be "changed" due to return's newline
-        # window.after(after_delay - 1, lambda: (apply_function(), handle.mark_set(tk.INSERT, new_cursor)))
 
     # Prevent delete or backspace from modifying textbox any further than the bounds of the selected text (if selected text is only on one line)
     if has_selection and not selection_lines and (is_deleting or is_backspacing):
@@ -460,14 +454,15 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         if is_deleting:
             window.after(after_delay - 1, lambda: handle.mark_set(tk.INSERT, selection_start))
 
+    # So the P on the cursor's NOP doesn't get removed when backspace happens
+    elif has_selection and selection_lines and is_backspacing:
+        cursor, line, column = get_cursor(handle)
+        handle.insert(cursor, 'P')
+
     if vert_arrows:
         apply_function()
 
-    # if is_saving:
-    #     save_changes_to_file()
-
-
-    # Adding the delay fixes a problem where Enter would cause the syntax highlighting to drag along to the new line created when Enter fires after this function
+    # Adding the delay fixes a problem where Enter would cause the syntax highlighting to drag along onto the new line created when Enter fires after this function
     window.after(after_delay, highlight_stuff)
 
 
