@@ -8,7 +8,7 @@ from disassembler import Disassembler
 
 CONFIG_FILE = 'rom disassembler.config'
 
-# game_address_mode = False
+# Disassembler, created when opening files
 disasm = None
 
 # Setup app_config either fresh or from file
@@ -63,7 +63,7 @@ hack_file_text_box.tag_config('out_of_range', background = 'orange')
 #                                                                          |------for hack_buffer only-----|
 hack_buffer = [0, []]
 comments_buffer = [0, []]
-buffer_max = 5000
+buffer_max = 20000
 
 # {'decimal_address': [error_code, text_attempted_to_encode], ...}
 user_errors = {}
@@ -155,6 +155,7 @@ def apply_hack_changes(ignore_slot = None):
         string_key = '{}'.format(navi)
         if is_hex_part:
             split_text[i] = split_text[i].replace(' ', '')
+            disasm.split_and_store_bytes(deci(split_text[i]), navi)
 
         elif not split_text[i]:
             disasm.split_and_store_bytes(0, navi)
@@ -235,7 +236,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     is_cutting = buffer and ctrl_held and event.keysym == 'x'
     is_pasting = buffer and ctrl_held and event.keysym == 'v'
     is_copying = buffer and ctrl_held and event.keysym == 'c'
-    is_saving = ctrl_held and event.keysym == 's'
     is_deleting = ctrl_d or event.keysym == 'Delete'
     is_backspacing = event.keysym == 'BackSpace'
     is_returning = event.keysym == 'Return'
@@ -436,8 +436,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     if vert_arrows:
         apply_function()
 
-    if is_saving:
-        save_changes_to_file()
+    # if is_saving:
+    #     save_changes_to_file()
 
 
     # Adding the delay fixes a problem where Enter would cause the syntax highlighting to drag along to the new line created when Enter fires after this function
@@ -566,7 +566,7 @@ def scroll_callback(event):
     highlight_errors()
 
 
-def save_changes_to_file():
+def save_changes_to_file(save_as=False):
     global max_lines, disasm
     if not disasm:
         return
@@ -574,28 +574,20 @@ def save_changes_to_file():
     apply_hack_changes()
     apply_comment_changes()
 
-    # Needs to be copied: cannot change dict keys while iterating
-    # hacked_keys = list(hack_changes.keys())
-    error_keys = user_errors.keys()
-
-    # Do not save changes if there is any encoding or re-decoding issue with any of the user's code
+    # Do not save changes if there are errors
     for key in user_errors:
         i = int(key)
         navigate_to(i - (max_lines // 2))
         highlight_errors()
         return
 
-    # Change the file saved on the RAM
-    # for key in hacked_keys:
-    #     i = int(key)
-    #     if i > 15:
-    #         code_bytes = disasm.encode(hack_changes[key], i).to_bytes(4, byteorder = 'big', signed = False)
-    #     else:
-    #         code_bytes = bytes.fromhex(hack_changes[key])
-    #     for j in range(4):
-    #         i_j = (i << 2) + j
-    #         disasm.hack_file[i_j] = code_bytes[j]
-    #     del hack_changes[key]
+    if save_as:
+        new_file_name = filedialog.asksaveasfilename(initialdir = app_config['previous_hack_location'],
+                                                     title = 'Save as...')
+        if not new_file_name:
+            return
+        disasm.hack_file_name = new_file_name
+        disasm.comments_file = new_file_name + '.comments'
 
     with open(disasm.comments_file, 'w') as file:
         file.write(dict_to_string(disasm.comments))
@@ -692,9 +684,10 @@ def open_files(mode = ''):
     pickle_data(app_config, CONFIG_FILE)
 
     # Initialise disassembler with paths to the 2 files, apply saved settings from app_config
-    disasm = Disassembler(base_file_path, hack_file_path)
-    disasm.game_address_mode = app_config['game_address_mode']
-    disasm.immediate_identifier = app_config['immediate_identifier']
+    disasm = Disassembler(base_file_path,
+                          hack_file_path,
+                          app_config['game_address_mode'],
+                          app_config['immediate_identifier'])
 
     # Navigate user to first line of code, start the undo buffer frame with the current data on screen
     navigate_to(0)
@@ -754,20 +747,27 @@ def set_scroll_amount():
 
 def help_box():
     message = [
-        '---General Info---',
-        'In order to save ANY changes you have made, all errors must be resolved before the save feature will allow it.',
+        '----General Info----',
+        'In order to save ANY changes you have made, all syntax errors must be resolved before the save feature will allow it.',
         'Trying to save while an error exists will result in your navigation shifting to the next error instead.',
         '',
         'In the event of an emergency, press the undo keys to access one of 20,000 buffer frames.',
         'The buffer itself should only be able to reach 80mb before capping out.',
         '',
-        '---Syntax errors---',
+        'The header part displays and edits as hex values.',
+        '',
+        'The comments file will be output to where your hacked rom is located.',
+        'The comments file must always be located in the same folder as your hacked rom in order for it to load.',
+        'You can also open the comments files with a text editor if required.',
+        '',
+        '----Syntax errors----',
         'Red highlighted text: Invalid syntax/Instruction cannot encode',
         'Orange highlighted text: Immediate value used above it\'s limit',
         '',
-        '---Keyboard---',
+        '----Keyboard----',
         'Ctrl+{Comma} (left facing arrow): Undo',
         'Ctrl+{Fullstop} (right facing arrow): Redo',
+        'Ctrl+S: Quick save',
         'F4: Navigate to address',
         'F5: Toggle mode which displays and handles input addresses using the game\'s entry point'
     ]
@@ -777,7 +777,7 @@ def help_box():
 def about_box():
     message = [
         'Created by Mitchell Parry-Shaw with Python 3.5 over many moons during 2017 sometime.',
-        'There really isn\'t much else to tell you.'
+        'There really isn\'t much else to tell you. Sorry.'
     ]
     simpledialog.messagebox._show('Shoutouts to simpleflips', '\n'.join(message))
 
@@ -786,7 +786,7 @@ def test_function():
     if not disasm:
         return
     value = simpledialog.askstring('Find jumps to function', 'Start of function is auto-determined')
-    timer_start()
+    timer_reset()
     print(len(disasm.find_jumps(value)))
     timer_tick('function mapping')
     # i = deci('1000')
@@ -804,13 +804,15 @@ file_menu = tk.Menu(menu_bar, tearoff=0)
 file_menu.add_command(label='Start new hacked rom', command=lambda: open_files('new'))
 file_menu.add_command(label='Open existing hacked rom', command=lambda: open_files('existing'))
 file_menu.add_separator()
+file_menu.add_command(label='Save (Ctrl+S)', command=save_changes_to_file)
+file_menu.add_command(label='Save as... (Ctrl+Shift+S)', command=lambda: save_changes_to_file(True))
+file_menu.add_separator()
 file_menu.add_command(label='Exit', command=lambda: close_window('left'))
 menu_bar.add_cascade(label='File', menu=file_menu)
 
 tool_menu = tk.Menu(menu_bar, tearoff=0) # todo
 tool_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
-# tool_menu.add_command(label = 'Search (Ctrl+F)')
-file_menu.add_separator()
+tool_menu.add_separator()
 tool_menu.add_command(label='Test', command=test_function)
 menu_bar.add_cascade(label='Tools', menu=tool_menu)
 
@@ -829,8 +831,11 @@ window.config(menu=menu_bar)
 
 window.bind('<F4>', lambda e: navigation_prompt())
 window.bind('<F5>', lambda e: toggle_address_mode())
+window.bind('<Control-s>', lambda e: save_changes_to_file())
 window.bind('<MouseWheel>', scroll_callback)
-window.bind('<Button-1>', lambda e: (apply_hack_changes(), apply_comment_changes(), highlight_errors()) \
+window.bind('<Button-1>', lambda e: (apply_hack_changes(),
+                                     apply_comment_changes(),
+                                     window.after(1, highlight_errors)) \
                                      if disasm else None)
 
 address_text_box.place(x=6, y=45, width=85, height=760)

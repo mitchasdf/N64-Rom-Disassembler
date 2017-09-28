@@ -68,22 +68,23 @@ def align_value(value, alignment):
 
 # To translate the comments dict into a negotiable text document formatted string
 def dict_to_string(dict):
-    return '\n'.join(['{}: {}'.format(extend_zeroes(hex(int(key))[2:], 8), dict[key]) for key in dict.keys()])
+    return '\n'.join(['{}: {}'.format(extend_zeroes(hexi(i << 2), 8), dict['{}'.format(i)])
+                      for i in sorted([int(key) for key in dict])])
 
 
-# And to translate the comments from the file, back into the comments dict
+# And to translate the comments from the file back into the comments dict
 def string_to_dict(str):
     str_list = str.split('\n')
     result_dict = {}
     for i in str_list:
-        result_dict['{}'.format(int('0x' + i[:8], 16))] = i[10:]
+        result_dict['{}'.format(int('0x' + i[:8], 16) >> 2)] = i[10:]
     return result_dict
 
 
 last_time = 0
 
 
-def timer_start():
+def timer_reset():
     global last_time
     last_time = time.time()
 

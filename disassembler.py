@@ -308,7 +308,7 @@ REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of registe
 
 
 class Disassembler:
-    def __init__(self, base_file_name='', hacked_file_name=''):
+    def __init__(self, base_file_name='', hacked_file_name='', game_address_mode=False, immediate_identifier='$'):
 
         base_part = base_file_name.rfind('\\') + 1
         self.base_folder = base_file_name[:base_part]
@@ -380,18 +380,16 @@ class Disassembler:
         segment = self.hack_file[self.header_items['Game Offset'][0]: self.header_items['Game Offset'][1]]
         self.game_offset = int.from_bytes(segment, byteorder='big', signed=False) - deci('1000')
 
-        self.game_address_mode = False
-        self.immediate_identifier = '$'
+        self.game_address_mode = game_address_mode
+        self.immediate_identifier = immediate_identifier
 
         self.mnemonics = []
         self.encodes = []
         self.appearances = []
-        # self.appearance_bit_correspondences = []
         self.comparable_bits = []
         self.identifying_bits = []
         self.amount = 0
         self.file_length = len(self.base_file)
-        self.disassembled = []
 
         ''' Format: fit(mnemonic, encoding, appearance)
             mnemonic: String
@@ -828,11 +826,6 @@ class Disassembler:
         for i in range(4):
             self.hack_file[index + i] = ints[i]
 
-    # def decode_jumps(self):
-    #     navigation = self.header_items['Game Code']
-    #     i = 0
-    #     while True:
-
 
     def find_jumps(self, address):
         results = []
@@ -850,20 +843,19 @@ class Disassembler:
             instruction = self.decode(int_word, (address + i) >> 2)
             if instruction[:2] == 'JR':
                 # Skip the delay slot
-                i += 4
+                i += 8
                 break
             i -= 4
 
         # Locate top of target function
         while True:
-            i += 4
             int_word = ints_of_4_byte_aligned_region(self.hack_file[address + i:address + i + 4])[0]
             instruction = self.decode(int_word, (address + i) >> 2)
             if instruction != 'NOP':
                 address += i
                 break
+            i += 4
 
-        print(hexi(address))
         # Find jumps
         while navigation < self.file_length:
             int_word = ints_of_4_byte_aligned_region(self.hack_file[navigation:navigation + 4])[0]
