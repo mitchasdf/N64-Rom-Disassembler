@@ -505,7 +505,7 @@ def navigate_to(index):
         if string_key in disasm.comments.keys():
             sample_comments[i] = disasm.comments[string_key]
 
-    # Calculate what addresses to display in the address box, and disassemble ints into instructions, display header section as raw hex
+    # Calculate what addresses to display in the address box, and disassemble ints into instructions, display header section as hex
     address_range = [extend_zeroes(hexi((i * 4) + (disasm.game_offset
                                                    if disasm.game_address_mode else 0)), 8) for i in range(navigation, limit)]
     base_disassembled = [disasm.decode(ints_in_base_sample[i], navigation + i) if navigation + i > 15 else \
@@ -739,20 +739,25 @@ def change_immediate_id():
 
 
 def set_scroll_amount():
-    amount = simpledialog.askinteger('Set scroll amount', 'Current: {}'.format(app_config['scroll_amount']))
-    if amount:
-        app_config['scroll_amount'] = amount
-        pickle_data(app_config, CONFIG_FILE)
+    amount = simpledialog.askstring('Set scroll amount', 'Current: {}'.format(app_config['scroll_amount']))
+    try:
+        amount = deci(amount) if amount[:2] == '0x' else int(amount)
+    except:
+        return
+    app_config['scroll_amount'] = amount
+    pickle_data(app_config, CONFIG_FILE)
 
 
 def help_box():
     message = [
         '----General Info----',
-        'In order to save ANY changes you have made, all syntax errors must be resolved before the save feature will allow it.',
+        'In order to save ANY changes you have made, all errors must be resolved before the save feature will allow it.',
         'Trying to save while an error exists will result in your navigation shifting to the next error instead.',
         '',
-        'In the event of an emergency, press the undo keys to access one of 20,000 buffer frames.',
+        'In the event of an emergency, press the undo keys to access up to 20,000 buffer frames.',
         'The buffer itself should only be able to reach 80mb before capping out.',
+        'The buffer is volatile. If you undo and then cause more buffer frames to be caught via keyboard input, '+
+        'then the buffer frames you have "undone past" will be lost.',
         '',
         'The header part displays and edits as hex values.',
         '',
@@ -760,13 +765,17 @@ def help_box():
         'The comments file must always be located in the same folder as your hacked rom in order for it to load.',
         'You can also open the comments files with a text editor if required.',
         '',
-        '----Syntax errors----',
-        'Red highlighted text: Invalid syntax/Instruction cannot encode',
+        'When setting the scroll amount, use "0x" to specify a hexadecimal value, or leave it out to specify a decimal value.',
+        '',
+        '',
+        '----Errors----',
+        'Red highlighted text: Invalid syntax',
         'Orange highlighted text: Immediate value used above it\'s limit',
         '',
+        '',
         '----Keyboard----',
-        'Ctrl+{Comma} (left facing arrow): Undo',
-        'Ctrl+{Fullstop} (right facing arrow): Redo',
+        'Ctrl+{Comma} ("<" key): Undo',
+        'Ctrl+{Fullstop} (">" key): Redo',
         'Ctrl+S: Quick save',
         'F4: Navigate to address',
         'F5: Toggle mode which displays and handles input addresses using the game\'s entry point'
