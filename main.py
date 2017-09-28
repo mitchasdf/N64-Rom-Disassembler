@@ -2,9 +2,8 @@
 import tkinter as tk
 from tkinter import simpledialog, filedialog
 import os
-from binascii import unhexlify as unhex
 from function_defs import *
-from disassembler import Disassembler
+from disassembler import Disassembler, REGISTERS_ENCODE
 
 CONFIG_FILE = 'rom disassembler.config'
 
@@ -56,7 +55,8 @@ hack_file_text_box = tk.Text(window, font = 'Courier')
 comments_text_box = tk.Text(window, font = 'Courier')
 
 hack_file_text_box.tag_config('bad', background = 'red')
-hack_file_text_box.tag_config('out_of_range', background = 'orange')
+hack_file_text_box.tag_config('out_of_range', background = 'orange red')
+hack_file_text_box.tag_config('liken', background = 'SeaGreen2')
 
 
 # [current_buffer_position, [(navigation, cursor_location, text_box_content, immediate_id, game_address_mode), ...]]
@@ -126,11 +126,10 @@ def window_geo(window):
 
 
 # Is called pretty much after every time apply_hack_changes() is called
-def highlight_errors():
-    global max_lines, navigation
+def highlight_stuff():
+    # Highlight any errors on screen
     hack_file_text_box.tag_remove('bad', '1.0', tk.END)
     hack_file_text_box.tag_remove('out_of_range', '1.0', tk.END)
-    print(user_errors)
     for i in range(max_lines):
         navi = i + navigation
         key = '{}'.format(navi)
@@ -138,9 +137,37 @@ def highlight_errors():
             line_start = cursor_value(i + 1, 0)
             line_end = cursor_value(i + 2, 0)
             err_code = user_errors[key][0]
-            # Red highlight for bad, orange highlight for out_of_range (tags set at end of script, before TKinter's window.mainloop())
             tag = 'bad' if err_code > -3 else 'out_of_range'
             hack_file_text_box.tag_add(tag, line_start, line_end)
+            
+    # Highlight all of the same registers if targeting one
+    cursor, line, column = get_cursor(hack_file_text_box)
+    hack_file_text_box.tag_remove('liken', '1.0', tk.END)
+    text = hack_file_text_box.get('1.0', tk.END)[:-1].split('\n')
+    lower_bound_punc = text[line - 1].rfind('(', 0, column)
+    if lower_bound_punc < 0:
+        lower_bound_punc = text[line - 1].rfind(' ', 0, column)
+
+    upper_bound_punc = text[line - 1].find(',', column)
+    if upper_bound_punc < 0:
+        upper_bound_punc = text[line - 1].find(')', column)
+    if upper_bound_punc < 0:
+        upper_bound_punc = len(text[line - 1])
+
+    targeting = text[line-1][lower_bound_punc + 1:upper_bound_punc]
+    if targeting in REGISTERS_ENCODE.keys():
+        for i in range(len(text)):
+            begin = 0
+            while True:
+                found = text[i].find(targeting, begin)
+                find_immediate = text[i].find('$', begin)
+                if found >= 0 and find_immediate not in range(begin, found):
+                    hack_file_text_box.tag_add('liken',
+                                               cursor_value(i + 1, found),
+                                               cursor_value(i + 1, found + len(targeting)))
+                else:
+                    break
+                begin = found + len(targeting)
 
 
 # The hacked text box syntax checker, change applier and Disassembler.comments accumulator
@@ -216,7 +243,7 @@ def replace_clipboard():
 # Custom keyboard events and textbox behaviour upon any keypress in text boxes
 clipboard = ''
 def keyboard_events(handle, max_char, event, buffer = None, hack_function = False):
-    global navigation, max_lines, buffer_max, clipboard
+    global clipboard
     if not disasm:
         return
     after_delay = 2
@@ -298,7 +325,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                     disasm.game_address_mode = game_address_mode
             apply_hack_changes()
             apply_comment_changes()
-            highlight_errors()
+            highlight_stuff()
         return
 
     # Copy/Paste and selection handling
@@ -441,7 +468,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
 
     # Adding the delay fixes a problem where Enter would cause the syntax highlighting to drag along to the new line created when Enter fires after this function
-    window.after(after_delay, highlight_errors)
+    window.after(after_delay, highlight_stuff)
 
 
 base_file_text_box.bind('<Key>', lambda event:
@@ -552,7 +579,7 @@ def navigation_prompt():
     apply_hack_changes()
     apply_comment_changes()
     navigate_to(address)
-    highlight_errors()
+    highlight_stuff()
 
 
 def scroll_callback(event):
@@ -563,7 +590,7 @@ def scroll_callback(event):
     apply_comment_changes()
     direction = -app_config['scroll_amount'] if event.delta > 0 else app_config['scroll_amount']
     navigate_to(navigation + direction)
-    highlight_errors()
+    highlight_stuff()
 
 
 def save_changes_to_file(save_as=False):
@@ -578,7 +605,7 @@ def save_changes_to_file(save_as=False):
     for key in user_errors:
         i = int(key)
         navigate_to(i - (max_lines // 2))
-        highlight_errors()
+        highlight_stuff()
         return
 
     if save_as:
@@ -586,6 +613,10 @@ def save_changes_to_file(save_as=False):
                                                      title = 'Save as...')
         if not new_file_name:
             return
+        new_file_path = os.path.realpath(new_file_name)
+        new_dir = new_file_path[:new_file_path.rfind('\\') + 1]
+        app_config['previous_hack_location'] = new_dir
+        pickle_data(app_config, CONFIG_FILE)
         disasm.hack_file_name = new_file_name
         disasm.comments_file = new_file_name + '.comments'
 
@@ -785,19 +816,19 @@ def help_box():
 
 def about_box():
     message = [
-        'Created by Mitchell Parry-Shaw with Python 3.5 over many moons during 2017 sometime.',
+        'Created by Mitchell Parry-Shaw with Python 3.5 during 2017 sometime.',
         'There really isn\'t much else to tell you. Sorry.'
     ]
     simpledialog.messagebox._show('Shoutouts to simpleflips', '\n'.join(message))
 
 
-def test_function():
-    if not disasm:
-        return
-    value = simpledialog.askstring('Find jumps to function', 'Start of function is auto-determined')
-    timer_reset()
-    print(len(disasm.find_jumps(value)))
-    timer_tick('function mapping')
+# def test_function():
+#     if not disasm:
+#         return
+#     value = simpledialog.askstring('Find jumps to function', 'Start of function is auto-determined')
+#     timer_reset()
+#     print(len(disasm.find_jumps(value)))
+#     timer_tick('function mapping')
     # i = deci('1000')
     # while True:
     #     int_word = ints_of_4_byte_aligned_region(disasm.hack_file[i:i+4])[0]
@@ -814,15 +845,15 @@ file_menu.add_command(label='Start new hacked rom', command=lambda: open_files('
 file_menu.add_command(label='Open existing hacked rom', command=lambda: open_files('existing'))
 file_menu.add_separator()
 file_menu.add_command(label='Save (Ctrl+S)', command=save_changes_to_file)
-file_menu.add_command(label='Save as... (Ctrl+Shift+S)', command=lambda: save_changes_to_file(True))
+file_menu.add_command(label='Save as...', command=lambda: save_changes_to_file(True))
 file_menu.add_separator()
 file_menu.add_command(label='Exit', command=lambda: close_window('left'))
 menu_bar.add_cascade(label='File', menu=file_menu)
 
 tool_menu = tk.Menu(menu_bar, tearoff=0) # todo
 tool_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
-tool_menu.add_separator()
-tool_menu.add_command(label='Test', command=test_function)
+# tool_menu.add_separator()
+# tool_menu.add_command(label='Test', command=test_function)
 menu_bar.add_cascade(label='Tools', menu=tool_menu)
 
 opts_menu = tk.Menu(menu_bar, tearoff=0)
@@ -842,9 +873,10 @@ window.bind('<F4>', lambda e: navigation_prompt())
 window.bind('<F5>', lambda e: toggle_address_mode())
 window.bind('<Control-s>', lambda e: save_changes_to_file())
 window.bind('<MouseWheel>', scroll_callback)
+window.bind('<FocusOut>', lambda e: replace_clipboard())
 window.bind('<Button-1>', lambda e: (apply_hack_changes(),
                                      apply_comment_changes(),
-                                     window.after(1, highlight_errors)) \
+                                     highlight_stuff()) \
                                      if disasm else None)
 
 address_text_box.place(x=6, y=45, width=85, height=760)
@@ -853,7 +885,6 @@ hack_file_text_box.place(x=414, y=45, width=315, height=760)
 comments_text_box.place(x=733, y=45, width=597, height=760)
 
 
-window.bind('<FocusOut>', lambda e: replace_clipboard())
 window.protocol('WM_DELETE_WINDOW', close_window)
 window.mainloop()
 
