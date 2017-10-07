@@ -309,7 +309,6 @@ REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of registe
 
 class Disassembler:
     def __init__(self, base_file_name='', hacked_file_name='', game_address_mode=False, immediate_identifier='$'):
-
         base_part = base_file_name.rfind('\\') + 1
         self.base_folder = base_file_name[:base_part]
         self.base_file_name = base_file_name[base_part:]
@@ -318,8 +317,7 @@ class Disassembler:
         if self.base_file[2:4].hex() == '3780':
             self.base_file = bytearray(ints_of_4_byte_aligned_region(self.base_file, byteorder='little'))
         elif self.base_file[0:2].hex() != '8037':
-            self.nothing = None
-            # todo: "not a rom" error
+            raise Exception('"{}" Not a rom file'.format(base_file_name))
 
         hack_part = hacked_file_name.rfind('\\') + 1
         self.hack_folder = hacked_file_name[:hack_part]
@@ -330,7 +328,7 @@ class Disassembler:
             self.hack_file = bytearray(ints_of_4_byte_aligned_region(self.hack_file, byteorder='little'))
         elif self.hack_file[0:2].hex() != '8037':
             self.nothing = None
-            # todo: "not a rom" error
+            raise Exception('"{}" Not a rom file'.format(hacked_file_name))
 
         self.header_items = {
             # Section labeled    data_start    data_end (not inclusive)

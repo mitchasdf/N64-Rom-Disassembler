@@ -10,18 +10,32 @@ CONFIG_FILE = 'rom disassembler.config'
 # Disassembler, created when opening files
 disasm = None
 
+working_dir = os.path.dirname(os.path.realpath(__file__)) + '\\'
+FRESH_APP_CONFIG = {
+    'previous_base_location': working_dir,
+    'previous_hack_location': working_dir,
+    'scroll_amount': 8,
+    'immediate_identifier': '$',
+    'game_address_mode': False
+}
+
 # Setup app_config either fresh or from file
 if os.path.exists(CONFIG_FILE):
-    app_config = unpickle_data(CONFIG_FILE)
+    try:
+        config_in_file = unpickle_data(CONFIG_FILE)
+        # Allows me to easily modify the app config items
+        for key in FRESH_APP_CONFIG:
+            if key not in config_in_file.keys():
+                config_in_file[key] = FRESH_APP_CONFIG[key]
+        for key in config_in_file:
+            if key not in FRESH_APP_CONFIG.keys():
+                del config_in_file[key]
+        app_config = config_in_file.copy()
+    except:
+        app_config = FRESH_APP_CONFIG.copy()
+        simpledialog.messagebox._show('Error','There was a problem loading the config file. It is corrupt. Starting with default configuration.')
 else:
-    working_dir = os.path.dirname(os.path.realpath(__file__)) + '\\'
-    app_config = {
-        'previous_base_location': working_dir,
-        'previous_hack_location': working_dir,
-        'scroll_amount': 8,
-        'immediate_identifier': '$',
-        'game_address_mode': False
-    }
+    app_config = FRESH_APP_CONFIG.copy()
 
 '''
     A GUI with custom behaviour is required for user-friendliness.
@@ -33,7 +47,7 @@ else:
     
     Deviating from max_lines causes the list containing the data for the syntax checker
       to have a "shift". The syntax checker can't assume where or whether or not a shift
-      has happened, so it needs the data to be preprocessed before the checker receives it.
+      has happened, so it needs the data to be processed before the checker receives it.
     
     The only times the amount of lines will change is when:
       - User has pressed: Enter
@@ -61,8 +75,8 @@ hack_file_text_box.tag_config('liken', background = 'SeaGreen2')
 
 # [current_buffer_position, [(navigation, cursor_location, text_box_content, immediate_id, game_address_mode), ...]]
 #                                                                          |------for hack_buffer only-----|
-hack_buffer = [0, []]
-comments_buffer = [0, []]
+hack_buffer = [-1, []]
+comments_buffer = [-1, []]
 buffer_max = 20000
 
 # {'decimal_address': [error_code, text_attempted_to_encode], ...}
@@ -72,8 +86,15 @@ max_lines = 42
 navigation = 0
 
 
-def cursor_value(int1, int2):
-    return '{}.{}'.format(int1, int2)
+def clear_error(key):
+    if type_of(key) == 'int':
+        key = '{}'.format(key)
+    if key in user_errors.keys():
+        del user_errors[key]
+
+
+def cursor_value(line, column):
+    return '{}.{}'.format(line, column)
 
 
 def get_cursor(handle, cursor_tag = tk.INSERT):
@@ -186,9 +207,14 @@ def apply_hack_changes(ignore_slot = None):
         is_hex_part = navi < 16
         string_key = '{}'.format(navi)
         if is_hex_part:
-            split_text[i] = split_text[i].replace(' ', '')
-            disasm.split_and_store_bytes(deci(split_text[i]), navi)
-
+            without_spaces = split_text[i].replace(' ', '')
+            try:
+                int_of = deci(without_spaces)
+            except:
+                user_errors[string_key] = (-1, split_text[i])
+                continue
+            disasm.split_and_store_bytes(int_of, navi)
+            clear_error(string_key)
         elif not split_text[i]:
             disasm.split_and_store_bytes(0, navi)
             hack_file_text_box.insert(cursor_value(i + 1, 0), 'NOP')
@@ -197,8 +223,7 @@ def apply_hack_changes(ignore_slot = None):
             encoded_int = disasm.encode(split_text[i], navi)
             if encoded_int >= 0:
                 disasm.split_and_store_bytes(encoded_int, navi)
-                if string_key in user_errors.keys():
-                    del user_errors[string_key]
+                clear_error(string_key)
             else:
                 user_errors[string_key] = (encoded_int, split_text[i])
 
@@ -209,14 +234,16 @@ def apply_comment_changes():
     split_text = current_text.split('\n')
     for i in range(len(split_text)):
         navi = navigation + i
-        if not split_text[i]:
-            continue
         string_key = '{}'.format(navi)
+        if not split_text[i]:
+            if string_key in disasm.comments.keys():
+                del disasm.comments[string_key]
+            continue
         disasm.comments[string_key] = split_text[i]
 
 
 def buffer_append(buffer, tuple):
-    # buffer[0] is the current buffer frame
+    # buffer[0] is the current buffer frame being displayed
     # buffer[1] is an array containing the buffer frames
     buffer_length = len(buffer[1])
     distance_from_end = (buffer_length - 1) - buffer[0]
@@ -229,7 +256,7 @@ def buffer_append(buffer, tuple):
     buffer[1].append(tuple)
     buffer[0] += 1
 
-    # Start shifting buffer frames down and out of the buffer as the limit as been reached
+    # Start shifting buffer frames down and out of the buffer as the limit has been reached
     # Added diff slice in case buffer ever overflows
     diff = buffer_max - buffer[0]
     if diff < 0:
@@ -252,7 +279,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     global clipboard
     if not disasm:
         return
-    after_delay = 2
     joined_text = handle.get('1.0', tk.END)
     if joined_text.count('\n') == max_lines:
         joined_text = joined_text[:-1]
@@ -260,8 +286,21 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     cursor, line, column = get_cursor(handle)
 
-    ctrl_held = bool(event.state & 4)
+    ctrl_held = bool(event.state & 0x0004)
     ctrl_d = ctrl_held and event.keysym == 'd'
+    bad_bad_hotkey = ctrl_held and event.keysym in ['z', 't']
+    if bad_bad_hotkey:
+        # Messes with custom behaviour, so wait until after changes are made
+        #   by bad hotkey, then restore text box to how it was before the hotkey
+        window.after(0, lambda: (handle.delete('1.0', tk.END),
+                                 handle.insert('1.0', joined_text),
+                                 handle.mark_set(tk.INSERT, cursor),
+                                 highlight_stuff()))
+        return
+
+    shift_held = bool(event.state & 0x0001)
+    alt_held = bool(event.state & 0x0008) or bool(event.state & 0x0080)
+
     has_char = bool(event.char) and event.keysym != 'Escape' and not ctrl_held
 
     is_undoing = buffer and ctrl_held and event.keysym == 'comma'
@@ -281,7 +320,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     apply_function = apply_hack_changes if hack_function else lambda ignore_slot=None: apply_comment_changes()
 
     # Cause each modification of text box to snap-shot data in order to undo/redo
-    if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d):
+    if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d or is_pasting or is_cutting):
         buffer_frame = (navigation, cursor, joined_text,
                         app_config['immediate_identifier'],
                         app_config['game_address_mode'])\
@@ -362,7 +401,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         if is_copying or is_cutting:
             clipboard = selection_text
             # So that when user pastes, window clipboard won't override clipboard
-            window.after(after_delay - 1, window.clipboard_clear)
+            window.after(0, window.clipboard_clear)
 
         if selection_removable:
             handle.delete(selection_start, selection_end)
@@ -407,10 +446,10 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             move_amount = 1 if is_pasting else 0
             handle.mark_set(tk.INSERT, modify_cursor(handle.index(tk.INSERT), move_amount, 'max', handle.get('1.0', tk.END)[:-1]))
         handle.insert(insertion_place, paste_text)
-        window.after(after_delay - 1, lambda: (apply_hack_changes(),
-                                               apply_comment_changes(),
-                                               move_next(handle),
-                                               navigate_to(navigation)))
+        window.after(0, lambda: (apply_hack_changes(),
+                                 apply_comment_changes(),
+                                 move_next(handle),
+                                 navigate_to(navigation)))
     # Copy/Paste end
 
     # Easier than recalculating for each condition in the copy/paste section
@@ -429,12 +468,12 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     # Make delete do nothing if cursor precedes a new line
     # Make backspace act as left arrow if cursor at column 0 then validate code (ignoring the line if cursor not at column 0)
-    elif (is_backspacing and (column == 0 and line > 1)) or (is_deleting and nl_at_cursor):
+    elif (is_backspacing and (column == 0 and line > 1) and not has_selection) or (is_deleting and nl_at_cursor and not shift_held):
         if is_deleting or sel_start_line:
             apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
-        if not selection_lines:
-            handle.insert(cursor,'\n')
-            handle.mark_set(tk.INSERT, cursor)
+        # if not selection_lines: # was needed to stop something but now is not?
+        handle.insert(cursor,'\n')
+        handle.mark_set(tk.INSERT, cursor)
         if is_backspacing:
             apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
 
@@ -445,25 +484,32 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         handle.mark_set(tk.INSERT, cursor)
         handle.delete(cursor)
         new_cursor = modify_cursor(cursor, 1, 'max', split_text)
-        window.after(after_delay - 1, lambda: (apply_function(), handle.mark_set(tk.INSERT, new_cursor)))
+        window.after(0, lambda: (apply_function(), handle.mark_set(tk.INSERT, new_cursor)))
+
+    cursor, line, column = get_cursor(handle)
+    split_text = handle.get('1.0', tk.END)[:-1].split('\n')
 
     # Prevent delete or backspace from modifying textbox any further than the bounds of the selected text (if selected text is only on one line)
-    if has_selection and not selection_lines and (is_deleting or is_backspacing):
-        replace_char = lower_outer_bound_selection_char if is_backspacing else upper_outer_bound_selection_char
+    if has_selection and not selection_lines:
+        if ((is_deleting and column != len(split_text[line - 1])) or (is_backspacing and column != 0)):
+            replace_char = lower_outer_bound_selection_char if is_backspacing else upper_outer_bound_selection_char
+        else:
+            replace_char = '\n'
         handle.insert(selection_start, replace_char)
+        window.after(0, lambda: apply_function())
         if is_deleting:
-            window.after(after_delay - 1, lambda: handle.mark_set(tk.INSERT, selection_start))
+            window.after(0, lambda: handle.mark_set(tk.INSERT, selection_start))
 
     # So the P on the cursor's NOP doesn't get removed when backspace happens
     elif has_selection and selection_lines and is_backspacing:
-        cursor, line, column = get_cursor(handle)
         handle.insert(cursor, 'P')
 
     if vert_arrows:
         apply_function()
 
-    # Adding the delay fixes a problem where Enter would cause the syntax highlighting to drag along onto the new line created when Enter fires after this function
-    window.after(after_delay, highlight_stuff)
+    # The delays are necessary to solve complications for text modified by the key after this function fires
+    window.after(0, highlight_stuff)
+
 
 
 base_file_text_box.bind('<Key>', lambda event:
@@ -503,6 +549,8 @@ def navigate_to(index):
         change_rom_name_button.destroy()
         change_rom_name_button = None
 
+    shift_amount = navigation
+
     # Correct the navigation if traveling out of bounds, also calculate limits for file samples to display
     amount_words = disasm.file_length // 4
     navigation = index if index + max_lines < amount_words else amount_words - max_lines
@@ -510,6 +558,8 @@ def navigate_to(index):
         navigation = 0
     limit = navigation + max_lines if navigation + max_lines < amount_words else amount_words
     lines = limit - navigation
+
+    shift_amount -= navigation
 
     # Sample bytes out of files
     file_nav = navigation * 4
@@ -552,10 +602,18 @@ def navigate_to(index):
 
     # Update all 4 text boxes
     def update_text_box(handle, text):
+        # global max_lines
         cursor, line, column = get_cursor(handle)
         handle.delete('1.0', tk.END)
         handle.insert('1.0', text)
-        handle.mark_set(tk.INSERT, modify_cursor(cursor, 0, 'max', text))
+
+        new_line = line + shift_amount
+        if new_line < 1 or new_line > max_lines:
+            new_cursor_loc = cursor_value(keep_within(new_line, 1, max_lines), 0)
+        else:
+            new_cursor_loc = modify_cursor(cursor, shift_amount, 0, text)
+
+        handle.mark_set(tk.INSERT, new_cursor_loc)
 
     update_text_box(address_text_box, '\n'.join(address_range))
     update_text_box(base_file_text_box, '\n'.join(base_disassembled))
@@ -591,7 +649,7 @@ def scroll_callback(event):
 def save_changes_to_file(save_as=False):
     global max_lines, disasm
     if not disasm:
-        return
+        return False
 
     apply_hack_changes()
     apply_comment_changes()
@@ -601,14 +659,17 @@ def save_changes_to_file(save_as=False):
         i = int(key)
         navigate_to(i - (max_lines // 2))
         highlight_stuff()
-        return
+        return False
 
     if save_as:
         new_file_name = filedialog.asksaveasfilename(initialdir = app_config['previous_hack_location'],
                                                      title = 'Save as...')
         if not new_file_name:
-            return
+            return False
         new_file_path = os.path.realpath(new_file_name)
+        if new_file_path == disasm.base_folder + disasm.base_file_name:
+            simpledialog.messagebox._show('Wait a sec', 'You shouldn\'t select the base file')
+            return False
         new_dir = new_file_path[:new_file_path.rfind('\\') + 1]
         app_config['previous_hack_location'] = new_dir
         pickle_data(app_config, CONFIG_FILE)
@@ -620,6 +681,8 @@ def save_changes_to_file(save_as=False):
 
     with open(disasm.hack_folder + disasm.hack_file_name, 'wb') as file:
         file.write(disasm.hack_file)
+
+    return True
 
 
 def close_window(side = 'right'):
@@ -667,9 +730,8 @@ def open_files(mode = ''):
     global disasm
 
     if disasm:
-        # todo: handle if disasm already exists
-        print('todo: handle if disasm already exists')
-        return
+        if not save_changes_to_file():
+            return
 
     # Set data for rest of this function
     if mode == 'new':
@@ -697,7 +759,7 @@ def open_files(mode = ''):
 
     if mode == 'new':
         if os.path.exists(hack_file_path):
-            # todo: error file already exists
+            simpledialog.messagebox._show('Sorry', 'That file already exists')
             return
         else:
             with open(base_file_path, 'rb') as base_file:
@@ -710,12 +772,17 @@ def open_files(mode = ''):
     pickle_data(app_config, CONFIG_FILE)
 
     # Initialise disassembler with paths to the 2 files, apply saved settings from app_config
-    disasm = Disassembler(base_file_path,
-                          hack_file_path,
-                          app_config['game_address_mode'],
-                          app_config['immediate_identifier'])
+    try:
+        disasm = Disassembler(base_file_path,
+                              hack_file_path,
+                              app_config['game_address_mode'],
+                              app_config['immediate_identifier'])
+    except Exception as e:
+        simpledialog.messagebox._show('Error', e)
+        disasm = None
+        return
 
-    # Navigate user to first line of code, start the undo buffer frame with the current data on screen
+    # Navigate user to first line of code, start the undo buffer with the current data on screen
     navigate_to(0)
     buffer_append(hack_buffer, (navigation,
                                 cursor_value(1, 0),
@@ -725,6 +792,7 @@ def open_files(mode = ''):
     buffer_append(comments_buffer, (navigation,
                                     cursor_value(1, 0),
                                     comments_text_box.get('1.0', tk.END)[:-1]))
+
 
 # (navigation, cursor_location, text_box_content, immediate_id, game_address_mode)
 def toggle_address_mode():
@@ -775,15 +843,10 @@ def set_scroll_amount():
 
 
 def help_box():
-    message = [
+    message = '\n'.join([
         '----General Info----',
-        'In order to save ANY changes you have made, all errors must be resolved before the save feature will allow it.',
+        'In order to save any changes you have made, all errors must be resolved before the save feature will allow it.',
         'Trying to save while an error exists will result in your navigation shifting to the next error instead.',
-        '',
-        'In the event of an emergency, press the undo keys to access up to 20,000 buffer frames.',
-        'The buffer itself should only be able to reach 80mb before capping out.',
-        'The buffer is volatile. If you undo and then cause more buffer frames to be caught via keyboard input, '+
-        'then the buffer frames you have "undone past" will be lost.',
         '',
         'The header part displays and edits as hex values.',
         '',
@@ -796,7 +859,7 @@ def help_box():
         '',
         '----Errors----',
         'Red highlighted text: Invalid syntax',
-        'Orange highlighted text: Immediate value used above it\'s limit',
+        'Orange highlighted text: Immediate value used beyond it\'s limit',
         '',
         '',
         '----Keyboard----',
@@ -805,8 +868,8 @@ def help_box():
         'Ctrl+S: Quick save',
         'F4: Navigate to address',
         'F5: Toggle mode which displays and handles input addresses using the game\'s entry point'
-    ]
-    simpledialog.messagebox._show('Help','\n'.join(message))
+    ])
+    simpledialog.messagebox._show('Help', message)
 
 
 def about_box():
