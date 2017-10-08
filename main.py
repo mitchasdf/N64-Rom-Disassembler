@@ -33,7 +33,9 @@ if os.path.exists(CONFIG_FILE):
         app_config = config_in_file.copy()
     except:
         app_config = FRESH_APP_CONFIG.copy()
-        simpledialog.messagebox._show('Error','There was a problem loading the config file. It is corrupt. Starting with default configuration.')
+        simpledialog.messagebox._show('Error',
+                                      'There was a problem loading the config file. '
+                                      'Starting with default configuration.')
 else:
     app_config = FRESH_APP_CONFIG.copy()
 
@@ -63,15 +65,19 @@ window = tk.Tk()
 window.title('ROM Disassembler')
 window.geometry('1337x810+550+50')
 
-address_text_box = tk.Text(window, font = 'Courier')
-base_file_text_box = tk.Text(window, font = 'Courier')
-hack_file_text_box = tk.Text(window, font = 'Courier')
-comments_text_box = tk.Text(window, font = 'Courier')
+address_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED)
+base_file_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED)
+hack_file_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED)
+comments_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED)
+
+ALL_TEXT_BOXES = [address_text_box,
+                  base_file_text_box,
+                  hack_file_text_box,
+                  comments_text_box]
 
 hack_file_text_box.tag_config('bad', background = '#f62010')
 hack_file_text_box.tag_config('out_of_range', background = '#e68010')
 hack_file_text_box.tag_config('liken', background = 'SeaGreen2')
-
 
 # [current_buffer_position, [(navigation, cursor_location, text_box_content, immediate_id, game_address_mode), ...]]
 #                                                                          |------for hack_buffer only-----|
@@ -266,10 +272,14 @@ def buffer_append(buffer, tuple):
 
 # Puts the windows clipboard back when the user leaves focus
 def replace_clipboard():
+    global clipboard
     try:
         window.clipboard_get()
-    except:
+        clipboard = ''
+    except Exception as e:
+        print(e)
         if clipboard:
+            # print(clipboard)
             window.clipboard_append(clipboard)
 
 
@@ -490,12 +500,13 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     split_text = handle.get('1.0', tk.END)[:-1].split('\n')
 
     # Prevent delete or backspace from modifying textbox any further than the bounds of the selected text (if selected text is only on one line)
-    if has_selection and not selection_lines:
+    if has_selection and not selection_lines and selection_removable:
         if ((is_deleting and column != len(split_text[line - 1])) or (is_backspacing and column != 0)):
             replace_char = lower_outer_bound_selection_char if is_backspacing else upper_outer_bound_selection_char
         else:
             replace_char = '\n'
-        handle.insert(selection_start, replace_char)
+        if not (is_pasting or is_returning):
+            handle.insert(selection_start, replace_char)
         window.after(0, lambda: apply_function())
         if is_deleting:
             window.after(0, lambda: handle.mark_set(tk.INSERT, selection_start))
@@ -509,7 +520,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     # The delays are necessary to solve complications for text modified by the key after this function fires
     window.after(0, highlight_stuff)
-
 
 
 base_file_text_box.bind('<Key>', lambda event:
@@ -589,7 +599,6 @@ def navigate_to(index):
 
     # Replace disassembled data in the hack file with any errors the user has made
     for i in range(len(hack_disassembled)):
-        navi = navigation + i
         string_key = '{}'.format(navigation + i)
         if string_key in user_errors.keys():
             hack_disassembled[i] = user_errors[string_key][1]
@@ -602,7 +611,7 @@ def navigate_to(index):
 
     # Update all 4 text boxes
     def update_text_box(handle, text):
-        # global max_lines
+        text = '\n'.join(text)
         cursor, line, column = get_cursor(handle)
         handle.delete('1.0', tk.END)
         handle.insert('1.0', text)
@@ -615,10 +624,11 @@ def navigate_to(index):
 
         handle.mark_set(tk.INSERT, new_cursor_loc)
 
-    update_text_box(address_text_box, '\n'.join(address_range))
-    update_text_box(base_file_text_box, '\n'.join(base_disassembled))
-    update_text_box(hack_file_text_box, '\n'.join(hack_disassembled))
-    update_text_box(comments_text_box, '\n'.join(sample_comments))
+    params = [[address_text_box, address_range],
+              [base_file_text_box, base_disassembled],
+              [hack_file_text_box, hack_disassembled],
+              [comments_text_box, sample_comments]]
+    [update_text_box(param[0], param[1]) for param in params]
 
 
 def navigation_prompt():
@@ -627,6 +637,8 @@ def navigation_prompt():
     address = simpledialog.askstring('Navigate to address', '')
     try:
         address = deci(address) // 4
+        if app_config['game_address_mode']:
+            address -= disasm.game_offset
     except:
         return
     apply_hack_changes()
@@ -685,7 +697,7 @@ def save_changes_to_file(save_as=False):
     return True
 
 
-def close_window(side = 'right'):
+def close_window(side = 'right'): # todo: fix this thing wow
     global disasm
     if not disasm:
         window.destroy()
@@ -732,6 +744,10 @@ def open_files(mode = ''):
     if disasm:
         if not save_changes_to_file():
             return
+        disasm = None
+        [text_box.delete('1.0', tk.END) for text_box in ALL_TEXT_BOXES]
+    else:
+        [text_box.configure(state=tk.NORMAL) for text_box in ALL_TEXT_BOXES]
 
     # Set data for rest of this function
     if mode == 'new':
@@ -811,10 +827,12 @@ def toggle_address_mode():
 
 
 def change_immediate_id():
-    symbol = simpledialog.askstring('Set immediate identifier symbol', 'Must be one of < > : ; \' " | { } = + - _ * & ^ % $ # . @ ! ` ~ / ? \\')
-    if symbol and symbol[:1] in ['<', '>', ':', ';', '\'', '"', '|', '{', '}', '[', ']',
-                                 '=', '+', '-', '_', '*', '&', '^', '%', '$', '#', '.',
-                                 '@', '!', '`', '~', '/', '?', '\\']:
+    accepted_symbols = ['<', '>', ':', ';', '\'', '"', '|', '{', '}', '[', ']',
+                        '=', '+', '-', '_', '*', '&', '^', '%', '$', '#', '.',
+                        '@', '!', '`', '~', '/', '?', '\\']
+    symbol = simpledialog.askstring('Set immediate identifier symbol',
+                                    'Must be one of {}'.format(' '.join(accepted_symbols)))
+    if symbol and symbol[:1] in accepted_symbols:
         hack_text = hack_file_text_box.get('1.0', tk.END)[:-1]
         buffer_append(hack_buffer, (navigation,
                                     hack_file_text_box.index(tk.INSERT),
@@ -845,6 +863,9 @@ def set_scroll_amount():
 def help_box():
     message = '\n'.join([
         '----General Info----',
+        'The base rom file is never modified, even if you try to make modifications to the textbox.',
+        'It is simply there to reflect on if you need to see the original code at any point.',
+        '',
         'In order to save any changes you have made, all errors must be resolved before the save feature will allow it.',
         'Trying to save while an error exists will result in your navigation shifting to the next error instead.',
         '',
@@ -863,21 +884,27 @@ def help_box():
         '',
         '',
         '----Keyboard----',
-        'Ctrl+{Comma} ("<" key): Undo',
-        'Ctrl+{Fullstop} (">" key): Redo',
+        'Ctrl+N: Open base rom and select location and file name of hacked rom to be created',
+        'Ctrl+O: Open existing hacked rom',
         'Ctrl+S: Quick save',
         'F4: Navigate to address',
-        'F5: Toggle mode which displays and handles input addresses using the game\'s entry point'
+        'F5: Toggle mode which displays and handles addresses using the game\'s entry point'
+        'Ctrl+{Comma} ("<" key): Undo',
+        'Ctrl+{Fullstop} (">" key): Redo',
     ])
     simpledialog.messagebox._show('Help', message)
 
 
 def about_box():
-    message = [
+    message = '\n'.join([
         'Created by Mitchell Parry-Shaw with Python 3.5 during 2017 sometime.',
         'There really isn\'t much else to tell you. Sorry.'
-    ]
-    simpledialog.messagebox._show('Shoutouts to simpleflips', '\n'.join(message))
+    ])
+    simpledialog.messagebox._show('Shoutouts to simpleflips', message)
+
+
+def context_menu(event):
+    pass # todo
 
 
 # def test_function():
@@ -899,8 +926,8 @@ def about_box():
 menu_bar = tk.Menu(window)
 
 file_menu = tk.Menu(menu_bar, tearoff=0)
-file_menu.add_command(label='Start new hacked rom', command=lambda: open_files('new'))
-file_menu.add_command(label='Open existing hacked rom', command=lambda: open_files('existing'))
+file_menu.add_command(label='Start new (Ctrl+N)', command=lambda: open_files('new'))
+file_menu.add_command(label='Open existing (Ctrl+O)', command=lambda: open_files('existing'))
 file_menu.add_separator()
 file_menu.add_command(label='Save (Ctrl+S)', command=save_changes_to_file)
 file_menu.add_command(label='Save as...', command=lambda: save_changes_to_file(True))
@@ -930,18 +957,20 @@ window.config(menu=menu_bar)
 window.bind('<F4>', lambda e: navigation_prompt())
 window.bind('<F5>', lambda e: toggle_address_mode())
 window.bind('<Control-s>', lambda e: save_changes_to_file())
+window.bind('<Control-n>', lambda e: open_files(mode='new'))
+window.bind('<Control-o>', lambda e: open_files())
 window.bind('<MouseWheel>', scroll_callback)
 window.bind('<FocusOut>', lambda e: replace_clipboard())
 window.bind('<Button-1>', lambda e: (apply_hack_changes(),
                                      apply_comment_changes(),
                                      highlight_stuff()) \
                                      if disasm else None)
+window.bind('<Button-3>', context_menu)
 
 address_text_box.place(x=6, y=45, width=85, height=760)
 base_file_text_box.place(x=95, y=45, width=315, height=760)
 hack_file_text_box.place(x=414, y=45, width=315, height=760)
 comments_text_box.place(x=733, y=45, width=597, height=760)
-
 
 window.protocol('WM_DELETE_WINDOW', close_window)
 window.mainloop()

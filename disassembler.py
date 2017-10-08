@@ -308,27 +308,21 @@ REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of registe
 
 
 class Disassembler:
-    def __init__(self, base_file_name='', hacked_file_name='', game_address_mode=False, immediate_identifier='$'):
-        base_part = base_file_name.rfind('\\') + 1
-        self.base_folder = base_file_name[:base_part]
-        self.base_file_name = base_file_name[base_part:]
-        with open(base_file_name, 'rb') as file:
-            self.base_file = bytearray(file.read())
-        if self.base_file[2:4].hex() == '3780':
-            self.base_file = bytearray(ints_of_4_byte_aligned_region(self.base_file, byteorder='little'))
-        elif self.base_file[0:2].hex() != '8037':
-            raise Exception('"{}" Not a rom file'.format(base_file_name))
+    def __init__(self, base_file_path='', hacked_file_path='', game_address_mode=False, immediate_identifier='$'):
+        def open_rom(file_path):
+            with open(file_path, 'rb') as file:
+                file_data = bytearray(file.read())
+            if file_data[2:4].hex() == '3780':
+                file_data = bytearray(ints_of_4_byte_aligned_region(file_data, byteorder='little'))
+            elif file_data[0:2].hex() != '8037':
+                raise Exception('"{}" Not a rom file'.format(file_path))
+            part_at = file_path.rfind('\\') + 1
+            folder = file_path[:part_at]
+            file_name = file_path[part_at:]
+            return folder, file_name, file_data
 
-        hack_part = hacked_file_name.rfind('\\') + 1
-        self.hack_folder = hacked_file_name[:hack_part]
-        self.hack_file_name = hacked_file_name[hack_part:]
-        with open(hacked_file_name, 'rb') as file:
-            self.hack_file = bytearray(file.read())
-        if self.hack_file[2:4].hex() == '3780':
-            self.hack_file = bytearray(ints_of_4_byte_aligned_region(self.hack_file, byteorder='little'))
-        elif self.hack_file[0:2].hex() != '8037':
-            self.nothing = None
-            raise Exception('"{}" Not a rom file'.format(hacked_file_name))
+        self.base_folder, self.base_file_name, self.base_file = open_rom(base_file_path)
+        self.hack_folder, self.hack_file_name, self.hack_file = open_rom(hacked_file_path)
 
         self.header_items = {
             # Section labeled    data_start    data_end (not inclusive)
@@ -516,7 +510,7 @@ class Disassembler:
         self.fit('XOR',     [6, RS, RT, RD, 5, [OPCODE, 38]],   [RD, RS, RT])
         self.fit('XORI',    [[OPCODE, 14], RS, RT, IMMEDIATE],  [RT, RS, IMMEDIATE])
 
-        #  Jump and Branch Instructions
+        # Jump and Branch Instructions
         self.fit('BEQ',      [[OPCODE, 4], RS, RT, OFFSET],               [RS, RT, OFFSET])
         self.fit('BEQL',     [[OPCODE, 20], RS, RT, OFFSET],              [RS, RT, OFFSET])
         self.fit('BGEZ',     [[OPCODE, 1], RS, [EX_OPCODE, 1], OFFSET],   [RS, OFFSET])
