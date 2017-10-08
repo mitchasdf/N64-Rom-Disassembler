@@ -315,9 +315,9 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     is_undoing = buffer and ctrl_held and event.keysym == 'comma'
     is_redoing = buffer and ctrl_held and event.keysym == 'period'
-    is_cutting = buffer and ctrl_held and event.keysym == 'x'
-    is_pasting = buffer and ctrl_held and event.keysym == 'v'
-    is_copying = buffer and ctrl_held and event.keysym == 'c'
+    is_cutting = ctrl_held and event.keysym == 'x'
+    is_pasting = ctrl_held and event.keysym == 'v'
+    is_copying = ctrl_held and event.keysym == 'c'
     is_deleting = ctrl_d or event.keysym == 'Delete'
     is_backspacing = event.keysym == 'BackSpace'
     is_returning = event.keysym == 'Return'
@@ -478,12 +478,13 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     # Make delete do nothing if cursor precedes a new line
     # Make backspace act as left arrow if cursor at column 0 then validate code (ignoring the line if cursor not at column 0)
-    elif (is_backspacing and (column == 0 and line > 1) and not has_selection) or (is_deleting and nl_at_cursor and not shift_held):
+    elif (is_backspacing and (column == 0 and line > 1)) or (is_deleting and nl_at_cursor and not shift_held):
         if is_deleting or sel_start_line:
             apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
         # if not selection_lines: # was needed to stop something but now is not?
-        handle.insert(cursor,'\n')
-        handle.mark_set(tk.INSERT, cursor)
+        if not has_selection:
+            handle.insert(cursor,'\n')
+            handle.mark_set(tk.INSERT, cursor)
         if is_backspacing:
             apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
 
@@ -500,14 +501,16 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     split_text = handle.get('1.0', tk.END)[:-1].split('\n')
 
     # Prevent delete or backspace from modifying textbox any further than the bounds of the selected text (if selected text is only on one line)
-    if has_selection and not selection_lines and selection_removable:
+    if has_selection and not selection_lines:
         if ((is_deleting and column != len(split_text[line - 1])) or (is_backspacing and column != 0)):
             replace_char = lower_outer_bound_selection_char if is_backspacing else upper_outer_bound_selection_char
-        else:
+        elif is_backspacing and column == 0:
             replace_char = '\n'
+        else:
+            replace_char = ''
         if not (is_pasting or is_returning):
             handle.insert(selection_start, replace_char)
-        window.after(0, lambda: apply_function())
+            window.after(0, lambda: apply_function())
         if is_deleting:
             window.after(0, lambda: handle.mark_set(tk.INSERT, selection_start))
 
@@ -636,9 +639,11 @@ def navigation_prompt():
         return
     address = simpledialog.askstring('Navigate to address', '')
     try:
-        address = deci(address) // 4
+        address = deci(address)
         if app_config['game_address_mode']:
             address -= disasm.game_offset
+        address //= 4
+        print(address)
     except:
         return
     apply_hack_changes()
@@ -960,12 +965,12 @@ window.bind('<Control-s>', lambda e: save_changes_to_file())
 window.bind('<Control-n>', lambda e: open_files(mode='new'))
 window.bind('<Control-o>', lambda e: open_files())
 window.bind('<MouseWheel>', scroll_callback)
-window.bind('<FocusOut>', lambda e: replace_clipboard())
+# window.bind('<FocusOut>', lambda e: replace_clipboard())
 window.bind('<Button-1>', lambda e: (apply_hack_changes(),
                                      apply_comment_changes(),
                                      highlight_stuff()) \
                                      if disasm else None)
-window.bind('<Button-3>', context_menu)
+[handle.bind('<Button-3>', context_menu) for handle in [base_file_text_box, hack_file_text_box]]
 
 address_text_box.place(x=6, y=45, width=85, height=760)
 base_file_text_box.place(x=95, y=45, width=315, height=760)
