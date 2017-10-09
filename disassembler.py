@@ -377,11 +377,13 @@ class Disassembler:
 
         self.mnemonics = []
         self.encodes = []
+        self.opcodes = {}
         self.appearances = []
         self.comparable_bits = []
         self.identifying_bits = []
-        self.amount = 0
         self.file_length = len(self.base_file)
+        self.jumps_to = {}
+        self.amount = 0
 
         ''' Format: fit(mnemonic, encoding, appearance)
             mnemonic: String
@@ -679,9 +681,17 @@ class Disassembler:
             comparable_bits += comparable_to_append
             identifying_bits += identifying_to_append
         appearance = [[i, appearance_bit_correspondence[i]] for i in appearance]
-        self.comparable_bits.append(int('0b' + comparable_bits, 2))
-        self.identifying_bits.append(int('0b' + identifying_bits, 2))
-        # self.appearance_bit_correspondences.append(appearance_bit_correspondence)
+        comparable_bits = int('0b' + comparable_bits, 2)
+        identifying_bits = int('0b' + identifying_bits, 2)
+        opcode = 0
+        if type_of(encoding[0]) == 'list':
+            opcode = encoding[0][1]
+        key = str(opcode)
+        if key not in self.opcodes:
+            self.opcodes[key] = []
+        self.opcodes[key].append([comparable_bits, identifying_bits, self.amount]) # For more optimised decoding process
+        self.comparable_bits.append(comparable_bits)
+        self.identifying_bits.append(identifying_bits)
         self.mnemonics.append(mnemonic)
         self.encodes.append(encoding)
         self.appearances.append(appearance)
@@ -690,12 +700,15 @@ class Disassembler:
     def decode(self, int_word, index):
         if int_word == 0:
             return 'NOP'
+        opcode = str((int_word & 0xFC000000) >> 26)
         identity = None
-        for i in range(self.amount):
-            if int_word & self.comparable_bits[i] == self.identifying_bits[i]:
-                identity = i
-                break
+        if opcode in self.opcodes:
+            for i in self.opcodes[opcode]:
+                if int_word & i[0] == i[1]:
+                    identity = i[2]
+                    break
         if identity == None:
+            print(opcode)
             return 'UNKNOWN/NOT AN INSTRUCTION'
         parameters = ''
         mnemonic = self.mnemonics[identity]
@@ -720,6 +733,7 @@ class Disassembler:
                     if inner_value <= 0:
                         # These are instructions where the target address is under 0; definitely some storage bytes that aren't an instruction
                         # It causes a problem when trying to re-encode the instruction as the user scrolls into it's view, so return unknown
+                        print('nope 2')
                         return 'UNKNOWN/NOT AN INSTRUCTION'
                     inner_value <<= 2
                 if is_address:
@@ -821,8 +835,6 @@ class Disassembler:
 
     def find_jumps(self, address):
         results = []
-        # if not self.jumps_decoded:
-        #     self.decode_jumps()
         if type_of(address) == 'str':
             address = deci(address)
         address = align_value(address, 4)
@@ -848,17 +860,21 @@ class Disassembler:
                 break
             i += 4
 
-        # Find jumps
-        while navigation < self.file_length:
-            int_word = ints_of_4_byte_aligned_region(self.hack_file[navigation:navigation + 4])[0]
-            # instruction = self.decode(int_word, navigation >> 2)
-            # if instruction == 'UNKNOWN/NOT AN INSTRUCTION':
-            #     break
-            # punc = instruction.find(' ')
-            # mnemonic = instruction[:punc]
-            if self.is_mnemonic(int_word, 'J') or self.is_mnemonic(int_word, 'JAL'):
-                if ((int_word & 65535) << 2) + ((navigation // ADDRESS_ALIGNMENT_4) * ADDRESS_ALIGNMENT_4) == address:
-                    results.append(navigation)
-            # elif self.is_mnemonic(int_word, 'SYNC')
-            navigation += 4
+        if not self.jumps_to:
+            # Map all jumps
+            while navigation < self.file_length:
+                int_word = ints_of_4_byte_aligned_region(self.hack_file[navigation:navigation + 4])[0]
+                # instruction = self.decode(int_word, navigation >> 2)
+                # if instruction == 'UNKNOWN/NOT AN INSTRUCTION':
+                #     break
+                # punc = instruction.find(' ')
+                # mnemonic = instruction[:punc]
+                if self.is_mnemonic(int_word, 'J') or self.is_mnemonic(int_word, 'JAL'):
+                    if ((int_word & 65535) << 2) + ((navigation // ADDRESS_ALIGNMENT_4) * ADDRESS_ALIGNMENT_4) == address:
+                        results.append(navigation)
+                # elif self.is_mnemonic(int_word, 'SYNC')
+                navigation += 4
+
+
+
         return results
