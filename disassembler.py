@@ -1,7 +1,7 @@
 
 from function_defs import deci, hexi, type_of, ints_of_4_byte_aligned_region, \
     string_to_dict, extend_zeroes, sign_16_bit_value, unsign_16_bit_value, \
-    get_8_bit_ints_from_32_bit_int, align_value
+    get_8_bit_ints_from_32_bit_int
 from os.path import exists
 
 
@@ -201,10 +201,9 @@ REGISTERS = {  # For Disassembler.decode(): To obtain the names of decoded regis
     ]
 }
 
-CODES_USING_ADDRESSES = \
-    ['BC1F', 'BC1FL', 'BC1T', 'BC1TL', 'BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL',
-     'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL', 'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL',
-     'BNEZ', 'BNEL', 'BNE', 'J', 'JAL']
+CODES_USING_ADDRESSES = ['BC1F', 'BC1FL', 'BC1T', 'BC1TL', 'BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL',
+                         'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL', 'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL',
+                         'BNEZ', 'BNEL', 'BNE', 'J', 'JAL']
 
 REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of register names in order to encode
     'R0': 0,
@@ -306,6 +305,10 @@ REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of registe
     # Not sure if RESERVED are actually registers or not.
 }
 
+JUMP_INTS = [2, 3]
+
+BRANCH_INTS = [1, 4, 5, 6, 7, 20, 21, 22, 23]
+
 
 class Disassembler:
     def __init__(self, base_file_path='', hacked_file_path='', game_address_mode=False, immediate_identifier='$'):
@@ -382,6 +385,7 @@ class Disassembler:
         self.comparable_bits = []
         self.identifying_bits = []
         self.file_length = len(self.base_file)
+        self.jumps = {}
         self.jumps_to = {}
         self.amount = 0
 
@@ -826,23 +830,19 @@ class Disassembler:
             self.hack_file[index + i] = ints[i]
 
     def map_jumps(self):
-        # It was a case of speed vs readability
-        # (ints[i] & 0xFC000000) >> 26 in [2, 3]
-        #   means opcode is "J" or "JAL"
-        #
-        # ints[i] & 0x03FFFFFF
-        #   extracts address
-        #
-        # i & 0x3C000000
-        #   gets the current 268mb alignment we are iterating through
-        #
         ints = ints_of_4_byte_aligned_region(self.hack_file)
         for i in range(len(ints)):
-            if (ints[i] & 0xFC000000) >> 26 in [2, 3]:
+            opcode = (ints[i] & 0xFC000000) >> 26
+            if opcode in JUMP_INTS:
                 key = str((ints[i] & 0x03FFFFFF) + ((i + 1) & 0x3C000000))
-                if key not in self.jumps_to:
+                try:
+                    self.jumps_to[key].append(i)
+                except KeyError:
                     self.jumps_to[key] = []
-                self.jumps_to[key].append(i)
+                    self.jumps_to[key].append(i)
+                self.jumps[str(i)] = True
+            elif opcode in BRANCH_INTS:
+                self.jumps[str(sign_16_bit_value(ints[i] & 0xFFFF) + i + 1)] = True
 
     def find_jumps(self, index):
         this_function = []

@@ -3,9 +3,14 @@ import tkinter as tk
 from tkinter import simpledialog, filedialog
 import os
 from function_defs import *
-from disassembler import Disassembler, REGISTERS_ENCODE
+from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS
 
 CONFIG_FILE = 'rom disassembler.config'
+
+BRANCH_FUNCTIONS = ['BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL', 'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL',
+                    'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL', 'BNEZ', 'BNEL', 'BNE']
+
+JUMP_FUNCTIONS = ['J', 'JR', 'JAL', 'JALR']
 
 # Disassembler, created when opening files
 disasm = None
@@ -79,6 +84,7 @@ tag_config = {
               'function_end': 'light slate blue',
               'branch': 'dark salmon',
               'jump': 'salmon',
+              'jump_to': 'LightBlue1',
               'bad': 'orange red',
               'out_of_range': 'DarkOrange',
               'target': 'turquoise',
@@ -176,8 +182,7 @@ prev_targeting = ''
 def highlight_stuff():
     global prev_targeting
 
-    tags = ('bad', 'out_of_range', 'liken', 'function_end', 'branch', 'jump', 'target')
-    [hack_file_text_box.tag_remove(tag, '1.0', tk.END) for tag in tags]
+    [hack_file_text_box.tag_remove(tag, '1.0', tk.END) for tag in tag_config]
 
     cursor, c_line, column = get_cursor(hack_file_text_box)
     text = hack_file_text_box.get('1.0', tk.END)[:-1].split('\n')
@@ -185,9 +190,6 @@ def highlight_stuff():
 
     for i in range(len(text)):
         line = i + 1
-        branch_functions = ['BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL', 'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL',
-                            'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL', 'BNEZ', 'BNEL', 'BNE']
-        jump_functions = ['J', 'JR', 'JAL', 'JALR']
         this_word = text[i][:text[i].find(' ')]
         imm_id = text[i].find(app_config['immediate_identifier'])
         address = None
@@ -199,7 +201,7 @@ def highlight_stuff():
                                        cursor_value(line, 5))
 
         # Highlight branch functions
-        elif this_word in branch_functions:
+        elif this_word in BRANCH_FUNCTIONS:
             hack_file_text_box.tag_add('branch',
                                        cursor_value(line, 0),
                                        cursor_value(line, len(text[i])))
@@ -207,11 +209,11 @@ def highlight_stuff():
                 address = text[i][imm_id + 1:]
 
         # Highlight jump functions
-        elif this_word in jump_functions:
+        elif this_word in JUMP_FUNCTIONS:
             hack_file_text_box.tag_add('jump',
                                        cursor_value(line, 0),
                                        cursor_value(line, len(text[i])))
-            if line == c_line:
+            if line == c_line and this_word in ['J', 'JAL']:
                 address = text[i][imm_id + 1:]
 
         # Highlight the target of jump or branch functions
@@ -225,6 +227,17 @@ def highlight_stuff():
                 hack_file_text_box.tag_add('target',
                                            cursor_value(place + 1, 0),
                                            cursor_value(place + 2, 0))
+
+        # Highlight instructions in which are a target of any jump or branch
+        navi = navigation + i
+        # Because the disasm.jumps dict is so huge, a try/except works "exceptionally" faster than iterative methods
+        try:
+            a = disasm.jumps[str(navi)]
+            hack_file_text_box.tag_add('jump_to',
+                                       cursor_value(line, 0),
+                                       cursor_value(line + 1, 0))
+        except KeyError:
+            a = None
 
         # Highlight errors
         key = str(i + navigation)
@@ -257,8 +270,6 @@ def highlight_stuff():
         highlight_targets(targeting)
     elif prev_targeting:
         highlight_targets(prev_targeting)
-
-
 
 
 def reset_target():
@@ -764,7 +775,7 @@ def save_changes_to_file(save_as=False):
     return True
 
 
-def close_window(side = 'right'): # todo: fix this thing wow
+def close_window(side = 'right'):
     global disasm
     if not disasm:
         window.destroy()
@@ -818,7 +829,7 @@ def open_files(mode = ''):
 
     # Set data for rest of this function
     if mode == 'new':
-        base_title = 'Select the base (original un-edited) rom (do not worry about backups - file is never modified)'
+        base_title = 'Select the base (original un-edited) rom (do not worry about multiple backups - file is never modified)'
         hack_title = 'Choose location and name for the new hacked rom'
         hack_dialog_function = filedialog.asksaveasfilename
     else:
@@ -959,13 +970,14 @@ def help_box():
         '',
         '',
         '----Highlighting----',
-        'Dark orange: Invalid syntax',
+        'Red: Invalid syntax',
         'Orange: Immediate value used beyond it\'s limit',
         'Pink: Jump functions',
         'Light Pink: Branch functions',
         'Light Purple: JR RA',
         'Light Green: Currently targeted register',
-        'Light Blue: Currently targeted branch/jump offset address'
+        'Light Cyan: Currently targeted branch/jump offset address',
+        'Feint Blue (almost white): Means there is a jump or branch somewhere in the assembly which targets this instruction',
         '',
         '',
         '----Keyboard----',
@@ -994,6 +1006,7 @@ def find_jumps():
     cursor, line, column = get_cursor(hack_file_text_box)
     navi = (line - 1) + navigation
     jumps = disasm.find_jumps(navi)
+    # todo: make jump gui
 
 
 def follow_jump():
@@ -1002,11 +1015,12 @@ def follow_jump():
     navi_4 = navi << 2
     int_word = ints_of_4_byte_aligned_region(disasm.hack_file[navi_4: navi_4 + 4])[0]
     opcode = (int_word & 0xFC000000) >> 26
-    if opcode in [2, 3]: # jump instructions
+    navi += 1  # Address calculated based on delay slot
+    if opcode in JUMP_INTS:
         address = (int_word & 0x03FFFFFF) + (navi & 0x3C000000)
         navigate_to(address)
-    elif opcode in [1, 4, 5, 6, 7, 20, 21, 22, 23]: # branch instructions
-        address = sign_16_bit_value(int_word & 0xFFFF) + navi + 1
+    elif opcode in BRANCH_INTS:
+        address = sign_16_bit_value(int_word & 0xFFFF) + navi
         navigate_to(address)
 
 
