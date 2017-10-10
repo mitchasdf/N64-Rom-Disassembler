@@ -708,7 +708,6 @@ class Disassembler:
                     identity = i[2]
                     break
         if identity == None:
-            print(opcode)
             return 'UNKNOWN/NOT AN INSTRUCTION'
         parameters = ''
         mnemonic = self.mnemonics[identity]
@@ -733,12 +732,11 @@ class Disassembler:
                     if inner_value <= 0:
                         # These are instructions where the target address is under 0; definitely some storage bytes that aren't an instruction
                         # It causes a problem when trying to re-encode the instruction as the user scrolls into it's view, so return unknown
-                        print('nope 2')
                         return 'UNKNOWN/NOT AN INSTRUCTION'
                     inner_value <<= 2
                 if is_address:
                     # Add the current 268mb alignment to the value to properly decode
-                    inner_value += (index // ADDRESS_ALIGNMENT) * ADDRESS_ALIGNMENT
+                    inner_value += index & 0x3C000000
                     inner_value <<= 2
                 if self.game_address_mode and (is_address or is_offset):
                     inner_value += self.game_offset
@@ -821,60 +819,61 @@ class Disassembler:
             return -2
         return int_result
 
-    def is_mnemonic(self, int_word, string):
-        id = self.mnemonics.index(string)
-        if int_word & self.comparable_bits[id] == self.identifying_bits[id]:
-            return True
-
     def split_and_store_bytes(self, int_word, index):
         ints = get_8_bit_ints_from_32_bit_int(int_word)
         index <<= 2
         for i in range(4):
             self.hack_file[index + i] = ints[i]
 
+    def map_jumps(self):
+        # It was a case of speed vs readability
+        # (ints[i] & 0xFC000000) >> 26 in [2, 3]
+        #   means opcode is "J" or "JAL"
+        #
+        # ints[i] & 0x03FFFFFF
+        #   extracts address
+        #
+        # i & 0x3C000000
+        #   gets the current 268mb alignment we are iterating through
+        #
+        ints = ints_of_4_byte_aligned_region(self.hack_file)
+        for i in range(len(ints)):
+            if (ints[i] & 0xFC000000) >> 26 in [2, 3]:
+                key = str((ints[i] & 0x03FFFFFF) + ((i + 1) & 0x3C000000))
+                if key not in self.jumps_to:
+                    self.jumps_to[key] = []
+                self.jumps_to[key].append(i)
 
-    def find_jumps(self, address):
-        results = []
-        if type_of(address) == 'str':
-            address = deci(address)
-        address = align_value(address, 4)
-        navigation = self.header_items['Game Code']
-
+    def find_jumps(self, index):
+        this_function = []
         i = 0
-        # Locate bottom of previous function
+        # Locate the top of the function
+        # We can't really start mapping here, because it iterates to the bottom of the next function
         while True:
-            int_word = ints_of_4_byte_aligned_region(self.hack_file[address + i:address + i + 4])[0]
-            instruction = self.decode(int_word, (address + i) >> 2)
+            navi = (index + i) << 2
+            if navi < 0:
+                return []
+            int_word = ints_of_4_byte_aligned_region(self.hack_file[navi:navi + 4])[0]
+            instruction = self.decode(int_word, index + i)
             if instruction[:2] == 'JR':
                 # Skip the delay slot
-                i += 8
+                i += 2
                 break
-            i -= 4
-
-        # Locate top of target function
+            i -= 1
+        # Map to the bottom of the function
         while True:
-            int_word = ints_of_4_byte_aligned_region(self.hack_file[address + i:address + i + 4])[0]
-            instruction = self.decode(int_word, (address + i) >> 2)
-            if instruction != 'NOP':
-                address += i
+            navi = (index + i) << 2
+            int_word = ints_of_4_byte_aligned_region(self.hack_file[navi:navi + 4])[0]
+            instruction = self.decode(int_word, index + i)
+            this_function.append(index + i)
+            if instruction[:2] == 'JR':
                 break
-            i += 4
-
-        if not self.jumps_to:
-            # Map all jumps
-            while navigation < self.file_length:
-                int_word = ints_of_4_byte_aligned_region(self.hack_file[navigation:navigation + 4])[0]
-                # instruction = self.decode(int_word, navigation >> 2)
-                # if instruction == 'UNKNOWN/NOT AN INSTRUCTION':
-                #     break
-                # punc = instruction.find(' ')
-                # mnemonic = instruction[:punc]
-                if self.is_mnemonic(int_word, 'J') or self.is_mnemonic(int_word, 'JAL'):
-                    if ((int_word & 65535) << 2) + ((navigation // ADDRESS_ALIGNMENT_4) * ADDRESS_ALIGNMENT_4) == address:
-                        results.append(navigation)
-                # elif self.is_mnemonic(int_word, 'SYNC')
-                navigation += 4
-
-
-
-        return results
+            i += 1
+        jumps = []
+        for i in this_function:
+            key = str(i)
+            if key in self.jumps_to:
+                offsetting = 0 if not self.game_address_mode else self.game_offset
+                [jumps.append(extend_zeroes(hexi((j << 2) + offsetting), 8))\
+                 for j in self.jumps_to[key]]
+        return jumps
