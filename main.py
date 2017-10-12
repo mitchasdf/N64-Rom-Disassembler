@@ -82,9 +82,10 @@ ALL_TEXT_BOXES = [address_text_box,
 
 tag_config = {
               'function_end': 'light slate blue',
+              'jump_to': 'LightBlue1',
               'branch': 'dark salmon',
               'jump': 'salmon',
-              'jump_to': 'LightBlue1',
+              'jump_from': 'tomato',
               'bad': 'orange red',
               'out_of_range': 'DarkOrange',
               'target': 'turquoise',
@@ -177,10 +178,10 @@ def get_word_at(list, line, column):
     return list[line - 1][lower_bound_punc + 1: upper_bound_punc]
 
 
-# Is called pretty much after every time apply_hack_changes() is called
-prev_targeting = ''
+# Is called pretty much after every time the view is changed
+prev_reg_target, prev_address_target, prev_cursor_location = '', 0, 0
 def highlight_stuff():
-    global prev_targeting
+    global prev_reg_target, prev_address_target, prev_cursor_location
 
     [hack_file_text_box.tag_remove(tag, '1.0', tk.END) for tag in tag_config]
 
@@ -188,11 +189,23 @@ def highlight_stuff():
     text = hack_file_text_box.get('1.0', tk.END)[:-1].split('\n')
     targeting = get_word_at(text, c_line, column)
 
+    if not prev_cursor_location:
+        prev_cursor_location = navigation + c_line - 1
+
+    try:
+        jumps_from = disasm.jumps_to[str(prev_cursor_location)]
+    except KeyError:
+        jumps_from = []
+
+    if prev_address_target and not jumps_from:
+        c_line = 0
+
     for i in range(len(text)):
         line = i + 1
         this_word = text[i][:text[i].find(' ')]
         imm_id = text[i].find(app_config['immediate_identifier'])
         address = None
+        navi = navigation + i
 
         # Highlight the end of each function
         if text[i] == 'JR RA':
@@ -205,7 +218,9 @@ def highlight_stuff():
             hack_file_text_box.tag_add('branch',
                                        cursor_value(line, 0),
                                        cursor_value(line, len(text[i])))
-            if line == c_line:
+            if not c_line:
+                address = prev_address_target
+            elif line == c_line:
                 address = text[i][imm_id + 1:]
 
         # Highlight jump functions
@@ -213,26 +228,35 @@ def highlight_stuff():
             hack_file_text_box.tag_add('jump',
                                        cursor_value(line, 0),
                                        cursor_value(line, len(text[i])))
-            if line == c_line and this_word in ['J', 'JAL']:
+            if not c_line:
+                address = prev_address_target
+            elif line == c_line and this_word in ['J', 'JAL']:
                 address = text[i][imm_id + 1:]
 
         # Highlight the target of jump or branch functions
         if address:
-            address = deci(address)
-            if app_config['game_address_mode']:
-                address -= disasm.game_offset
-            address >>= 2
+            if c_line:
+                address = deci(address)
+                if app_config['game_address_mode']:
+                    address -= disasm.game_offset
+                address >>= 2
+                prev_address_target = address
             if address in range(navigation, navigation + max_lines):
                 place = address - navigation
                 hack_file_text_box.tag_add('target',
                                            cursor_value(place + 1, 0),
                                            cursor_value(place + 2, 0))
 
+        # Highlight instructions in which jump to the cursors location
+        if navi in jumps_from:
+            hack_file_text_box.tag_add('jump_from',
+                                       cursor_value(line, 0),
+                                       cursor_value(line + 1, 0))
+
         # Highlight instructions in which are a target of any jump or branch
-        navi = navigation + i
         # Because the disasm.jumps dict is so huge, a try/except works "exceptionally" faster than iterative methods
         try:
-            a = disasm.jumps[str(navi)]
+            a = disasm.jumps_to[str(navi)]
             hack_file_text_box.tag_add('jump_to',
                                        cursor_value(line, 0),
                                        cursor_value(line + 1, 0))
@@ -240,7 +264,7 @@ def highlight_stuff():
             a = None
 
         # Highlight errors
-        key = str(i + navigation)
+        key = str(navi)
         if key in user_errors.keys():
             line_start = cursor_value(i + 1, 0)
             line_end = cursor_value(i + 2, 0)
@@ -266,15 +290,15 @@ def highlight_stuff():
                 begin = column + 1
     # These conditions allow user to scroll out of view of the target without losing highlighting
     if targeting in REGISTERS_ENCODE:
-        prev_targeting = targeting
+        prev_reg_target = targeting
         highlight_targets(targeting)
-    elif prev_targeting:
-        highlight_targets(prev_targeting)
+    elif prev_reg_target:
+        highlight_targets(prev_reg_target)
 
 
 def reset_target():
-    global prev_targeting
-    prev_targeting = ''
+    global prev_reg_target, prev_address_target, prev_cursor_location
+    prev_reg_target, prev_address_target, prev_cursor_location = '', 0, 0
 
 
 # The hacked text box syntax checker and change applier
@@ -706,6 +730,14 @@ def navigate_to(index):
               [hack_file_text_box, hack_disassembled],
               [comments_text_box, sample_comments]]
     [update_text_box(param[0], param[1]) for param in params]
+
+    if prev_cursor_location in range(navigation, limit):
+        line = prev_cursor_location - navigation
+        hack_file_text_box.mark_set(tk.INSERT, modify_cursor('1.0',
+                                                             line,
+                                                             'max',
+                                                             hack_file_text_box.get('1.0', tk.END)[:-1]))
+
     highlight_stuff()
 
 
@@ -722,6 +754,7 @@ def navigation_prompt():
         return
     apply_hack_changes()
     apply_comment_changes()
+    reset_target()
     navigate_to(address)
 
 
@@ -733,7 +766,6 @@ def scroll_callback(event):
     apply_comment_changes()
     direction = -app_config['scroll_amount'] if event.delta > 0 else app_config['scroll_amount']
     navigate_to(navigation + direction)
-    highlight_stuff()
 
 
 def save_changes_to_file(save_as=False):
@@ -829,7 +861,7 @@ def open_files(mode = ''):
 
     # Set data for rest of this function
     if mode == 'new':
-        base_title = 'Select the base (original un-edited) rom (do not worry about multiple backups - file is never modified)'
+        base_title = 'Select the original base rom'
         hack_title = 'Choose location and name for the new hacked rom'
         hack_dialog_function = filedialog.asksaveasfilename
     else:
@@ -848,6 +880,14 @@ def open_files(mode = ''):
     hack_file_path = hack_dialog_function(initialdir = hack_dir, title = hack_title)
     if not hack_file_path:
         return
+    base_dot = base_file_path.rfind('.')
+    file_extension = base_file_path[base_dot + 1:]
+    if '.' not in hack_file_path:
+        hack_file_path += '.' + file_extension
+    else:
+        hack_dot = hack_file_path.rfind('.')
+        if hack_dot == len(hack_file_path) - 1:
+            hack_file_path += file_extension
     hack_file_path = os.path.realpath(hack_file_path)
     hack_dir = hack_file_path[:hack_file_path.rfind('\\') + 1]
 
@@ -976,8 +1016,9 @@ def help_box():
         'Light Pink: Branch functions',
         'Light Purple: JR RA',
         'Light Green: Currently targeted register',
-        'Light Cyan: Currently targeted branch/jump offset address',
-        'Feint Blue (almost white): Means there is a jump or branch somewhere in the assembly which targets this instruction',
+        'Light Cyan: Instructions which are targeted by selected jump or branch',
+        'Dark Pink: Jumps or branches which target selected instruction',
+        'Blueish White: Means there is a jump or branch somewhere in the assembly which targets the highlighted instruction',
         '',
         '',
         '----Keyboard----',

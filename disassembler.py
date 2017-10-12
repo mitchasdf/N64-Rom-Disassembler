@@ -348,7 +348,7 @@ class Disassembler:
             'Game Code':         deci('1000')
         }
 
-        self.comments_file = '{}.comments'.format(self.hack_folder + self.hack_file_name)
+        self.comments_file = '{} comments.txt'.format(self.hack_folder + self.hack_file_name)
         self.comments = {}
         if not exists(self.comments_file):
             # Start new comments off with some header labels
@@ -833,16 +833,24 @@ class Disassembler:
         ints = ints_of_4_byte_aligned_region(self.hack_file)
         for i in range(len(ints)):
             opcode = (ints[i] & 0xFC000000) >> 26
+            key = ''
             if opcode in JUMP_INTS:
                 key = str((ints[i] & 0x03FFFFFF) + ((i + 1) & 0x3C000000))
+                # try:
+                #     self.jumps_to[key].append(i)
+                # except KeyError:
+                #     self.jumps_to[key] = []
+                #     self.jumps_to[key].append(i)
+                # self.jumps[key] = True
+            elif opcode in BRANCH_INTS:
+                key = str(sign_16_bit_value(ints[i] & 0xFFFF) + i + 1)
+            if key:
                 try:
                     self.jumps_to[key].append(i)
                 except KeyError:
                     self.jumps_to[key] = []
                     self.jumps_to[key].append(i)
-                self.jumps[str(i)] = True
-            elif opcode in BRANCH_INTS:
-                self.jumps[str(sign_16_bit_value(ints[i] & 0xFFFF) + i + 1)] = True
+                # self.jumps[key] = True
 
     def find_jumps(self, index):
         this_function = []
