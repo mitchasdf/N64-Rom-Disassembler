@@ -18,10 +18,6 @@ def unpickle_data(name):
         return load(f)
 
 
-def type_of(var):
-    return type(var).__name__
-
-
 def deci(hex_num):
     return int('0x' + hex_num if '0x' not in hex_num else hex_num,16)
 
@@ -77,8 +73,15 @@ def dict_to_string(dict):
 def string_to_dict(str):
     str_list = str.split('\n')
     result_dict = {}
-    for i in str_list:
-        result_dict['{}'.format(int('0x' + i[:8], 16) >> 2)] = i[10:]
+    for i in range(len(str_list)):
+        try:
+            result_dict['{}'.format(int('0x' + str_list[i][:8], 16) >> 2)] = str_list[i][10:]
+        except:
+            limit = len(str_list) - 1
+            block = [('   >>>>>\t' if j == i else '\t') +
+                     str_list[j] for j in range(keep_within(i - 2, 0, limit),
+                                                keep_within(i + 3, 0, limit))]
+            raise Exception('Error loading at line {}:\n{}'.format(i + 1, '\n'.join(block)))
     return result_dict
 
 
@@ -94,5 +97,38 @@ def timer_tick(string):
     global last_time
     this_time = time.time() - last_time
     last_time = time.time()
-    print('{} took: {} sec'.format(string, this_time))
+    str_time = str(this_time)
+    print('{} took: {} sec'.format(string, str_time[:str_time.find('.') + 4]))
 
+
+'''
+        'ADDRESS': 26,
+        'CODE_20': 20,
+        'OFFSET': 16,
+        'IMMEDIATE': 16,
+        'CODE_10': 10,
+        'OPCODE': 6,
+        'EX_OPCODE': 5,
+        'BASE': 5,
+        'RT': 5,
+        'RD': 5,
+        'RS': 5,
+        'FT': 5,
+        'FD': 5,
+        'FS': 5,
+        'CS': 5,
+        'SA': 5,
+        'STYPE': 5,
+        'FMT': 5,
+        'OP': 5,
+        'COND': 4,
+        'ES': 2,
+        'CO': 1
+        self.fit('ABS.S',       [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 5]],          [FD, FS])
+        
+        self.fit('C.F.S',       [[OPCODE, 17], [FMT, 16], FT, FS, 5, [ES, 3], [COND, 0]],   [FS, FT])
+        
+        self.fit('BGEZ',        [[OPCODE, 1], RS, [EX_OPCODE, 1], OFFSET],                  [RS, OFFSET])
+        
+        self.fit('SWR',         [[OPCODE, 46], BASE, RT, IMMEDIATE],                        [RT, IMMEDIATE, BASE])
+'''

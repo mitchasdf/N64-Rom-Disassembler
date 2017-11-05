@@ -1,12 +1,13 @@
 
-from function_defs import deci, hexi, type_of, ints_of_4_byte_aligned_region, \
+from function_defs import deci, hexi, ints_of_4_byte_aligned_region, \
     string_to_dict, extend_zeroes, sign_16_bit_value, unsign_16_bit_value, \
     get_8_bit_ints_from_32_bit_int
 from os.path import exists
+from tkinter.simpledialog import messagebox
 
 
 OPCODE = 'OPCODE'  # For identifying instruction
-EX_OPCODE = 'EX_OPCODE'  # For identifying instruction
+EX_OPCODE = 'EX_OPCODE'  # For identifying instruction - compared with after all other named bit segments
 OFFSET = 'OFFSET'  # Static values in which are represented as numbers  -- Numerical Parameter
 ADDRESS = 'ADDRESS'  # Static values in which are represented as numbers  -- Numerical Parameter
 IMMEDIATE = 'IMMEDIATE'  # Static values in which are represented as numbers  -- Numerical Parameter
@@ -23,26 +24,25 @@ STYPE = 'STYPE'  # For identifying instruction
 FMT = 'FMT'  # For identifying instruction
 COND = 'COND'  # For identifying instruction
 OP = 'OP'  # For identifying instruction
-CC = 'CC'  # For identifying instruction
-CO = 'CO'  # For identifying instruction
+CO = 'CO'  # For identifying instruction?
 ES = 'ES'  # For identifying instruction
 CODE_10 = 'CODE_10'  # Code (10bit)  -- Numerical Parameter
 CODE_20 = 'CODE_20'  # Code (20bit)  -- Numerical Parameter
 
-ADDRESS_ALIGNMENT = deci('04000000')
-ADDRESS_ALIGNMENT_4 = deci('10000000')
+ADDRESS_ALIGNMENT = 0x04000000
+ADDRESS_ALIGNMENT_4 = 0x10000000
 
 MAXIMUM_VALUES = {  # For Disassembler.encode(): How high the limit will be for immediate types of parameters
-    'ADDRESS': deci('3FFFFFF'),
-    'OFFSET': deci('FFFF'),
-    'IMMEDIATE': deci('FFFF'),
-    'CODE_20': deci('FFFFF'),
-    'CODE_10': deci('3FF'),
-    'OP': deci('1F'),
-    'SA': deci('1F')
+    'ADDRESS': 0x3FFFFFF,
+    'OFFSET': 0xFFFF,
+    'IMMEDIATE': 0xFFFF,
+    'CODE_20': 0xFFFFF,
+    'CODE_10': 0x3FF,
+    'OP': 0x1F,
+    'SA': 0x1F
 }
 
-HEX_EXTEND = {  # For Disassembler.decode(): How many digits are required to represent each numerical value
+HEX_EXTEND = {  # For Disassembler.decode(): How many digits are minimally required to represent each numerical value
     'ADDRESS': 8,
     'OFFSET': 8,
     'IMMEDIATE': 4,
@@ -91,7 +91,6 @@ LENGTHS = {  # For Disassembler.fit(), how long each segment of data will be, in
     'FMT': 5,
     'OP': 5,
     'COND': 4,
-    'CC': 3,
     'ES': 2,
     'CO': 1
 }
@@ -305,9 +304,220 @@ REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of registe
     # Not sure if RESERVED are actually registers or not.
 }
 
-JUMP_INTS = [2, 3]
+JUMP_INTS = [True if i in [2, 3] else False for i in range(64)]
 
-BRANCH_INTS = [1, 4, 5, 6, 7, 20, 21, 22, 23]
+BRANCH_INTS = [True if i in [1, 4, 5, 6, 7, 20, 21, 22, 23] else False for i in range(64)]
+
+# DOCUMENTATION = {
+#     'LB': ['Load Byte',
+#     'LBU': ['Load Byte Unsigned',
+#     'LD': ['Load Double',
+#     'LDL': ['Load Double Left',
+#     'LDR': ['Load Double Right',
+#     'LH': ['Load Half',
+#     'LHU': ['Load Half Unsigned',
+#     'LL': ['Load Linked Word',
+#     'LLD': ['Load Linked Double',
+#     'LW': ['Load Word',
+#     'LWL': ['Load Word Left',
+#     'LWR': ['Load Word Right',
+#     'LWU': ['Load Word Unsigned',
+#     'SB': ['Store Byte',
+#     'SC': ['Store Conditional Word',
+#     'SCD': ['Store Conditional Double',
+#     'SD': ['Store Double',
+#     'SDL': ['Store Double Left',
+#     'SDR': ['Store Double Right',
+#     'SH': ['Store Half',
+#     'SW': ['Store Word',
+#     'SWL': ['Store Word Left',
+#     'SWR': ['Store Word Right',
+#     'SYNC': ['Synchronize Shade Memory',
+#     'ADD': ['Add Word',
+#     'ADDI': ['Add Immediate Word',
+#     'ADDIU': ['Add Immediate Unsigned Word',
+#     'ADDU': ['Add Unsigned Word',
+#     'AND': ['Bitwise AND Word',
+#     'ANDI': ['Bitwise AND Immediate',
+#     'DADD': ['Double Add',
+#     'DADDI': ['Double Add Immediate',
+#     'DADDIU': ['Double Add Immediate Unsigned',
+#     'DADDU': ['Double Add Unsigned',
+#     'DDIV': ['Double Divide',
+#     'DDIVU': ['Double Divide Unsigned',
+#     'DIV': ['Divide Word',
+#     'DIVU': ['Divide Word Unsigned',
+#     'DMULT': ['Multiply Double',
+#     'DMULTU': ['Multiply Double Unsigned',
+#     'DSLL': ['Double Shift Left Logical',
+#     'DSLL32': ['Double Shift Left Logical (+32)',
+#     'DSLLV': ['Double Shift Left Logical Variable',
+#     'DSRA': ['Double Shift Right Arithmetic',
+#     'DSRA32': ['Double Shift right Arithmetic (+32)',
+#     'DSRAV': ['Double Shift Right Arithmetic Variable',
+#     'DSRL': ['Double Shift Right Logical',
+#     'DSRL32': ['Double Shift Right Logical (+32)',
+#     'DSRLV': ['Double Shift Right Logical Variable',
+#     'DSUB': ['Double Subtract',
+#     'DSUBU': ['Double Subtract Unsigned',
+#     'LUI': ['Load Upper Immediate',
+#     'MFHI': ['Move From HI Register',
+#     'MFLO': ['Move From LO Register',
+#     'MTHI': ['Move To HI Register',
+#     'MTLO': ['Move To LO Register',
+#     'MULT': ['Multiply Word',
+#     'MULTU': ['Multiply Word Unsigned',
+#     'NOR': ['Bitwise NOR Word',
+#     'OR': ['Bitwise OR Word',
+#     'ORI': ['Bitwise OR Immediate Word',
+#     'SLL': ['Word Shift Left Logical',
+#     'SLLV': ['Word Shift Left Logical Variable',
+#     'SLT': ['Set On Less Than',
+#     'SLTI': ['Set On Less Than Immediate',
+#     'SLTIU': ['Set On Less Than Immediate Unsigned',
+#     'SLTU': ['Set On Less Than Unsigned',
+#     'SRA': ['Word Shift Right Arithmetic',
+#     'SRAV': ['Word Shift Right Arithmetic Variable',
+#     'SRL': ['Word Shift Right Logical',
+#     'SRLV': ['Word Shift Right Logical Variable',
+#     'SUB': ['Subtract Word',
+#     'SUBU': ['Subtract Word Unsigned',
+#     'XOR': ['Bitwise XOR Word',
+#     'XORI': ['Bitwise XOR Word Immediate',
+#     'BEQ': ['Branch On Equal',
+#     'BEQL': ['Branch On Equal Likely',
+#     'BGEZ': ['Branch On Greater Or Equal To Zero',
+#     'BGEZAL': ['Branch On Greater Or Equal To Zero And Link',
+#     'BGEZALL': ['Branch On Greater Or Equal To Zero And Link Likely',
+#     'BGEZL': ['Branch On Greater Or Equal To Zero Likely',
+#     'BGTZ': ['Branch On Greater Than Zero',
+#     'BGTZL': ['Branch On Greater Than Zero Likely',
+#     'BLEZ': ['Branch On Lesser Or Equal To Zero',
+#     'BLEZL': ['Branch On Lesser Or Equal To Zero Likely',
+#     'BLTZ': ['Branch On Less Than Zero',
+#     'BLTZAL': ['Branch On Less Than Zero And Link',
+#     'BLTZALL': ['Branch On Less Than Zero And Link Likely',
+#     'BLTZL': ['Branch On Less Than Zero Likely',
+#     'BNEZ': ['Branch On Not Equal To Zero',
+#     'BNEL': ['Branch On Not Equal Likely',
+#     'BNE': ['Branch On Not Equal',
+#     'J': ['Jump',
+#     'JAL': ['Jump And Link',
+#     'JALR': ['Jump And Link Register',
+#     'JR': ['Jump Register',
+#     'BREAK': ['Breakpoint',
+#     'SYSCALL': ['System Call',
+#     'TEQ': ['Trap If Equal',
+#     'TEQI': ['Trap If Equal Immediate',
+#     'TGE': ['Trap If Greater Or Equal To',
+#     'TGEI': ['Trap If Greater Or Equal To Immediate',
+#     'TGEIU': ['Trap If Greater Or Equal To Immediate Unsigned',
+#     'TGEU': ['Trap If Greater Or Equal To Unsigned',
+#     'TLT': ['Trap If Less Than',
+#     'TLTI': ['Trap If Less Than Immediate',
+#     'TLTIU': ['Trap If Less Than Immediate Unsigned',
+#     'TLTU': ['Trap If Less Than Unsigned',
+#     'TNE': ['Trap If Not Equal',
+#     'TNEI': ['Trap If Not Equal To Immediate',
+#     'CACHE': ['Cache Operation',
+#     'DMFC0': ['Double Move From COP0 Register',
+#     'DMTC0': ['Double Move To Float COP0 Register',
+#     'ERET': ['Return From Exception',
+#     'MFC0': ['Move Word From COP0 Register',
+#     'MTC0': ['Move Word To COP0 Register',
+#     'TLBP': ['Probe TLB For Matching Entry',
+#     'TLBR': ['Read Indexed TLB Entry',
+#     'TLBWI': ['Write Indexed TLB Entry',
+#     'TLBWR': ['Write Random TLB Entry',
+#     'C.F.S': ['Float Compare ',
+#     'C.UN.S': ['Float Compare ',
+#     'C.EQ.S': ['Float Compare ',
+#     'C.UEQ.S': ['Float Compare ',
+#     'C.OLT.S': ['Float Compare ',
+#     'C.ULT.S': ['Float Compare ',
+#     'C.OLE.S': ['Float Compare ',
+#     'C.ULE.S': ['Float Compare ',
+#     'C.SF.S': ['Float Compare ',
+#     'C.NGLE.S': ['Float Compare ',
+#     'C.SEQ.S': ['Float Compare ',
+#     'C.NGL.S': ['Float Compare ',
+#     'C.LT.S': ['Float Compare ',
+#     'C.NGE.S': ['Float Compare ',
+#     'C.LE.S': ['Float Compare ',
+#     'C.NGT.S': ['Float Compare ',
+#     'C.F.D': ['',
+#     'C.UN.D': ['',
+#     'C.EQ.D': ['',
+#     'C.UEQ.D': ['',
+#     'C.OLT.D': ['',
+#     'C.ULT.D': ['',
+#     'C.OLE.D': ['',
+#     'C.ULE.D': ['',
+#     'C.SF.D': ['',
+#     'C.NGLE.D': ['',
+#     'C.SEQ.D': ['',
+#     'C.NGL.D': ['',
+#     'C.LT.D': ['',
+#     'C.NGE.D': ['',
+#     'C.LE.D': ['',
+#     'C.NGT.D': ['',
+#     'ABS.S': ['Float Absolute Word Value',
+#     'ABS.D': ['Float Absolute Double Value',
+#     'ADD.S': ['Float Add Word',
+#     'ADD.D': ['Float Add Double',
+#     'BC1F': ['Float Branch On False',
+#     'BC1FL': ['Float Branch On False Likely',
+#     'BC1T': ['Float Branch On True',
+#     'BC1TL': ['Float Branch On True Likely',
+#     'CEIL.L.S': ['Float Ceil ',
+#     'CEIL.L.D': ['Float Ceil ',
+#     'CEIL.W.S': ['Float Ceil ',
+#     'CEIL.W.D': ['Float Ceil ',
+#     'CFC1': ['',
+#     'CTC1': ['',
+#     'CVT.D.S': ['',
+#     'CVT.D.W': ['',
+#     'CVT.D.L': ['',
+#     'CVT.L.S': ['',
+#     'CVT.L.D': ['',
+#     'CVT.S.D': ['',
+#     'CVT.S.W': ['',
+#     'CVT.S.L': ['',
+#     'CVT.W.S': ['',
+#     'CVT.W.D': ['',
+#     'DIV.S': ['',
+#     'DIV.D': ['',
+#     'DMFC1': ['',
+#     'DMTC1': ['',
+#     'FLOOR.L.S': ['',
+#     'FLOOR.L.D': ['',
+#     'FLOOR.W.S': ['',
+#     'FLOOR.W.D': ['',
+#     'LDC1': ['',
+#     'LWC1': ['',
+#     'MFC1': ['',
+#     'MOV.S': ['',
+#     'MOV.D': ['',
+#     'MTC1': ['',
+#     'MUL.S': ['',
+#     'MUL.D': ['',
+#     'NEG.S': ['',
+#     'NEG.D': ['',
+#     'ROUND.L.S': ['',
+#     'ROUND.L.D': ['',
+#     'ROUND.W.S': ['',
+#     'ROUND.W.D': ['',
+#     'SDC1': ['',
+#     'SQRT.S': ['',
+#     'SQRT.D': ['',
+#     'SUB.S': ['',
+#     'SUB.D': ['',
+#     'SWC1': ['',
+#     'TRUNC.L.S': ['',
+#     'TRUNC.L.D': ['',
+#     'TRUNC.W.S': ['',
+#     'TRUNC.W.D': ['',
+# }
 
 
 class Disassembler:
@@ -328,32 +538,32 @@ class Disassembler:
         self.hack_folder, self.hack_file_name, self.hack_file = open_rom(hacked_file_path)
 
         self.header_items = {
-            # Section labeled    data_start    data_end (not inclusive)
-            'Rom Validate':     [deci('0000'), deci('0002')],
-            'Rom Compressed':    deci('0002'),
-            '400000000F':       [deci('0003'), deci('0008')],
-            'Game Offset':      [deci('0008'), deci('000C')],
-            '000014':           [deci('000C'), deci('000F')],
-            'Game-Specific?':    deci('000F'),
-            'CRC1':             [deci('0010'), deci('0014')],
-            'CRC2':             [deci('0014'), deci('0018')],
-            '0000000000000000': [deci('0018'), deci('0020')],
-            'Rom Name':         [deci('0020'), deci('0034')],
-            '00000000000000':   [deci('0034'), deci('003B')],
-            'Manufacturer ID':   deci('003B'),
-            'Cartridge ID':     [deci('003C'), deci('003E')],
-            'Country Code':      deci('003E'),
-            '00':                deci('003F'),
-            'Boot Code':        [deci('0040'), deci('1000')],
-            'Game Code':         deci('1000')
+            # Section labeled   [data_start, data_end (not inclusive)]
+            'Rom Validate':     [0x0000, 0x0002],
+            'Rom Compressed':    0x0002,
+            '400000000F':       [0x0003, 0x0008],
+            'Game Offset':      [0x0008, 0x000C],
+            '000014':           [0x000C, 0x000F],
+            'Game-Specific?':    0x000F,
+            'CRC1':             [0x0010, 0x0014],
+            'CRC2':             [0x0014, 0x0018],
+            '0000000000000000': [0x0018, 0x0020],
+            'Rom Name':         [0x0020, 0x0034],
+            '00000000000000':   [0x0034, 0x003B],
+            'Manufacturer ID':   0x003B,
+            'Cartridge ID':     [0x003C, 0x003E],
+            'Country Code':      0x003E,
+            '00':                0x003F,
+            'Boot Code':        [0x0040, 0x1000],
+            'Game Code':         0x1000
         }
 
         self.comments_file = '{} comments.txt'.format(self.hack_folder + self.hack_file_name)
         self.comments = {}
-        if not exists(self.comments_file):
+        def fresh_comments():
             # Start new comments off with some header labels
             for i in self.header_items.keys():
-                if type_of(self.header_items[i]) == 'list':
+                if isinstance(self.header_items[i], list):
                     comments_location = '{}'.format((self.header_items[i][0] >> 2))
                 else:
                     comments_location = '{}'.format((self.header_items[i] >> 2))
@@ -362,10 +572,18 @@ class Disassembler:
                     self.comments[comments_location] = self.comments[comments_location] + ' | ' + i
                 else:
                     self.comments[comments_location] = i
+        if not exists(self.comments_file):
+            fresh_comments()
         else:
             # Load the existing comments
-            with open(self.comments_file, 'r') as file:
-                self.comments = string_to_dict(file.read())
+            try:
+                with open(self.comments_file, 'r') as file:
+                    self.comments = string_to_dict(file.read())
+            except Exception as e:
+                messagebox._show('Error loading comments file', self.comments_file + '\n\n' + str(e))
+                raise Exception('Comments file cannot be loaded - so this rom cannot be loaded until this is fixed.\n'
+                                'This is only necessary because if we went ahead and loaded, your comments file would'
+                                ' be erased and overwritten with fresh data.')
 
         # Display the rom name in a user-readable format
         segment = self.hack_file[self.header_items['Rom Name'][0]: self.header_items['Rom Name'][1]]
@@ -373,20 +591,22 @@ class Disassembler:
 
         # Save the game offset
         segment = self.hack_file[self.header_items['Game Offset'][0]: self.header_items['Game Offset'][1]]
-        self.game_offset = int.from_bytes(segment, byteorder='big', signed=False) - deci('1000')
+        self.game_offset = int.from_bytes(segment, byteorder='big', signed=False) - 0x1000
 
         self.game_address_mode = game_address_mode
         self.immediate_identifier = immediate_identifier
 
         self.mnemonics = []
-        self.encodes = []
+        self.encodes = {}
         self.opcodes = {}
-        self.appearances = []
+        self.appearances = {}
         self.comparable_bits = []
-        self.identifying_bits = []
+        self.identifying_bits = {}
+        self.opcode_matrix = []
         self.file_length = len(self.base_file)
         self.jumps = {}
         self.jumps_to = {}
+        self.documentation = {}
         self.amount = 0
 
         ''' Format: fit(mnemonic, encoding, appearance)
@@ -420,22 +640,13 @@ class Disassembler:
                 Appearance can be an empty list for codes that do not have parameters.
 
 
-            For instructions that are miss-interpreted due to parameters spoofing the values of other opcodes,
-              they are simply placed "before" the instruction in which it was miss-interpreted to in the 'self.fit()'
-              section, so that the decoder checks the miss-interpreted instruction before checking the one that can
-              cause the miss-interpretation.
-
-
-            NOP cannot be fitted, as its value is 0. (this is the case for MIPS I, II and III, at least)
-            The decoder will pick everything up as NOP because it will bitwise & every code with 0 to always equal 0
-
-
-            The fitment parameters only "look" like the MIPS III documentation, but a few things have been changed to 
+            The fitment parameters only "look" like the MIPS documentation, but a few things have been changed to 
               better accommodate the encoding and decoding process.
-              
             
-            This is probably not the authentic way to disassemble (I have no idea - I am still learning), but it works.
+            For performance, all Pseudo Opcodes are omitted.
         '''
+
+        # Missing 0th to 5th bit OPCODES: 18, 19, 28, 29, 30, 31, 50, 51, 54, 58, 59, 62
 
         # Load and Store instructions
         self.fit('LB',    [[OPCODE, 32], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
@@ -461,213 +672,364 @@ class Disassembler:
         self.fit('SW',    [[OPCODE, 43], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
         self.fit('SWL',   [[OPCODE, 42], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
         self.fit('SWR',   [[OPCODE, 46], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SYNC',  [6, 15, STYPE, [OPCODE, 15]],         [])
+        self.fit('SYNC',  [[OPCODE, 0], 20, [OPCODE, 15]],      [])
 
         # Arithmetic Instructions
-        self.fit('ADD',     [6, RS, RT, RD, 5, [OPCODE, 32]],   [RD, RS, RT])
-        self.fit('ADDI',    [[OPCODE, 8], RS, RT, IMMEDIATE],   [RT, RS, IMMEDIATE])
-        self.fit('ADDIU',   [[OPCODE, 9], RS, RT, IMMEDIATE],   [RT, RS, IMMEDIATE])
-        self.fit('ADDU',    [6, RS, RT, RD, 5, [OPCODE, 33]],   [RD, RS, RT])
-        self.fit('AND',     [6, RS, RT, RD, 5, [OPCODE, 36]],   [RD, RS, RT])
-        self.fit('ANDI',    [[OPCODE, 12], RS, RT, IMMEDIATE],  [RT, RS, IMMEDIATE])
-        self.fit('DADD',    [6, RS, RT, RD, 5, [OPCODE, 44]],   [RD, RS, RT])
-        self.fit('DADDI',   [[OPCODE, 24], RS, RT, IMMEDIATE],  [RT, RS, IMMEDIATE])
-        self.fit('DADDIU',  [[OPCODE, 25], RS, RT, IMMEDIATE],  [RT, RS, IMMEDIATE])
-        self.fit('DADDU',   [6, RS, RT, RD, 5, [OPCODE, 45]],   [RD, RS, RT])
-        self.fit('DDIV',    [6, RS, RT, 10, [OPCODE, 30]],      [RS, RT])
-        self.fit('DDIVU',   [6, RS, RT, 10, [OPCODE, 31]],      [RS, RT])
-        self.fit('DIV',     [6, RS, RT, 10, [OPCODE, 26]],      [RS, RT])
-        self.fit('DIVU',    [6, RS, RT, 10, [OPCODE, 27]],      [RS, RT])
-        self.fit('DMULT',   [6, RS, RT, 10, [OPCODE, 28]],      [RS, RT])
-        self.fit('DMULTU',  [6, RS, RT, 10, [OPCODE, 29]],      [RS, RT])
-        self.fit('DSLL',    [6, 5, RT, RD, SA, [OPCODE, 56]],   [RD, RT, SA])
-        self.fit('DSLL32',  [6, 5, RT, RD, SA, [OPCODE, 60]],   [RD, RT, SA])
-        self.fit('DSLLV',   [6, RS, RT, RD, 5, [OPCODE, 20]],   [RD, RT, RS])
-        self.fit('DSRA',    [6, 5, RT, RD, SA, [OPCODE, 59]],   [RD, RT, SA])
-        self.fit('DSRA32',  [6, 5, RT, RD, SA, [OPCODE, 63]],   [RD, RT, SA])
-        self.fit('DSRAV',   [6, RS, RT, RD, 5, [OPCODE, 23]],   [RD, RT, RS])
-        self.fit('DSRL',    [6, 5, RT, RD, SA, [OPCODE, 58]],   [RD, RT, SA])
-        self.fit('DSRL32',  [6, 5, RT, RD, SA, [OPCODE, 62]],   [RD, RT, SA])
-        self.fit('DSRLV',   [6, RS, RT, RD, 5, [OPCODE, 22]],   [RD, RT, RS])
-        self.fit('DSUB',    [6, RS, RT, RD, 5, [OPCODE, 46]],   [RD, RS, RT])
-        self.fit('DSUBU',   [6, RS, RT, RD, 5, [OPCODE, 47]],   [RD, RS, RT])
-        self.fit('LUI',     [[OPCODE, 15], 5, RT, IMMEDIATE],   [RT, IMMEDIATE])
-        self.fit('MFHI',    [6, 10, RD, 5, [OPCODE, 16]],       [RD])
-        self.fit('MFLO',    [6, 10, RD, 5, [OPCODE, 18]],       [RD])
-        self.fit('MTHI',    [6, RS, 15, [OPCODE, 17]],          [RS])
-        self.fit('MTLO',    [6, RS, 15, [OPCODE, 19]],          [RS])
-        self.fit('MULT',    [6, RS, RT, 10, [OPCODE, 24]],      [RS, RT])
-        self.fit('MULTU',   [6, RS, RT, 10, [OPCODE, 25]],      [RS, RT])
-        self.fit('NOR',     [6, RS, RT, RD, 5, [OPCODE, 39]],   [RD, RS, RT])
-        self.fit('OR',      [6, RS, RT, RD, 5, [OPCODE, 37]],   [RD, RS, RT])
-        self.fit('ORI',     [[OPCODE, 13], RS, RT, IMMEDIATE],  [RT, RS, IMMEDIATE])
-        self.fit('SLL',     [6, 5, RT, RD, SA, 6],              [RD, RT, SA])
-        self.fit('SLLV',    [6, RS, RT, RD, 5, [OPCODE, 4]],    [RD, RT, RS])
-        self.fit('SLT',     [6, RS, RT, RD, 5, [OPCODE, 42]],   [RD, RS, RT])
-        self.fit('SLTI',    [[OPCODE, 10], RS, RT, IMMEDIATE],  [RT, RS, IMMEDIATE])
-        self.fit('SLTIU',   [[OPCODE, 11], RS, RT, IMMEDIATE],  [RT, RS, IMMEDIATE])
-        self.fit('SLTU',    [6, RS, RT, RD, 5, [OPCODE, 43]],   [RD, RS, RT])
-        self.fit('SRA',     [6, 5, RT, RD, SA, [OPCODE, 3]],    [RD, RT, SA])
-        self.fit('SRAV',    [6, RS, RT, RD, 5, [OPCODE, 7]],    [RD, RT, RS])
-        self.fit('SRL',     [6, 5, RT, RD, SA, [OPCODE, 2]],    [RD, RT, SA])
-        self.fit('SRLV',    [6, RS, RT, RD, 5, [OPCODE, 6]],    [RD, RT, RS])
-        self.fit('SUB',     [6, RS, RT, RD, 5, [OPCODE, 34]],   [RD, RS, RT])
-        self.fit('SUBU',    [6, RS, RT, RD, 5, [OPCODE, 35]],   [RD, RS, RT])
-        self.fit('XOR',     [6, RS, RT, RD, 5, [OPCODE, 38]],   [RD, RS, RT])
-        self.fit('XORI',    [[OPCODE, 14], RS, RT, IMMEDIATE],  [RT, RS, IMMEDIATE])
+        self.fit('ADD',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 32]],  [RD, RS, RT])
+        self.fit('ADDI',    [[OPCODE, 8], RS, RT, IMMEDIATE],            [RT, RS, IMMEDIATE])
+        self.fit('ADDIU',   [[OPCODE, 9], RS, RT, IMMEDIATE],            [RT, RS, IMMEDIATE])
+        self.fit('ADDU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 33]],  [RD, RS, RT])
+        self.fit('AND',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 36]],  [RD, RS, RT])
+        self.fit('ANDI',    [[OPCODE, 12], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+        self.fit('DADD',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 44]],  [RD, RS, RT])
+        self.fit('DADDI',   [[OPCODE, 24], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+        self.fit('DADDIU',  [[OPCODE, 25], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+        self.fit('DADDU',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 45]],  [RD, RS, RT])
+        self.fit('DDIV',    [[OPCODE, 0], RS, RT, 10, [OPCODE, 30]],     [RS, RT])
+        self.fit('DDIVU',   [[OPCODE, 0], RS, RT, 10, [OPCODE, 31]],     [RS, RT])
+        self.fit('DIV',     [[OPCODE, 0], RS, RT, 10, [OPCODE, 26]],     [RS, RT])
+        self.fit('DIVU',    [[OPCODE, 0], RS, RT, 10, [OPCODE, 27]],     [RS, RT])
+        self.fit('DMULT',   [[OPCODE, 0], RS, RT, 10, [OPCODE, 28]],     [RS, RT])
+        self.fit('DMULTU',  [[OPCODE, 0], RS, RT, 10, [OPCODE, 29]],     [RS, RT])
+        self.fit('DSLL',    [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 56]],  [RD, RT, SA])
+        self.fit('DSLL32',  [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 60]],  [RD, RT, SA])
+        self.fit('DSLLV',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 20]],  [RD, RT, RS])
+        self.fit('DSRA',    [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 59]],  [RD, RT, SA])
+        self.fit('DSRA32',  [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 63]],  [RD, RT, SA])
+        self.fit('DSRAV',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 23]],  [RD, RT, RS])
+        self.fit('DSRL',    [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 58]],  [RD, RT, SA])
+        self.fit('DSRL32',  [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 62]],  [RD, RT, SA])
+        self.fit('DSRLV',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 22]],  [RD, RT, RS])
+        self.fit('DSUB',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 46]],  [RD, RS, RT])
+        self.fit('DSUBU',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 47]],  [RD, RS, RT])
+        self.fit('LUI',     [[OPCODE, 15], 5, RT, IMMEDIATE],            [RT, IMMEDIATE])
+        self.fit('MFHI',    [[OPCODE, 0], 5, 5, RD, 5, [OPCODE, 16]],    [RD])
+        self.fit('MFLO',    [[OPCODE, 0], 5, 5, RD, 5, [OPCODE, 18]],    [RD])
+        self.fit('MTHI',    [[OPCODE, 0], RS, 15, [OPCODE, 17]],         [RS])
+        self.fit('MTLO',    [[OPCODE, 0], RS, 15, [OPCODE, 19]],         [RS])
+        self.fit('MULT',    [[OPCODE, 0], RS, RT, 10, [OPCODE, 24]],     [RS, RT])
+        self.fit('MULTU',   [[OPCODE, 0], RS, RT, 10, [OPCODE, 25]],     [RS, RT])
+        self.fit('NOR',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 39]],  [RD, RS, RT])
+        self.fit('OR',      [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 37]],  [RD, RS, RT])
+        self.fit('ORI',     [[OPCODE, 13], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+        self.fit('SLL',     [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 0]],   [RD, RT, SA])
+        self.fit('SLLV',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 4]],   [RD, RT, RS])
+        self.fit('SLT',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 42]],  [RD, RS, RT])
+        self.fit('SLTI',    [[OPCODE, 10], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+        self.fit('SLTIU',   [[OPCODE, 11], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+        self.fit('SLTU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 43]],  [RD, RS, RT])
+        self.fit('SRA',     [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 3]],   [RD, RT, SA])
+        self.fit('SRAV',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 7]],   [RD, RT, RS])
+        self.fit('SRL',     [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 2]],   [RD, RT, SA])
+        self.fit('SRLV',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 6]],   [RD, RT, RS])
+        self.fit('SUB',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 34]],  [RD, RS, RT])
+        self.fit('SUBU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 35]],  [RD, RS, RT])
+        self.fit('XOR',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 38]],  [RD, RS, RT])
+        self.fit('XORI',    [[OPCODE, 14], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
 
         # Jump and Branch Instructions
-        self.fit('BEQ',      [[OPCODE, 4], RS, RT, OFFSET],               [RS, RT, OFFSET])
-        self.fit('BEQL',     [[OPCODE, 20], RS, RT, OFFSET],              [RS, RT, OFFSET])
-        self.fit('BGEZ',     [[OPCODE, 1], RS, [EX_OPCODE, 1], OFFSET],   [RS, OFFSET])
-        self.fit('BGEZAL',   [[OPCODE, 1], RS, [EX_OPCODE, 17], OFFSET],  [RS, OFFSET])
-        self.fit('BGEZALL',  [[OPCODE, 1], RS, [EX_OPCODE, 19], OFFSET],  [RS, OFFSET])
-        self.fit('BGEZL',    [[OPCODE, 1], RS, [EX_OPCODE, 3], OFFSET],   [RS, OFFSET])
-        self.fit('BGTZ',     [[OPCODE, 7], RS, 5, OFFSET],                [RS, OFFSET])
-        self.fit('BGTZL',    [[OPCODE, 23], RS, 5, OFFSET],               [RS, OFFSET])
-        self.fit('BLEZ',     [[OPCODE, 6], RS, 5, OFFSET],                [RS, OFFSET])
-        self.fit('BLEZL',    [[OPCODE, 22], RS, 5, OFFSET],               [RS, OFFSET])
-        self.fit('BLTZ',     [[OPCODE, 1], RS, 5, OFFSET],                [RS, OFFSET])
-        self.fit('BLTZAL',   [[OPCODE, 1], RS, [EX_OPCODE, 16], OFFSET],  [RS, OFFSET])
-        self.fit('BLTZALL',  [[OPCODE, 1], RS, [EX_OPCODE, 18], OFFSET],  [RS, OFFSET])
-        self.fit('BLTZL',    [[OPCODE, 1], RS, [EX_OPCODE, 2], OFFSET],   [RS, OFFSET])
-        self.fit('BNEZ',     [[OPCODE, 5], RS, 5, OFFSET],                [RS, OFFSET])
-        self.fit('BNEL',     [[OPCODE, 21], RS, RT, OFFSET],              [RS, RT, OFFSET])
-        self.fit('BNE',      [[OPCODE, 5], RS, RT, OFFSET],               [RS, RT, OFFSET])
-        self.fit('J',        [[OPCODE, 2], ADDRESS],                      [ADDRESS])
-        self.fit('JAL',      [[OPCODE, 3], ADDRESS],                      [ADDRESS])
-        self.fit('JALR',     [6, RS, 5, RD, 5, [OPCODE, 9]],              [RD, RS])
-        self.fit('JR',       [6, RS, 15, [OPCODE, 8]],                    [RS])
+        self.fit('BEQ',      [[OPCODE, 4], RS, RT, OFFSET],             [RS, RT, OFFSET])
+        self.fit('BEQL',     [[OPCODE, 20], RS, RT, OFFSET],            [RS, RT, OFFSET])
+        self.fit('BGEZ',     [[OPCODE, 1], RS, [FMT, 1], OFFSET],       [RS, OFFSET])
+        self.fit('BGEZAL',   [[OPCODE, 1], RS, [FMT, 17], OFFSET],      [RS, OFFSET])
+        self.fit('BGEZALL',  [[OPCODE, 1], RS, [FMT, 19], OFFSET],      [RS, OFFSET])
+        self.fit('BGEZL',    [[OPCODE, 1], RS, [FMT, 3], OFFSET],       [RS, OFFSET])
+        self.fit('BGTZ',     [[OPCODE, 7], RS, 5, OFFSET],              [RS, OFFSET])
+        self.fit('BGTZL',    [[OPCODE, 23], RS, 5, OFFSET],             [RS, OFFSET])
+        self.fit('BLEZ',     [[OPCODE, 6], RS, 5, OFFSET],              [RS, OFFSET])
+        self.fit('BLEZL',    [[OPCODE, 22], RS, 5, OFFSET],             [RS, OFFSET])
+        self.fit('BLTZ',     [[OPCODE, 1], RS, 5, OFFSET],              [RS, OFFSET])
+        self.fit('BLTZAL',   [[OPCODE, 1], RS, [FMT, 16], OFFSET],      [RS, OFFSET])
+        self.fit('BLTZALL',  [[OPCODE, 1], RS, [FMT, 18], OFFSET],      [RS, OFFSET])
+        self.fit('BLTZL',    [[OPCODE, 1], RS, [FMT, 2], OFFSET],       [RS, OFFSET])
+        self.fit('BNEL',     [[OPCODE, 21], RS, RT, OFFSET],            [RS, RT, OFFSET])
+        self.fit('BNE',      [[OPCODE, 5], RS, RT, OFFSET],             [RS, RT, OFFSET])
+        self.fit('J',        [[OPCODE, 2], ADDRESS],                    [ADDRESS])
+        self.fit('JAL',      [[OPCODE, 3], ADDRESS],                    [ADDRESS])
+        self.fit('JALR',     [[OPCODE, 0], RS, 5, RD, 5, [OPCODE, 9]],  [RD, RS])
+        self.fit('JR',       [[OPCODE, 0], RS, 15, [OPCODE, 8]],        [RS])
 
         # Special Instructions
-        self.fit('BREAK',    [6, CODE_20, [OPCODE, 13]],  [CODE_20])
-        self.fit('SYSCALL',  [6, CODE_20, [OPCODE, 12]],  [CODE_20])
+        self.fit('BREAK',    [[OPCODE, 0], CODE_20, [OPCODE, 13]],  [CODE_20])
+        self.fit('SYSCALL',  [[OPCODE, 0], CODE_20, [OPCODE, 12]],  [CODE_20])
 
         # Exception Instructions
-        self.fit('TEQ',    [6, RS, RT, CODE_10, [OPCODE, 52]],             [CODE_10, RS, RT])
-        self.fit('TEQI',   [[OPCODE, 1], RS, [EX_OPCODE, 12], IMMEDIATE],  [RS, IMMEDIATE])
-        self.fit('TGE',    [6, RS, RT, CODE_10, [OPCODE, 48]],             [CODE_10, RS, RT])
-        self.fit('TGEI',   [[OPCODE, 1], RS, [EX_OPCODE, 8], IMMEDIATE],   [RS, IMMEDIATE])
-        self.fit('TGEIU',  [[OPCODE, 1], RS, [EX_OPCODE, 9], IMMEDIATE],   [RS, IMMEDIATE])
-        self.fit('TGEU',   [6, RS, RT, CODE_10, [OPCODE, 49]],             [CODE_10, RS, RT])
-        self.fit('TLT',    [6, RS, RT, CODE_10, [OPCODE, 50]],             [CODE_10, RS, RT])
-        self.fit('TLTI',   [[OPCODE, 1], RS, [EX_OPCODE, 10], IMMEDIATE],  [RS, IMMEDIATE])
-        self.fit('TLTIU',  [[OPCODE, 1], RS, [EX_OPCODE, 11], IMMEDIATE],  [RS, IMMEDIATE])
-        self.fit('TLTU',   [6, RS, RT, CODE_10, [OPCODE, 51]],             [CODE_10, RS, RT])
-        self.fit('TNE',    [6, RS, RT, CODE_10, [OPCODE, 54]],             [CODE_10, RS, RT])
-        self.fit('TNEI',   [[OPCODE, 1], RS, [EX_OPCODE, 14], IMMEDIATE],  [RS, IMMEDIATE])
+        self.fit('TEQ',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 52]],  [CODE_10, RS, RT])
+        self.fit('TEQI',   [[OPCODE, 1], RS, [FMT, 12], IMMEDIATE],       [RS, IMMEDIATE])
+        self.fit('TGE',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 48]],  [CODE_10, RS, RT])
+        self.fit('TGEI',   [[OPCODE, 1], RS, [FMT, 8], IMMEDIATE],        [RS, IMMEDIATE])
+        self.fit('TGEIU',  [[OPCODE, 1], RS, [FMT, 9], IMMEDIATE],        [RS, IMMEDIATE])
+        self.fit('TGEU',   [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 49]],  [CODE_10, RS, RT])
+        self.fit('TLT',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 50]],  [CODE_10, RS, RT])
+        self.fit('TLTI',   [[OPCODE, 1], RS, [FMT, 10], IMMEDIATE],       [RS, IMMEDIATE])
+        self.fit('TLTIU',  [[OPCODE, 1], RS, [FMT, 11], IMMEDIATE],       [RS, IMMEDIATE])
+        self.fit('TLTU',   [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 51]],  [CODE_10, RS, RT])
+        self.fit('TNE',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 54]],  [CODE_10, RS, RT])
+        self.fit('TNEI',   [[OPCODE, 1], RS, [FMT, 14], IMMEDIATE],       [RS, IMMEDIATE])
 
         # System Control Processor (COP0) Instructions
-        self.fit('CACHE',  [[OPCODE, 47], BASE, OP, IMMEDIATE],         [OP, IMMEDIATE, BASE])
-        self.fit('DMFC0',  [[OPCODE, 16], [EX_OPCODE, 1], RT, CS, 11],  [RT, CS])
-        self.fit('DMTC0',  [[OPCODE, 16], [EX_OPCODE, 5], RT, CS, 11],  [RT, CS])
-        self.fit('ERET',   [[OPCODE, 16], CO, 19, [OPCODE, 24]],        [])
-        self.fit('MFC0',   [[OPCODE, 16], 5, RT, CS, 11],               [RT, CS])
-        self.fit('MTC0',   [[OPCODE, 16], [EX_OPCODE, 4], RT, CS, 11],  [RT, CS])
-        self.fit('TLBP',   [[OPCODE, 16], CO, 19, [OPCODE, 8]],         [])
-        self.fit('TLBR',   [[OPCODE, 16], CO, 19, [OPCODE, 1]],         [])
-        self.fit('TLBWI',  [[OPCODE, 16], CO, 19, [OPCODE, 2]],         [])
-        self.fit('TLBWR',  [[OPCODE, 16], CO, 19, [OPCODE, 6]],         [])
+        self.fit('CACHE',  [[OPCODE, 47], BASE, OP, IMMEDIATE],                     [OP, IMMEDIATE, BASE])
+        self.fit('DMFC0',  [[OPCODE, 16], [EX_OPCODE, 1], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
+        self.fit('DMTC0',  [[OPCODE, 16], [EX_OPCODE, 5], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
+        self.fit('ERET',   [[OPCODE, 16], CO, 19, [OPCODE, 24]],                    [])
+        self.fit('MFC0',   [[OPCODE, 16], [EX_OPCODE, 0], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
+        self.fit('MTC0',   [[OPCODE, 16], [EX_OPCODE, 4], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
+        self.fit('TLBP',   [[OPCODE, 16], CO, 19, [OPCODE, 8]],                     [])
+        self.fit('TLBR',   [[OPCODE, 16], CO, 19, [OPCODE, 1]],                     [])
+        self.fit('TLBWI',  [[OPCODE, 16], CO, 19, [OPCODE, 2]],                     [])
+        self.fit('TLBWR',  [[OPCODE, 16], CO, 19, [OPCODE, 6]],                     [])
 
         # Floating-point Unit (COP1) Instructions
-        self.fit('C.F.S',     [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 0]],   [FS, FT])
-        self.fit('C.UN.S',    [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 1]],   [FS, FT])
-        self.fit('C.EQ.S',    [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 2]],   [FS, FT])
-        self.fit('C.UEQ.S',   [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 3]],   [FS, FT])
-        self.fit('C.OLT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 4]],   [FS, FT])
-        self.fit('C.ULT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 5]],   [FS, FT])
-        self.fit('C.OLE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 6]],   [FS, FT])
-        self.fit('C.ULE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 7]],   [FS, FT])
-        self.fit('C.SF.S',    [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 8]],   [FS, FT])
-        self.fit('C.NGLE.S',  [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 9]],   [FS, FT])
-        self.fit('C.SEQ.S',   [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 10]],  [FS, FT])
-        self.fit('C.NGL.S',   [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 11]],  [FS, FT])
-        self.fit('C.LT.S',    [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 12]],  [FS, FT])
-        self.fit('C.NGE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 13]],  [FS, FT])
-        self.fit('C.LE.S',    [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 14]],  [FS, FT])
-        self.fit('C.NGT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, [CC, 0], 2, [ES, 3], [COND, 15]],  [FS, FT])
-        self.fit('C.F.D',     [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 0]],   [FS, FT])
-        self.fit('C.UN.D',    [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 1]],   [FS, FT])
-        self.fit('C.EQ.D',    [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 2]],   [FS, FT])
-        self.fit('C.UEQ.D',   [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 3]],   [FS, FT])
-        self.fit('C.OLT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 4]],   [FS, FT])
-        self.fit('C.ULT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 5]],   [FS, FT])
-        self.fit('C.OLE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 6]],   [FS, FT])
-        self.fit('C.ULE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 7]],   [FS, FT])
-        self.fit('C.SF.D',    [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 8]],   [FS, FT])
-        self.fit('C.NGLE.D',  [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 9]],   [FS, FT])
-        self.fit('C.SEQ.D',   [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 10]],  [FS, FT])
-        self.fit('C.NGL.D',   [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 11]],  [FS, FT])
-        self.fit('C.LT.D',    [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 12]],  [FS, FT])
-        self.fit('C.NGE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 13]],  [FS, FT])
-        self.fit('C.LE.D',    [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 14]],  [FS, FT])
-        self.fit('C.NGT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, [CC, 0], 2, [ES, 3], [COND, 15]],  [FS, FT])
+        # These, instead of having OPCODE as the final segment, should be [ES, 3], [COND, (0 to 15 for each code)]
+        # But changing it to what I have optimises it slightly
+        self.fit('C.F.S',     [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 48]],  [FS, FT])
+        self.fit('C.UN.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 49]],  [FS, FT])
+        self.fit('C.EQ.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 50]],  [FS, FT])
+        self.fit('C.UEQ.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 51]],  [FS, FT])
+        self.fit('C.OLT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 52]],  [FS, FT])
+        self.fit('C.ULT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 53]],  [FS, FT])
+        self.fit('C.OLE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 54]],  [FS, FT])
+        self.fit('C.ULE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 55]],  [FS, FT])
+        self.fit('C.SF.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 56]],  [FS, FT])
+        self.fit('C.NGLE.S',  [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 57]],  [FS, FT])
+        self.fit('C.SEQ.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 58]],  [FS, FT])
+        self.fit('C.NGL.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 59]],  [FS, FT])
+        self.fit('C.LT.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 60]],  [FS, FT])
+        self.fit('C.NGE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 61]],  [FS, FT])
+        self.fit('C.LE.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 62]],  [FS, FT])
+        self.fit('C.NGT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 63]],  [FS, FT])
+        self.fit('C.F.D',     [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 48]],  [FS, FT])
+        self.fit('C.UN.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 49]],  [FS, FT])
+        self.fit('C.EQ.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 50]],  [FS, FT])
+        self.fit('C.UEQ.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 51]],  [FS, FT])
+        self.fit('C.OLT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 52]],  [FS, FT])
+        self.fit('C.ULT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 53]],  [FS, FT])
+        self.fit('C.OLE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 54]],  [FS, FT])
+        self.fit('C.ULE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 55]],  [FS, FT])
+        self.fit('C.SF.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 56]],  [FS, FT])
+        self.fit('C.NGLE.D',  [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 57]],  [FS, FT])
+        self.fit('C.SEQ.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 58]],  [FS, FT])
+        self.fit('C.NGL.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 59]],  [FS, FT])
+        self.fit('C.LT.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 60]],  [FS, FT])
+        self.fit('C.NGE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 61]],  [FS, FT])
+        self.fit('C.LE.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 62]],  [FS, FT])
+        self.fit('C.NGT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 63]],  [FS, FT])
 
         # Floating-point Unit (COP1) Instructions continued...
-        self.fit('ABS.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 5]],         [FD, FS])
-        self.fit('ABS.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 5]],         [FD, FS])
-        self.fit('ADD.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, 6],                  [FD, FS, FT])
-        self.fit('ADD.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, 6],                  [FD, FS, FT])
-        self.fit('BC1F',       [[OPCODE, 17], [EX_OPCODE, 8], [CC, 0], [ES, 0], OFFSET],  [OFFSET])
-        self.fit('BC1FL',      [[OPCODE, 17], [EX_OPCODE, 8], [CC, 0], [ES, 2], OFFSET],  [OFFSET])
-        self.fit('BC1T',       [[OPCODE, 17], [EX_OPCODE, 8], [CC, 0], [ES, 1], OFFSET],  [OFFSET])
-        self.fit('BC1TL',      [[OPCODE, 17], [EX_OPCODE, 8], [CC, 0], [ES, 3], OFFSET],  [OFFSET])
-        self.fit('CEIL.L.S',   [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 10]],        [FD, FS])
-        self.fit('CEIL.L.D',   [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 10]],        [FD, FS])
-        self.fit('CEIL.W.S',   [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 14]],        [FD, FS])
-        self.fit('CEIL.W.D',   [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 14]],        [FD, FS])
-        self.fit('CFC1',       [[OPCODE, 17], [EX_OPCODE, 2], RT, FS, 11],                [RT, FS])
-        self.fit('CTC1',       [[OPCODE, 17], [EX_OPCODE, 6], RT, FS, 11],                [RT, FS])
-        self.fit('CVT.D.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 33]],        [FD, FS])
-        self.fit('CVT.D.W',    [[OPCODE, 17], [FMT, 20], 5, FS, FD, [OPCODE, 33]],        [FD, FS])
-        self.fit('CVT.D.L',    [[OPCODE, 17], [FMT, 21], 5, FS, FD, [OPCODE, 33]],        [FD, FS])
-        self.fit('CVT.L.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 37]],        [FD, FS])
-        self.fit('CVT.L.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 37]],        [FD, FS])
-        self.fit('CVT.S.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 32]],        [FD, FS])
-        self.fit('CVT.S.W',    [[OPCODE, 17], [FMT, 20], 5, FS, FD, [OPCODE, 32]],        [FD, FS])
-        self.fit('CVT.S.L',    [[OPCODE, 17], [FMT, 21], 5, FS, FD, [OPCODE, 32]],        [FD, FS])
-        self.fit('CVT.W.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 36]],        [FD, FS])
-        self.fit('CVT.W.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 36]],        [FD, FS])
-        self.fit('DIV.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 3]],        [FD, FS, FT])
-        self.fit('DIV.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 3]],        [FD, FS, FT])
-        self.fit('DMFC1',      [[OPCODE, 17], [EX_OPCODE, 1], RT, FS, 11],                [RT, FS])
-        self.fit('DMTC1',      [[OPCODE, 17], [EX_OPCODE, 5], RT, FS, 11],                [RT, FS])
-        self.fit('FLOOR.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 11]],        [FD, FS])
-        self.fit('FLOOR.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 11]],        [FD, FS])
-        self.fit('FLOOR.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 15]],        [FD, FS])
-        self.fit('FLOOR.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 15]],        [FD, FS])
-        self.fit('LDC1',       [[OPCODE, 53], BASE, FT, IMMEDIATE],                       [FT, IMMEDIATE, BASE])
-        self.fit('LWC1',       [[OPCODE, 49], BASE, FT, IMMEDIATE],                       [FT, IMMEDIATE, BASE])
-        self.fit('MFC1',       [[OPCODE, 17], 5, RT, FS, 11],                             [RT, FS])
-        self.fit('MOV.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 6]],         [FD, FS])
-        self.fit('MOV.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 6]],         [FD, FS])
-        self.fit('MTC1',       [[OPCODE, 17], [EX_OPCODE, 4], RT, FS, 11],                [RT, FS])
-        self.fit('MUL.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 2]],        [FD, FS, FT])
-        self.fit('MUL.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 2]],        [FD, FS, FT])
-        self.fit('NEG.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 7]],         [FD, FS])
-        self.fit('NEG.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 7]],         [FD, FS])
-        self.fit('ROUND.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 8]],         [FD, FS])
-        self.fit('ROUND.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 8]],         [FD, FS])
-        self.fit('ROUND.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 12]],        [FD, FS])
-        self.fit('ROUND.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 12]],        [FD, FS])
-        self.fit('SDC1',       [[OPCODE, 61], BASE, FT, IMMEDIATE],                       [FT, IMMEDIATE, BASE])
-        self.fit('SQRT.S',     [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 4]],         [FD, FS])
-        self.fit('SQRT.D',     [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 4]],         [FD, FS])
-        self.fit('SUB.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 1]],        [FD, FS, FT])
-        self.fit('SUB.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 1]],        [FD, FS, FT])
-        self.fit('SWC1',       [[OPCODE, 57], BASE, FT, IMMEDIATE],                       [FT, IMMEDIATE, BASE])
-        self.fit('TRUNC.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 9]],         [FD, FS])
-        self.fit('TRUNC.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 9]],         [FD, FS])
-        self.fit('TRUNC.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 13]],        [FD, FS])
-        self.fit('TRUNC.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 13]],        [FD, FS])
+        self.fit('ABS.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 5]],   [FD, FS])
+        self.fit('ABS.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 5]],   [FD, FS])
+        self.fit('ADD.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 0]],  [FD, FS, FT])
+        self.fit('ADD.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 0]],  [FD, FS, FT])
+        self.fit('BC1F',       [[OPCODE, 17], [FMT, 8], [FMT, 0], OFFSET],          [OFFSET])
+        self.fit('BC1FL',      [[OPCODE, 17], [FMT, 8], [FMT, 2], OFFSET],          [OFFSET])
+        self.fit('BC1T',       [[OPCODE, 17], [FMT, 8], [FMT, 1], OFFSET],          [OFFSET])
+        self.fit('BC1TL',      [[OPCODE, 17], [FMT, 8], [FMT, 3], OFFSET],          [OFFSET])
+        self.fit('CEIL.L.S',   [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 10]],  [FD, FS])
+        self.fit('CEIL.L.D',   [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 10]],  [FD, FS])
+        self.fit('CEIL.W.S',   [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 14]],  [FD, FS])
+        self.fit('CEIL.W.D',   [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 14]],  [FD, FS])
+        self.fit('CFC1',       [[OPCODE, 17], [FMT, 2], RT, FS, 11],                [RT, FS])
+        self.fit('CTC1',       [[OPCODE, 17], [FMT, 6], RT, FS, 11],                [RT, FS])
+        self.fit('CVT.D.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 33]],  [FD, FS])
+        self.fit('CVT.D.W',    [[OPCODE, 17], [FMT, 20], 5, FS, FD, [OPCODE, 33]],  [FD, FS])
+        self.fit('CVT.D.L',    [[OPCODE, 17], [FMT, 21], 5, FS, FD, [OPCODE, 33]],  [FD, FS])
+        self.fit('CVT.L.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 37]],  [FD, FS])
+        self.fit('CVT.L.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 37]],  [FD, FS])
+        self.fit('CVT.S.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 32]],  [FD, FS])
+        self.fit('CVT.S.W',    [[OPCODE, 17], [FMT, 20], 5, FS, FD, [OPCODE, 32]],  [FD, FS])
+        self.fit('CVT.S.L',    [[OPCODE, 17], [FMT, 21], 5, FS, FD, [OPCODE, 32]],  [FD, FS])
+        self.fit('CVT.W.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 36]],  [FD, FS])
+        self.fit('CVT.W.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 36]],  [FD, FS])
+        self.fit('DIV.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 3]],  [FD, FS, FT])
+        self.fit('DIV.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 3]],  [FD, FS, FT])
+        self.fit('DMFC1',      [[OPCODE, 17], [FMT, 1], RT, FS, 11],                [RT, FS])
+        self.fit('DMTC1',      [[OPCODE, 17], [FMT, 5], RT, FS, 11],                [RT, FS])
+        self.fit('FLOOR.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 11]],  [FD, FS])
+        self.fit('FLOOR.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 11]],  [FD, FS])
+        self.fit('FLOOR.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 15]],  [FD, FS])
+        self.fit('FLOOR.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 15]],  [FD, FS])
+        self.fit('LDC1',       [[OPCODE, 53], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
+        self.fit('LWC1',       [[OPCODE, 49], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
+        self.fit('MFC1',       [[OPCODE, 17], [FMT, 0], RT, FS, 11],                [RT, FS])
+        self.fit('MOV.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 6]],   [FD, FS])
+        self.fit('MOV.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 6]],   [FD, FS])
+        self.fit('MTC1',       [[OPCODE, 17], [FMT, 4], RT, FS, 11],                [RT, FS])
+        self.fit('MUL.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 2]],  [FD, FS, FT])
+        self.fit('MUL.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 2]],  [FD, FS, FT])
+        self.fit('NEG.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 7]],   [FD, FS])
+        self.fit('NEG.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 7]],   [FD, FS])
+        self.fit('ROUND.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 8]],   [FD, FS])
+        self.fit('ROUND.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 8]],   [FD, FS])
+        self.fit('ROUND.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 12]],  [FD, FS])
+        self.fit('ROUND.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 12]],  [FD, FS])
+        self.fit('SDC1',       [[OPCODE, 61], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
+        self.fit('SQRT.S',     [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 4]],   [FD, FS])
+        self.fit('SQRT.D',     [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 4]],   [FD, FS])
+        self.fit('SUB.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 1]],  [FD, FS, FT])
+        self.fit('SUB.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 1]],  [FD, FS, FT])
+        self.fit('SWC1',       [[OPCODE, 57], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
+        self.fit('TRUNC.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 9]],   [FD, FS])
+        self.fit('TRUNC.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 9]],   [FD, FS])
+        self.fit('TRUNC.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 13]],  [FD, FS])
+        self.fit('TRUNC.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 13]],  [FD, FS])
 
     def fit(self, mnemonic, encoding, appearance):
+        appearance_bit_correspondence = {}
+        matrix_branch = self.opcode_matrix
+        bits_addressed = 0
+        identifying_bits = '0b'
+        # print(mnemonic)
+        new_encoding_segments = [[], [], []]
+        # Makes sure EX_OPCODE is placed after all other named bit segments while processing and removing parameters
+        for i in encoding:
+            if isinstance(i, str):
+                length = LENGTHS[i]
+                identifying_bits += '0' * length
+                shift_amount = 32 - (length + bits_addressed)
+                appearance_bit_correspondence[i] = [
+                    int('0b' + ('0' * bits_addressed) + ('1' * length) + ('0' * shift_amount), 2),
+                    shift_amount
+                ]
+            elif isinstance(i, int):
+                length = i
+                identifying_bits += '0' * i
+                new_encoding_segments[2].append((0, length, bits_addressed))
+            else:
+                value = i[1]
+                name = i[0]
+                length = LENGTHS[name]
+                identifying_bits += extend_zeroes(bin(i[1])[2:], length)
+                if name == EX_OPCODE:
+                    new_encoding_segments[1].append((value, length, bits_addressed))
+                else:
+                    new_encoding_segments[0].append((value, length, bits_addressed))
+            bits_addressed += length
+
+        reordered_encoding = new_encoding_segments[0] + new_encoding_segments[1] + new_encoding_segments[2]
+        print(reordered_encoding)
+        # # Determine the final iteration which will identify the opcode before fitting the opcode matrix
+        # for j, i in enumerate(reordered_encoding):
+        #     if isinstance(i, int) or isinstance(i, list):
+        #         final_identify_iter = j
+
+        # Fit the opcode matrix
+        for j, i in enumerate(reordered_encoding):
+            value, length, bits_addressed = i
+            shift_amount = 32 - (length + bits_addressed)
+            bitwise_and = int('0b' + ('1' * length) + ('0' * shift_amount), 2)
+            if not matrix_branch:
+                matrix_branch.append([])
+                target = 0
+                # print('not matrix_branch')
+            else:
+                # print('matrix_branch')
+                target = -1
+                for i in range(len(matrix_branch)):
+                    if matrix_branch[i][1] == bitwise_and and matrix_branch[i][2] == shift_amount:
+                        target = i
+                if target < 0:
+                    # print('  no existing target')
+                    target = len(matrix_branch)
+                    matrix_branch.append([])
+            if not matrix_branch[target]:
+                matrix_branch[target].append([None] * (2 ** length))
+                matrix_branch[target].append(bitwise_and)
+                matrix_branch[target].append(shift_amount)
+            if j < len(reordered_encoding) - 1:
+                if matrix_branch[target][0][value] is None:
+                    matrix_branch[target][0][value] = []
+                matrix_branch = matrix_branch[target][0][value]
+                # print('new branch target')
+            else:
+                matrix_branch[target][0][value] = mnemonic
+                # print('final_identify_iter')
+
+        appearance = [[i, appearance_bit_correspondence[i]] for i in appearance]
+        self.encodes[mnemonic] = encoding
+        self.appearances[mnemonic] = appearance
+        self.identifying_bits[mnemonic] = int(identifying_bits, 2)
+        # print(mnemonic, self.identifying_bits[mnemonic])
+
+    def decode(self, int_word, index):
+        if int_word == 0:
+            return 'NOP'
+        if index == 1253:
+            print('aayyyeyey')
+        mnemonic = None
+        target_branch = self.opcode_matrix
+        iterating = True
+        while iterating:
+            length = len(target_branch)
+            for sub_branch in range(length):
+                value = target_branch[sub_branch][0][(int_word & target_branch[sub_branch][1]) >> target_branch[sub_branch][2]]
+                if value is None:
+                    if sub_branch == length - 1:
+                        iterating = False
+                        break
+                    continue
+                elif isinstance(value, str):
+                    mnemonic = value
+                    iterating = False
+                    break
+                target_branch = value
+                break
+
+        # target_branch = target_branch[target_sub_branch][0]
+
+        if mnemonic is None:
+            return 'UNKNOWN/NOT AN INSTRUCTION'
+        parameters = ''
+        index += 1  # Jump/branch to offsets/addresses are calculated based on the address of the delay slot (following word)
+        for i in self.appearances[mnemonic]:
+            param_name = i[0]
+            param_type = CODE_TYPES[param_name]
+            bit_correspondence = i[1][0]
+            bit_shift = i[1][1]
+            inner_value = (bit_correspondence & int_word) >> bit_shift
+            if param_type == 'HEX':
+                is_address = param_name == 'ADDRESS'
+                is_offset = param_name == 'OFFSET'
+                if is_offset:
+                    # Value needs 16 bit signing, then adding to the base address of the offset, then multiplying by 4
+                    # These steps transform the inner value into the target address of branch instructions
+                    # Branch instructions are the only ones to use offsets in this manner
+                    # Load and Store instructions are supposed to use offsets instead of immediate values
+                    #   but they were changed to immediate so they are treated appropriately, and so these
+                    #   transformations won't apply to them.
+                    inner_value = sign_16_bit_value(inner_value) + index
+                    if inner_value <= 0:
+                        # These are instructions where the target address is under 0; definitely some storage bytes that aren't an instruction
+                        # It causes a problem when trying to re-encode the instruction as the user scrolls into it's view, so return unknown
+                        return 'UNKNOWN/NOT AN INSTRUCTION'
+                    inner_value <<= 2
+                if is_address:
+                    # Add the current 268mb alignment to the value to properly decode
+                    inner_value += index & 0x3C000000
+                    inner_value <<= 2
+                if self.game_address_mode and (is_address or is_offset):
+                    inner_value += self.game_offset
+                decode_text = self.immediate_identifier + extend_zeroes(hexi(inner_value), HEX_EXTEND[param_name])
+            else: # Will be a register
+                decode_text = REGISTERS[param_type][inner_value]
+                if param_name == 'BASE':
+                    decode_text = '(' + decode_text + ')'
+            if parameters != '':
+                if param_name == 'BASE':
+                    decode_text = ' ' + decode_text
+                else:
+                    decode_text = ', ' + decode_text
+            else:
+                decode_text = ' ' + decode_text
+            parameters += decode_text
+        return mnemonic + parameters
+
+    def oldfit(self, mnemonic, encoding, appearance):
         comparable_bits = ''
         identifying_bits = ''
         appearance_bit_correspondence = {}
         for i in encoding:
-            segment_type = type_of(i)
-            if segment_type == 'str':
+            segment_type = type(i)
+            if isinstance(segment_type, str):
                 comparable_to_append = '0' * LENGTHS[i]
                 identifying_to_append = '0' * LENGTHS[i]
                 bits_addressed = len(comparable_bits)
@@ -676,7 +1038,7 @@ class Disassembler:
                     int('0b' + ('0' * bits_addressed) + ('1' * LENGTHS[i]) + ('0' * shift_amount), 2),
                     shift_amount
                 ]
-            elif segment_type == 'int':
+            elif isinstance(segment_type, int):
                 comparable_to_append = '1' * i
                 identifying_to_append = '0' * i
             else:
@@ -688,20 +1050,21 @@ class Disassembler:
         comparable_bits = int('0b' + comparable_bits, 2)
         identifying_bits = int('0b' + identifying_bits, 2)
         opcode = 0
-        if type_of(encoding[0]) == 'list':
+        if isinstance(encoding[0], list):
             opcode = encoding[0][1]
         key = str(opcode)
         if key not in self.opcodes:
             self.opcodes[key] = []
-        self.opcodes[key].append([comparable_bits, identifying_bits, self.amount]) # For more optimised decoding process
+        self.opcodes[key].append([comparable_bits, identifying_bits, self.amount])
         self.comparable_bits.append(comparable_bits)
         self.identifying_bits.append(identifying_bits)
         self.mnemonics.append(mnemonic)
         self.encodes.append(encoding)
         self.appearances.append(appearance)
+        # self.documentation[mnemonic] = DOCUMENTATION[mnemonic]
         self.amount += 1
 
-    def decode(self, int_word, index):
+    def olddecode(self, int_word, index):
         if int_word == 0:
             return 'NOP'
         opcode = str((int_word & 0xFC000000) >> 26)
@@ -767,60 +1130,59 @@ class Disassembler:
             punc = len(string)
         opcode = string[:punc]
         string = string[punc + 1:]
-        try:
-            id = self.mnemonics.index(opcode)
-        except:
+        if opcode not in self.encodes:
             # Syntax error - no such mnemonic
             return -1
         str_parameters = []
         index += 1  # Jump/branch to offsets/addresses are calculated based on the address of the delay slot (following word)
-        try:
-            while len(string):
-                punc = string.find(', ')
-                if punc < 0:
-                    punc = string.find(' (')
-                if punc < 0:
-                    punc = string.find(')')
-                if punc < 0:
-                    punc = len(string)
-                str_parameters.append(string[:punc])
-                string = string[punc + 2:]
-                if len(str_parameters) == len(self.appearances[id]):
-                    break
-            int_result = self.identifying_bits[id]
-            for i in range(len(self.appearances[id])):
-                param = str_parameters[i]
-                if param[0] == self.immediate_identifier:
-                    param = deci(param[1:])
-                    is_address = self.appearances[id][i][0] == 'ADDRESS'
-                    is_offset = self.appearances[id][i][0] == 'OFFSET'
-                    if self.game_address_mode and (is_address or is_offset):
-                        param -= self.game_offset
-                    if is_address:
-                        param >>= 2
-                        if index // ADDRESS_ALIGNMENT != param // ADDRESS_ALIGNMENT:
-                            # Immediate out of bounds error - not within the 268mb aligned region
-                            return -3
-                        param %= ADDRESS_ALIGNMENT
-                    elif is_offset:
-                        param >>= 2
-                        param = unsign_16_bit_value(param - index)
-                        if param > MAXIMUM_VALUES['OFFSET'] or param < 0:
-                            # Immediate out of bounds error
-                            return -3
-                    else:
-                        if self.appearances[id][i][0] not in MAXIMUM_VALUES.keys():
-                            # Syntax error - used immediate where a parameter should be a register
-                            return -2
-                        if param // 4 > MAXIMUM_VALUES[self.appearances[id][i][0]] or param < 0:
-                            # Immediate out of bounds error
-                            return -3
+        # try:
+        while True:
+            punc = string.find(', ')
+            if punc < 0:
+                punc = string.find(' (')
+            if punc < 0:
+                punc = string.find(')')
+            if punc < 0:
+                punc = len(string)
+            str_parameters.append(string[:punc])
+            string = string[punc + 2:]
+            if len(str_parameters) == len(self.appearances[opcode]):
+                break
+        int_result = self.identifying_bits[opcode]
+        for i in range(len(self.appearances[opcode])):
+            param = str_parameters[i]
+            if param[0] == self.immediate_identifier:
+                param = deci(param[1:])
+                is_address = self.appearances[opcode][i][0] == 'ADDRESS'
+                is_offset = self.appearances[opcode][i][0] == 'OFFSET'
+                if self.game_address_mode and (is_address or is_offset):
+                    param -= self.game_offset
+                if is_address:
+                    param >>= 2
+                    if index // ADDRESS_ALIGNMENT != param // ADDRESS_ALIGNMENT:
+                        # Immediate out of bounds error - not within the 268mb aligned region
+                        return -3
+                    param %= ADDRESS_ALIGNMENT
+                elif is_offset:
+                    param >>= 2
+                    param = unsign_16_bit_value(param - index)
+                    if param > MAXIMUM_VALUES['OFFSET'] or param < 0:
+                        # Immediate out of bounds error
+                        return -3
                 else:
-                    param = REGISTERS_ENCODE[param]
-                int_result += param << self.appearances[id][i][1][1]
-        except:
-            # Syntax error
-            return -2
+                    if self.appearances[opcode][i][0] not in MAXIMUM_VALUES.keys():
+                        # Syntax error - used immediate where a parameter should be a register
+                        return -2
+                    if param >> 2 > MAXIMUM_VALUES[self.appearances[opcode][i][0]] or param < 0:
+                        # Immediate out of bounds error
+                        return -3
+            else:
+                param = REGISTERS_ENCODE[param]
+            int_result += param << self.appearances[opcode][i][1][1]
+        # except Exception as e:
+        #     # Syntax error
+        #     print(e)
+        #     return -2
         return int_result
 
     def split_and_store_bytes(self, int_word, index):
@@ -834,23 +1196,16 @@ class Disassembler:
         for i in range(len(ints)):
             opcode = (ints[i] & 0xFC000000) >> 26
             key = ''
-            if opcode in JUMP_INTS:
-                key = str((ints[i] & 0x03FFFFFF) + ((i + 1) & 0x3C000000))
-                # try:
-                #     self.jumps_to[key].append(i)
-                # except KeyError:
-                #     self.jumps_to[key] = []
-                #     self.jumps_to[key].append(i)
-                # self.jumps[key] = True
-            elif opcode in BRANCH_INTS:
+            if BRANCH_INTS[opcode]:
                 key = str(sign_16_bit_value(ints[i] & 0xFFFF) + i + 1)
+            elif JUMP_INTS[opcode]:
+                key = str((ints[i] & 0x03FFFFFF) + ((i + 1) & 0x3C000000))
             if key:
                 try:
                     self.jumps_to[key].append(i)
                 except KeyError:
                     self.jumps_to[key] = []
                     self.jumps_to[key].append(i)
-                # self.jumps[key] = True
 
     def find_jumps(self, index):
         this_function = []

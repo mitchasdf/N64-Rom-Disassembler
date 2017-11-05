@@ -4,6 +4,7 @@ from tkinter import simpledialog, filedialog
 import os
 from function_defs import *
 from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS
+from sys import getsizeof
 
 CONFIG_FILE = 'rom disassembler.config'
 
@@ -107,7 +108,7 @@ navigation = 0
 
 
 def clear_error(key):
-    if type_of(key) == 'int':
+    if isinstance(key, int):
         key = '{}'.format(key)
     if key in user_errors.keys():
         del user_errors[key]
@@ -131,14 +132,14 @@ def modify_cursor(cursor, line_amount, column_amount, text):
     # cursor value format:
     # '{line}.{column}'
     #  1-base  0-base
-    if type_of(text) == 'str':
+    if isinstance(text, str):
         text = text.split('\n')
     dot = cursor.find('.')
     line = int(cursor[:dot])
     column = int(cursor[dot + 1:])
     line = keep_within(line + line_amount, 1, len(text))
     line_length = len(text[line - 1])
-    if type_of(column_amount) == 'int':
+    if isinstance(column_amount, int):
         column = keep_within(column + column_amount, 0, line_length)
     else:
         if column_amount == 'min':
@@ -197,7 +198,7 @@ def highlight_stuff():
     except KeyError:
         jumps_from = []
 
-    if prev_address_target and not jumps_from:
+    if prev_address_target or not column:
         c_line = 0
 
     for i in range(len(text)):
@@ -236,11 +237,16 @@ def highlight_stuff():
         # Highlight the target of jump or branch functions
         if address:
             if c_line:
-                address = deci(address)
-                if app_config['game_address_mode']:
-                    address -= disasm.game_offset
-                address >>= 2
-                prev_address_target = address
+                try:
+                    # Raises error if user types non-numeric characters where an address/offset is
+                    address = deci(address)
+                except:
+                    address = -1
+                else:
+                    if app_config['game_address_mode']:
+                        address -= disasm.game_offset
+                    address >>= 2
+                    prev_address_target = address
             if address in range(navigation, navigation + max_lines):
                 place = address - navigation
                 hack_file_text_box.tag_add('target',
@@ -257,6 +263,8 @@ def highlight_stuff():
         # Because the disasm.jumps dict is so huge, a try/except works "exceptionally" faster than iterative methods
         try:
             a = disasm.jumps_to[str(navi)]
+
+            # We only want to hit this line of code if str(navi) not in disasm.jumps_to
             hack_file_text_box.tag_add('jump_to',
                                        cursor_value(line, 0),
                                        cursor_value(line + 1, 0))
@@ -266,11 +274,10 @@ def highlight_stuff():
         # Highlight errors
         key = str(navi)
         if key in user_errors.keys():
-            line_start = cursor_value(i + 1, 0)
-            line_end = cursor_value(i + 2, 0)
             err_code = user_errors[key][0]
-            tag = 'bad' if err_code > -3 else 'out_of_range'
-            hack_file_text_box.tag_add(tag, line_start, line_end)
+            hack_file_text_box.tag_add('bad' if err_code > -3 else 'out_of_range',
+                                       cursor_value(i + 1, 0),
+                                       cursor_value(i + 2, 0))
             
     # Highlight all of the same registers on screen if cursor is targeting one
     def highlight_targets(target):
@@ -305,7 +312,7 @@ def reset_target():
 def apply_hack_changes(ignore_slot = None):
     current_text = hack_file_text_box.get('1.0', tk.END)[:-1].upper()
     split_text = current_text.split('\n')
-    for i in range(len(split_text)):
+    for i in range(max_lines):
         navi = navigation + i
         if i == ignore_slot:
             continue
@@ -320,6 +327,7 @@ def apply_hack_changes(ignore_slot = None):
                 continue
             disasm.split_and_store_bytes(int_of, navi)
             clear_error(string_key)
+
         elif not split_text[i]:
             disasm.split_and_store_bytes(0, navi)
             hack_file_text_box.insert(cursor_value(i + 1, 0), 'NOP')
@@ -337,7 +345,7 @@ def apply_hack_changes(ignore_slot = None):
 def apply_comment_changes():
     current_text = comments_text_box.get('1.0', tk.END)[:-1]
     split_text = current_text.split('\n')
-    for i in range(len(split_text)):
+    for i in range(max_lines):
         navi = navigation + i
         string_key = '{}'.format(navi)
         if not split_text[i]:
@@ -375,7 +383,7 @@ def replace_clipboard():
     try:
         window.clipboard_get()
         clipboard = ''
-    except Exception as e:
+    except:
         if clipboard:
             window.clipboard_append(clipboard)
 
@@ -915,6 +923,9 @@ def open_files(mode = ''):
                               app_config['immediate_identifier'])
     except Exception as e:
         simpledialog.messagebox._show('Error', e)
+        base_file_text_box.delete('1.0', tk.END)
+        hack_file_text_box.delete('1.0', tk.END)
+        [text_box.configure(state=tk.DISABLED) for text_box in ALL_TEXT_BOXES]
         disasm = None
         return
 
@@ -937,6 +948,14 @@ def open_files(mode = ''):
                                         cursor_value(1, 0),
                                         comments_text_box.get('1.0', tk.END)[:-1]))
         timer_tick('Disasm init')
+
+        ints = ints_of_4_byte_aligned_region(disasm.hack_file)
+        timer_tick('Creating ints list')
+        for i in range(len(ints)):
+            instruction = disasm.decode(ints[i], i)
+        timer_tick('Disassembling file')
+        # print(getsizeof(disasm.opcode_matrix))
+
     # Otherwise text boxes don't get updated to notify user of task
     window.after(1, rest_of_function)
 
@@ -1010,15 +1029,15 @@ def help_box():
         '',
         '',
         '----Highlighting----',
-        'Red: Invalid syntax',
-        'Orange: Immediate value used beyond it\'s limit',
+        'Red: Error - Invalid syntax',
+        'Orange: Error - Immediate value used beyond it\'s limit',
         'Pink: Jump functions',
         'Light Pink: Branch functions',
         'Light Purple: JR RA',
         'Light Green: Currently targeted register',
         'Light Cyan: Instructions which are targeted by selected jump or branch',
         'Dark Pink: Jumps or branches which target selected instruction',
-        'Blueish White: Means there is a jump or branch somewhere in the assembly which targets the highlighted instruction',
+        'Light Sky-Blue: Means there is a jump or branch somewhere in the assembly which targets the highlighted instruction',
         '',
         '',
         '----Keyboard----',
@@ -1115,6 +1134,8 @@ address_text_box.place(x=6, y=45, width=85, height=760)
 base_file_text_box.place(x=95, y=45, width=315, height=760)
 hack_file_text_box.place(x=414, y=45, width=315, height=760)
 comments_text_box.place(x=733, y=45, width=597, height=760)
+
+# disasm = Disassembler('C:\\Users\\Mitchell\\Desktop\\The roms\\Base SM64.z64', 'C:\\Users\\Mitchell\\Desktop\\The roms\\Test as bruz.z64')
 
 window.protocol('WM_DELETE_WINDOW', close_window)
 window.mainloop()
