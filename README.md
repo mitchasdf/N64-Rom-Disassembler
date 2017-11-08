@@ -2,4 +2,4 @@
 
 With Python 3.5
 
-Application is not finished yet. I'm working out the GUI bugs/bottlenecks.
+Used data from https://github.com/mikeryan/n64dev/tree/master/docs/n64ops to create disassembler.
