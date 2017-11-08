@@ -4,7 +4,6 @@ from tkinter import simpledialog, filedialog
 import os
 from function_defs import *
 from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS
-from sys import getsizeof
 
 CONFIG_FILE = 'rom disassembler.config'
 
@@ -16,12 +15,17 @@ JUMP_FUNCTIONS = ['J', 'JR', 'JAL', 'JALR']
 # Disassembler, created when opening files
 disasm = None
 
+window = tk.Tk()
+window.title('ROM Disassembler')
+window.geometry('1337x810+550+50')
+
 working_dir = os.path.dirname(os.path.realpath(__file__)) + '\\'
 FRESH_APP_CONFIG = {
     'previous_base_location': working_dir,
     'previous_hack_location': working_dir,
     'scroll_amount': 8,
     'immediate_identifier': '$',
+    'previous_navigation': 0,
     'game_address_mode': False
 }
 
@@ -37,11 +41,12 @@ if os.path.exists(CONFIG_FILE):
             if key not in FRESH_APP_CONFIG.keys():
                 del config_in_file[key]
         app_config = config_in_file.copy()
-    except:
+    except Exception as e:
         app_config = FRESH_APP_CONFIG.copy()
         simpledialog.messagebox._show('Error',
                                       'There was a problem loading the config file. '
-                                      'Starting with default configuration.')
+                                      'Starting with default configuration.'
+                                      '\n\nError: {}'.format(e))
 else:
     app_config = FRESH_APP_CONFIG.copy()
 
@@ -54,7 +59,7 @@ else:
     This can be done by maintain max_lines amount of lines at all times.
     
     Deviating from max_lines causes the list containing the data for the syntax checker
-      to have a "shift". The syntax checker can't assume where or whether or not a shift
+      to have a "shift". The syntax checker can't assume where, or whether or not, a shift
       has happened, so it needs the data to be processed before the checker receives it.
     
     The only times the amount of lines will change is when:
@@ -67,10 +72,6 @@ else:
     Conditional management of each keypress is required to stop all of those problems from happening.
 '''
 
-window = tk.Tk()
-window.title('ROM Disassembler')
-window.geometry('1337x810+550+50')
-
 address_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED)
 base_file_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED)
 hack_file_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED)
@@ -81,11 +82,12 @@ ALL_TEXT_BOXES = [address_text_box,
                   hack_file_text_box,
                   comments_text_box]
 
+
 tag_config = {
               'function_end': 'light slate blue',
               'jump_to': 'LightBlue1',
               'branch': 'dark salmon',
-              'jump': 'salmon',
+              'jump': 'salmon',  # These colour names tho
               'jump_from': 'tomato',
               'bad': 'orange red',
               'out_of_range': 'DarkOrange',
@@ -264,7 +266,7 @@ def highlight_stuff():
         try:
             a = disasm.jumps_to[str(navi)]
 
-            # We only want to hit this line of code if str(navi) not in disasm.jumps_to
+            # We only want to hit this line of code if str(navi) in disasm.jumps_to
             hack_file_text_box.tag_add('jump_to',
                                        cursor_value(line, 0),
                                        cursor_value(line + 1, 0))
@@ -716,7 +718,7 @@ def navigate_to(index):
     if disasm.header_items['Rom Name'][0] // 4 in range(navigation, limit):
         change_rom_name_button = tk.Button(window, text = 'Change', command = change_rom_name)
         y_offset = ((disasm.header_items['Rom Name'][0] // 4) - navigation) * 18
-        change_rom_name_button.place(x = 830, y = 46 + y_offset, height = 20)
+        change_rom_name_button.place(x = 965, y = 46 + y_offset, height = 20)
 
     # Update all 4 text boxes
     def update_text_box(handle, text):
@@ -949,18 +951,16 @@ def open_files(mode = ''):
                                         comments_text_box.get('1.0', tk.END)[:-1]))
         timer_tick('Disasm init')
 
-        ints = ints_of_4_byte_aligned_region(disasm.hack_file)
-        timer_tick('Creating ints list')
-        for i in range(len(ints)):
-            instruction = disasm.decode(ints[i], i)
-        timer_tick('Disassembling file')
-        # print(getsizeof(disasm.opcode_matrix))
+        # ints = ints_of_4_byte_aligned_region(disasm.hack_file)
+        # timer_tick('Creating ints list')
+        # for i in range(len(ints)):
+        #     instruction = disasm.decode(ints[i], i)
+        # timer_tick('Disassembling file')
 
     # Otherwise text boxes don't get updated to notify user of task
     window.after(1, rest_of_function)
 
 
-# (navigation, cursor_location, text_box_content, immediate_id, game_address_mode)
 def toggle_address_mode():
     apply_hack_changes()
     apply_comment_changes()
@@ -973,6 +973,7 @@ def toggle_address_mode():
     app_config['game_address_mode'] = toggle_to
     if disasm:
         disasm.game_address_mode = toggle_to
+    pickle_data(app_config, CONFIG_FILE)
     navigate_to(navigation)
 
 
@@ -1049,7 +1050,10 @@ def help_box():
         'F4: Navigate to address',
         'F5: Toggle mode which displays and handles addresses using the game\'s entry point',
         'Ctrl+{Comma} ("<" key): Undo',
-        'Ctrl+{Fullstop} (">" key): Redo'
+        'Ctrl+{Fullstop} (">" key): Redo',
+        '',
+        'The hacked rom text box and comments text box have separate undo/redo buffers.',
+        'Both buffers can hold up to 20,000 keystrokes worth of frames each.'
     ])
     simpledialog.messagebox._show('Help', message)
 
@@ -1134,8 +1138,6 @@ address_text_box.place(x=6, y=45, width=85, height=760)
 base_file_text_box.place(x=95, y=45, width=315, height=760)
 hack_file_text_box.place(x=414, y=45, width=315, height=760)
 comments_text_box.place(x=733, y=45, width=597, height=760)
-
-# disasm = Disassembler('C:\\Users\\Mitchell\\Desktop\\The roms\\Base SM64.z64', 'C:\\Users\\Mitchell\\Desktop\\The roms\\Test as bruz.z64')
 
 window.protocol('WM_DELETE_WINDOW', close_window)
 window.mainloop()

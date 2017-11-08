@@ -6,13 +6,13 @@ from os.path import exists
 from tkinter.simpledialog import messagebox
 
 
-OPCODE = 'OPCODE'  # For identifying instruction
-EX_OPCODE = 'EX_OPCODE'  # For identifying instruction - compared with after all other named bit segments
-OFFSET = 'OFFSET'  # Static values in which are represented as numbers  -- Numerical Parameter
-ADDRESS = 'ADDRESS'  # Static values in which are represented as numbers  -- Numerical Parameter
-IMMEDIATE = 'IMMEDIATE'  # Static values in which are represented as numbers  -- Numerical Parameter
-BASE = 'BASE'  # Use as base before offset applies to target address  -- Register Parameter
-RT = 'RT'  # General Purpose Register Target  -- Register Parameter
+OPCODE = 'OPCODE'  # For identifying instruction (6 bits)
+EX_OPCODE = 'EX_OPCODE'  # For identifying instruction - compared with after all other named bit segments (5 bits)
+OFFSET = 'OFFSET'  # Static values in which are represented as numbers  -- Numerical Parameter (16 bits)
+ADDRESS = 'ADDRESS'  # Static values in which are represented as numbers  -- Numerical Parameter (26 bits)
+IMMEDIATE = 'IMMEDIATE'  # Static values in which are represented as numbers  -- Numerical Parameter (16 bits)
+BASE = 'BASE'  # Use as base before offset applies to target address  -- Register Parameter (5 bits)
+RT = 'RT'  # General Purpose Register Target  -- Register Parameter (5 bits)
 RD = 'RD'  # General Purpose Register Destination  -- Register Parameter
 RS = 'RS'  # General Purpose Register Source  -- Register Parameter
 FT = 'FT'  # Floating-Point General Purpose Register Target  -- Register Parameter
@@ -525,9 +525,28 @@ class Disassembler:
         def open_rom(file_path):
             with open(file_path, 'rb') as file:
                 file_data = bytearray(file.read())
-            if file_data[2:4].hex() == '3780':
-                file_data = bytearray(ints_of_4_byte_aligned_region(file_data, byteorder='little'))
-            elif file_data[0:2].hex() != '8037':
+            rom_validation = file_data[0:4].hex()
+            if rom_validation == '37804012':
+                # Rom is byte-swapped, so swap it to the right order
+                i = 0
+                while i < len(file_data):
+                    byte_2, byte_4 = file_data[i+1], file_data[i+3]
+                    file_data[i+1] = file_data[i]
+                    file_data[i] = byte_2
+                    file_data[i+3] = file_data[i+2]
+                    file_data[i+2] = byte_4
+                    i += 4
+            elif rom_validation == '40123780':
+                # Rom is in little-endian, swap to big
+                i = 0
+                while i < len(file_data):
+                    byte_1, byte_2 = file_data[i], file_data[i+1]
+                    file_data[i] = file_data[i+3]
+                    file_data[i+1] = file_data[i+2]
+                    file_data[i+2] = byte_2
+                    file_data[i+3] = byte_1
+                    i += 4
+            elif rom_validation != '80371240':
                 raise Exception('"{}" Not a rom file'.format(file_path))
             part_at = file_path.rfind('\\') + 1
             folder = file_path[:part_at]
@@ -539,21 +558,16 @@ class Disassembler:
 
         self.header_items = {
             # Section labeled   [data_start, data_end (not inclusive)]
-            'Rom Validate':     [0x0000, 0x0002],
-            'Rom Compressed':    0x0002,
-            '400000000F':       [0x0003, 0x0008],
+            'Rom Validate':     [0x0000, 0x0004],
+            'Clock Rate':       [0x0004, 0x0008],
             'Game Offset':      [0x0008, 0x000C],
-            '000014':           [0x000C, 0x000F],
-            'Game-Specific?':    0x000F,
+            'Release':          [0x000C, 0x0010],
             'CRC1':             [0x0010, 0x0014],
             'CRC2':             [0x0014, 0x0018],
-            '0000000000000000': [0x0018, 0x0020],
             'Rom Name':         [0x0020, 0x0034],
-            '00000000000000':   [0x0034, 0x003B],
             'Manufacturer ID':   0x003B,
             'Cartridge ID':     [0x003C, 0x003E],
-            'Country Code':      0x003E,
-            '00':                0x003F,
+            'Country Code':     [0x003E, 0x0040],
             'Boot Code':        [0x0040, 0x1000],
             'Game Code':         0x1000
         }
@@ -563,11 +577,17 @@ class Disassembler:
         def fresh_comments():
             # Start new comments off with some header labels
             for i in self.header_items.keys():
+                extra_append = ''
                 if isinstance(self.header_items[i], list):
-                    comments_location = '{}'.format((self.header_items[i][0] >> 2))
+                    start = self.header_items[i][0]
+                    end = self.header_items[i][1]
+                    comments_location = '{}'.format((start >> 2))
+                    extra_append = ' ({} - {})'.format(extend_zeroes(hexi(start), 4), extend_zeroes(hexi(end - 1), 4))
                 else:
+                    extra_append = ' ({})'.format(extend_zeroes(hexi(self.header_items[i]), 4))
                     comments_location = '{}'.format((self.header_items[i] >> 2))
                 already_data = comments_location in self.comments.keys()
+                i += extra_append
                 if already_data:
                     self.comments[comments_location] = self.comments[comments_location] + ' | ' + i
                 else:
@@ -620,16 +640,16 @@ class Disassembler:
                 The bit-lengths for all instructions will total 32.
 
                 String segments (all variables used here are predefined strings)
-                  - Means this segment is irrelevant for identifying this instruction, and also means the appearance list
+                   - Means this segment is irrelevant for identifying this instruction, and also means the appearance list
                       is allowed to contain this string, as it is a variable parameter for the instruction.
-                  - The bit length for the segment is taken from the LENGTHS dictionary using the string as the key.
+                   - The bit length for the segment is taken from the LENGTHS dictionary using the string as the key.
 
                 Int segments
-                  - Means this number is the length of the bit-segment, and that correlating bit segments
+                   - Means this number is the length of the bit-segment, and that correlating bit segments
                       must equal all 0's in order to identify with this instruction.
 
                 List [String, Int] segments
-                  - Means that the current bit segment is Length long, and correlating bit segments must equal to Int
+                   - Means that the current bit segment is Length long, and correlating bit segments must equal to Int
                       in order to identify with this instruction. Length is pulled from LENGTHS just like it is for
                       String segments.
 
@@ -641,7 +661,7 @@ class Disassembler:
 
 
             The fitment parameters only "look" like the MIPS documentation, but a few things have been changed to 
-              better accommodate the encoding and decoding process.
+               better accommodate the encoding and decoding process.
             
             For performance, all Pseudo Opcodes are omitted.
         '''
@@ -873,12 +893,14 @@ class Disassembler:
         self.fit('TRUNC.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 13]],  [FD, FS])
         self.fit('TRUNC.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 13]],  [FD, FS])
 
+        # Vector Instructions
+        # todo: Add vector instructions & copypaste some more delicious self.fit()
+
     def fit(self, mnemonic, encoding, appearance):
         appearance_bit_correspondence = {}
         matrix_branch = self.opcode_matrix
         bits_addressed = 0
         identifying_bits = '0b'
-        # print(mnemonic)
         new_encoding_segments = [[], [], []]
         # Makes sure EX_OPCODE is placed after all other named bit segments while processing and removing parameters
         for i in encoding:
@@ -906,11 +928,6 @@ class Disassembler:
             bits_addressed += length
 
         reordered_encoding = new_encoding_segments[0] + new_encoding_segments[1] + new_encoding_segments[2]
-        print(reordered_encoding)
-        # # Determine the final iteration which will identify the opcode before fitting the opcode matrix
-        # for j, i in enumerate(reordered_encoding):
-        #     if isinstance(i, int) or isinstance(i, list):
-        #         final_identify_iter = j
 
         # Fit the opcode matrix
         for j, i in enumerate(reordered_encoding):
@@ -920,15 +937,12 @@ class Disassembler:
             if not matrix_branch:
                 matrix_branch.append([])
                 target = 0
-                # print('not matrix_branch')
             else:
-                # print('matrix_branch')
                 target = -1
                 for i in range(len(matrix_branch)):
                     if matrix_branch[i][1] == bitwise_and and matrix_branch[i][2] == shift_amount:
                         target = i
                 if target < 0:
-                    # print('  no existing target')
                     target = len(matrix_branch)
                     matrix_branch.append([])
             if not matrix_branch[target]:
@@ -939,22 +953,17 @@ class Disassembler:
                 if matrix_branch[target][0][value] is None:
                     matrix_branch[target][0][value] = []
                 matrix_branch = matrix_branch[target][0][value]
-                # print('new branch target')
             else:
                 matrix_branch[target][0][value] = mnemonic
-                # print('final_identify_iter')
 
         appearance = [[i, appearance_bit_correspondence[i]] for i in appearance]
         self.encodes[mnemonic] = encoding
         self.appearances[mnemonic] = appearance
         self.identifying_bits[mnemonic] = int(identifying_bits, 2)
-        # print(mnemonic, self.identifying_bits[mnemonic])
 
     def decode(self, int_word, index):
         if int_word == 0:
             return 'NOP'
-        if index == 1253:
-            print('aayyyeyey')
         mnemonic = None
         target_branch = self.opcode_matrix
         iterating = True
@@ -974,112 +983,11 @@ class Disassembler:
                 target_branch = value
                 break
 
-        # target_branch = target_branch[target_sub_branch][0]
-
         if mnemonic is None:
             return 'UNKNOWN/NOT AN INSTRUCTION'
         parameters = ''
         index += 1  # Jump/branch to offsets/addresses are calculated based on the address of the delay slot (following word)
         for i in self.appearances[mnemonic]:
-            param_name = i[0]
-            param_type = CODE_TYPES[param_name]
-            bit_correspondence = i[1][0]
-            bit_shift = i[1][1]
-            inner_value = (bit_correspondence & int_word) >> bit_shift
-            if param_type == 'HEX':
-                is_address = param_name == 'ADDRESS'
-                is_offset = param_name == 'OFFSET'
-                if is_offset:
-                    # Value needs 16 bit signing, then adding to the base address of the offset, then multiplying by 4
-                    # These steps transform the inner value into the target address of branch instructions
-                    # Branch instructions are the only ones to use offsets in this manner
-                    # Load and Store instructions are supposed to use offsets instead of immediate values
-                    #   but they were changed to immediate so they are treated appropriately, and so these
-                    #   transformations won't apply to them.
-                    inner_value = sign_16_bit_value(inner_value) + index
-                    if inner_value <= 0:
-                        # These are instructions where the target address is under 0; definitely some storage bytes that aren't an instruction
-                        # It causes a problem when trying to re-encode the instruction as the user scrolls into it's view, so return unknown
-                        return 'UNKNOWN/NOT AN INSTRUCTION'
-                    inner_value <<= 2
-                if is_address:
-                    # Add the current 268mb alignment to the value to properly decode
-                    inner_value += index & 0x3C000000
-                    inner_value <<= 2
-                if self.game_address_mode and (is_address or is_offset):
-                    inner_value += self.game_offset
-                decode_text = self.immediate_identifier + extend_zeroes(hexi(inner_value), HEX_EXTEND[param_name])
-            else: # Will be a register
-                decode_text = REGISTERS[param_type][inner_value]
-                if param_name == 'BASE':
-                    decode_text = '(' + decode_text + ')'
-            if parameters != '':
-                if param_name == 'BASE':
-                    decode_text = ' ' + decode_text
-                else:
-                    decode_text = ', ' + decode_text
-            else:
-                decode_text = ' ' + decode_text
-            parameters += decode_text
-        return mnemonic + parameters
-
-    def oldfit(self, mnemonic, encoding, appearance):
-        comparable_bits = ''
-        identifying_bits = ''
-        appearance_bit_correspondence = {}
-        for i in encoding:
-            segment_type = type(i)
-            if isinstance(segment_type, str):
-                comparable_to_append = '0' * LENGTHS[i]
-                identifying_to_append = '0' * LENGTHS[i]
-                bits_addressed = len(comparable_bits)
-                shift_amount = 32 - (LENGTHS[i] + bits_addressed)
-                appearance_bit_correspondence[i] = [
-                    int('0b' + ('0' * bits_addressed) + ('1' * LENGTHS[i]) + ('0' * shift_amount), 2),
-                    shift_amount
-                ]
-            elif isinstance(segment_type, int):
-                comparable_to_append = '1' * i
-                identifying_to_append = '0' * i
-            else:
-                comparable_to_append = '1' * LENGTHS[i[0]]
-                identifying_to_append = extend_zeroes(bin(i[1])[2:], LENGTHS[i[0]])
-            comparable_bits += comparable_to_append
-            identifying_bits += identifying_to_append
-        appearance = [[i, appearance_bit_correspondence[i]] for i in appearance]
-        comparable_bits = int('0b' + comparable_bits, 2)
-        identifying_bits = int('0b' + identifying_bits, 2)
-        opcode = 0
-        if isinstance(encoding[0], list):
-            opcode = encoding[0][1]
-        key = str(opcode)
-        if key not in self.opcodes:
-            self.opcodes[key] = []
-        self.opcodes[key].append([comparable_bits, identifying_bits, self.amount])
-        self.comparable_bits.append(comparable_bits)
-        self.identifying_bits.append(identifying_bits)
-        self.mnemonics.append(mnemonic)
-        self.encodes.append(encoding)
-        self.appearances.append(appearance)
-        # self.documentation[mnemonic] = DOCUMENTATION[mnemonic]
-        self.amount += 1
-
-    def olddecode(self, int_word, index):
-        if int_word == 0:
-            return 'NOP'
-        opcode = str((int_word & 0xFC000000) >> 26)
-        identity = None
-        if opcode in self.opcodes:
-            for i in self.opcodes[opcode]:
-                if int_word & i[0] == i[1]:
-                    identity = i[2]
-                    break
-        if identity == None:
-            return 'UNKNOWN/NOT AN INSTRUCTION'
-        parameters = ''
-        mnemonic = self.mnemonics[identity]
-        index += 1  # Jump/branch to offsets/addresses are calculated based on the address of the delay slot (following word)
-        for i in self.appearances[identity]:
             param_name = i[0]
             param_type = CODE_TYPES[param_name]
             bit_correspondence = i[1][0]
@@ -1135,54 +1043,53 @@ class Disassembler:
             return -1
         str_parameters = []
         index += 1  # Jump/branch to offsets/addresses are calculated based on the address of the delay slot (following word)
-        # try:
-        while True:
-            punc = string.find(', ')
-            if punc < 0:
-                punc = string.find(' (')
-            if punc < 0:
-                punc = string.find(')')
-            if punc < 0:
-                punc = len(string)
-            str_parameters.append(string[:punc])
-            string = string[punc + 2:]
-            if len(str_parameters) == len(self.appearances[opcode]):
-                break
-        int_result = self.identifying_bits[opcode]
-        for i in range(len(self.appearances[opcode])):
-            param = str_parameters[i]
-            if param[0] == self.immediate_identifier:
-                param = deci(param[1:])
-                is_address = self.appearances[opcode][i][0] == 'ADDRESS'
-                is_offset = self.appearances[opcode][i][0] == 'OFFSET'
-                if self.game_address_mode and (is_address or is_offset):
-                    param -= self.game_offset
-                if is_address:
-                    param >>= 2
-                    if index // ADDRESS_ALIGNMENT != param // ADDRESS_ALIGNMENT:
-                        # Immediate out of bounds error - not within the 268mb aligned region
-                        return -3
-                    param %= ADDRESS_ALIGNMENT
-                elif is_offset:
-                    param >>= 2
-                    param = unsign_16_bit_value(param - index)
-                    if param > MAXIMUM_VALUES['OFFSET'] or param < 0:
-                        # Immediate out of bounds error
-                        return -3
+        try:
+            while len(string):
+                punc = string.find(', ')
+                if punc < 0:
+                    punc = string.find(' (')
+                if punc < 0:
+                    punc = string.find(')')
+                if punc < 0:
+                    punc = len(string)
+                str_parameters.append(string[:punc])
+                string = string[punc + 2:]
+                if len(str_parameters) == len(self.appearances[opcode]):
+                    break
+            int_result = self.identifying_bits[opcode]
+            for i in range(len(self.appearances[opcode])):
+                param = str_parameters[i]
+                if param[0] == self.immediate_identifier:
+                    param = deci(param[1:])
+                    is_address = self.appearances[opcode][i][0] == 'ADDRESS'
+                    is_offset = self.appearances[opcode][i][0] == 'OFFSET'
+                    if self.game_address_mode and (is_address or is_offset):
+                        param -= self.game_offset
+                    if is_address:
+                        param >>= 2
+                        if index // ADDRESS_ALIGNMENT != param // ADDRESS_ALIGNMENT:
+                            # Immediate out of bounds error - not within the 268mb aligned region
+                            return -3
+                        param %= ADDRESS_ALIGNMENT
+                    elif is_offset:
+                        param >>= 2
+                        param = unsign_16_bit_value(param - index)
+                        if param > MAXIMUM_VALUES['OFFSET'] or param < 0:
+                            # Immediate out of bounds error
+                            return -3
+                    else:
+                        if self.appearances[opcode][i][0] not in MAXIMUM_VALUES.keys():
+                            # Syntax error - used immediate where a parameter should be a register
+                            return -2
+                        if param >> 2 > MAXIMUM_VALUES[self.appearances[opcode][i][0]] or param < 0:
+                            # Immediate out of bounds error
+                            return -3
                 else:
-                    if self.appearances[opcode][i][0] not in MAXIMUM_VALUES.keys():
-                        # Syntax error - used immediate where a parameter should be a register
-                        return -2
-                    if param >> 2 > MAXIMUM_VALUES[self.appearances[opcode][i][0]] or param < 0:
-                        # Immediate out of bounds error
-                        return -3
-            else:
-                param = REGISTERS_ENCODE[param]
-            int_result += param << self.appearances[opcode][i][1][1]
-        # except Exception as e:
-        #     # Syntax error
-        #     print(e)
-        #     return -2
+                    param = REGISTERS_ENCODE[param]
+                int_result += param << self.appearances[opcode][i][1][1]
+        except:
+            # Syntax error - wrong amount of parameters
+            return -2
         return int_result
 
     def split_and_store_bytes(self, int_word, index):

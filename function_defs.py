@@ -99,36 +99,3 @@ def timer_tick(string):
     last_time = time.time()
     str_time = str(this_time)
     print('{} took: {} sec'.format(string, str_time[:str_time.find('.') + 4]))
-
-
-'''
-        'ADDRESS': 26,
-        'CODE_20': 20,
-        'OFFSET': 16,
-        'IMMEDIATE': 16,
-        'CODE_10': 10,
-        'OPCODE': 6,
-        'EX_OPCODE': 5,
-        'BASE': 5,
-        'RT': 5,
-        'RD': 5,
-        'RS': 5,
-        'FT': 5,
-        'FD': 5,
-        'FS': 5,
-        'CS': 5,
-        'SA': 5,
-        'STYPE': 5,
-        'FMT': 5,
-        'OP': 5,
-        'COND': 4,
-        'ES': 2,
-        'CO': 1
-        self.fit('ABS.S',       [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 5]],          [FD, FS])
-        
-        self.fit('C.F.S',       [[OPCODE, 17], [FMT, 16], FT, FS, 5, [ES, 3], [COND, 0]],   [FS, FT])
-        
-        self.fit('BGEZ',        [[OPCODE, 1], RS, [EX_OPCODE, 1], OFFSET],                  [RS, OFFSET])
-        
-        self.fit('SWR',         [[OPCODE, 46], BASE, RT, IMMEDIATE],                        [RT, IMMEDIATE, BASE])
-'''
