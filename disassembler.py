@@ -3,7 +3,7 @@ from function_defs import deci, hexi, ints_of_4_byte_aligned_region, \
     string_to_dict, extend_zeroes, sign_16_bit_value, unsign_16_bit_value, \
     get_8_bit_ints_from_32_bit_int
 from os.path import exists
-from tkinter.simpledialog import messagebox
+# from tkinter.simpledialog import messagebox
 
 
 OPCODE = 'OPCODE'  # For identifying instruction (6 bits)
@@ -568,8 +568,7 @@ class Disassembler:
             'Manufacturer ID':   0x003B,
             'Cartridge ID':     [0x003C, 0x003E],
             'Country Code':     [0x003E, 0x0040],
-            'Boot Code':        [0x0040, 0x1000],
-            'Game Code':         0x1000
+            'Boot Code':        [0x0040, 0x1000]
         }
 
         self.comments_file = '{} comments.txt'.format(self.hack_folder + self.hack_file_name)
@@ -600,7 +599,8 @@ class Disassembler:
                 with open(self.comments_file, 'r') as file:
                     self.comments = string_to_dict(file.read())
             except Exception as e:
-                messagebox._show('Error loading comments file', self.comments_file + '\n\n' + str(e))
+                # I'm pretty sure I don't need to display 2 message boxes.
+                # messagebox._show('Error loading comments file', self.comments_file + '\n\n' + str(e))
                 raise Exception('Comments file cannot be loaded - so this rom cannot be loaded until this is fixed.\n'
                                 'This is only necessary because if we went ahead and loaded, your comments file would'
                                 ' be erased and overwritten with fresh data.')
@@ -1099,6 +1099,8 @@ class Disassembler:
             self.hack_file[index + i] = ints[i]
 
     def map_jumps(self):
+        # todo: uh, currently it maps jumps which it decodes from regions that aren't instructions, so that needs fixing
+        return
         ints = ints_of_4_byte_aligned_region(self.hack_file)
         for i in range(len(ints)):
             opcode = (ints[i] & 0xFC000000) >> 26
@@ -1147,3 +1149,63 @@ class Disassembler:
                 [jumps.append(extend_zeroes(hexi((j << 2) + offsetting), 8))\
                  for j in self.jumps_to[key]]
         return jumps
+
+    def find_vector_instructions(self):
+        ints = ints_of_4_byte_aligned_region(self.hack_file)
+        # missing_opcodes = [True if i in [18, 19, 28, 29, 30, 31, 50, 51, 54, 58, 59, 62] else False for i in range(64)]
+        missing_opcodes = [True if i in [18] else False for i in range(64)]
+        return_dict = {
+            '18': [],
+            '19': [],
+            '28': [],
+            '29': [],
+            '30': [],
+            '31': [],
+            '50': [],
+            '51': [],
+            '54': [],
+            '58': [],
+            '59': [],
+            '62': []
+        }
+        for i, instruction in enumerate(ints):
+            decoded = self.decode(instruction, i)
+            if decoded == 'UNKNOWN/NOT AN INSTRUCTION':
+                opcode = (instruction & 0xFC000000) >> 26
+                if missing_opcodes[opcode]:
+                    return_dict[str(opcode)].append((extend_zeroes(hexi(i << 2),8), instruction))
+        return return_dict
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

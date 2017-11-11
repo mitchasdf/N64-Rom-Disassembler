@@ -429,13 +429,9 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     has_char = bool(event.char) and event.keysym != 'Escape' and not ctrl_held
 
-    print(event.keysym)
-
     is_undoing = buffer and ctrl_held and event.keysym == 'comma'
     is_redoing = buffer and ctrl_held and event.keysym == 'period'
     is_cutting = ctrl_held and event.keysym == 'x'
-    if is_cutting:
-        asdf = None
     is_pasting = ctrl_held and event.keysym == 'v'
     is_copying = ctrl_held and event.keysym == 'c'
     is_deleting = ctrl_d or event.keysym == 'Delete'
@@ -508,7 +504,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         selection_start, sel_start_line, sel_start_column = get_cursor(handle, tk.SEL_FIRST)
         selection_end, sel_end_line, sel_end_column = get_cursor(handle, tk.SEL_LAST)
         # Select whole columns if selecting multiple lines
-        print(selection_start, selection_end)
         if sel_start_line != sel_end_line:
             # if sel_start_column == len(split_text[sel_start_line - 1]):
             #     selection_line_mod += 1
@@ -641,7 +636,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     cursor, line, column = get_cursor(handle)
     split_text = handle.get('1.0', tk.END)[:-1].split('\n')
-    print('selection, ',selection_start, selection_end)
 
     # Prevent delete or backspace from modifying textbox any further than the bounds of the selected text (if selected text is only on one line)
     if has_selection and not selection_lines:
