@@ -8,7 +8,7 @@ from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS
 CONFIG_FILE = 'rom disassembler.config'
 
 BRANCH_FUNCTIONS = ['BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL', 'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL',
-                    'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL', 'BNEZ', 'BNEL', 'BNE']
+                    'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL', 'BNEZ', 'BNEL', 'BNE', 'BC1F', 'BC1FL', 'BC1T', 'BC1TL']
 
 JUMP_FUNCTIONS = ['J', 'JR', 'JAL', 'JALR']
 
@@ -93,6 +93,7 @@ tag_config = {
               'out_of_range': 'DarkOrange',
               'target': 'turquoise',
               'liken': 'SeaGreen2',
+              'nop': '#D0D0D0'
               }
 [hack_file_text_box.tag_config(tag, background=tag_config[tag]) for tag in tag_config]
 
@@ -148,7 +149,7 @@ def modify_cursor(cursor, line_amount, column_amount, text):
             column = 0
         if column_amount == 'max':
             column = line_length
-    return cursor_value(line, column)
+    return cursor_value(line, column), line, column
 
 
 def geometry(geo):
@@ -205,7 +206,8 @@ def highlight_stuff():
 
     for i in range(len(text)):
         line = i + 1
-        this_word = text[i][:text[i].find(' ')]
+        line_text = text[i]
+        this_word = line_text[:line_text.find(' ')]
         imm_id = text[i].find(app_config['immediate_identifier'])
         address = None
         navi = navigation + i
@@ -235,6 +237,11 @@ def highlight_stuff():
                 address = prev_address_target
             elif line == c_line and this_word in ['J', 'JAL']:
                 address = text[i][imm_id + 1:]
+
+        elif line_text == 'NOP':
+            hack_file_text_box.tag_add('nop',
+                                       cursor_value(line, 0),
+                                       cursor_value(line, len(text[i])))
 
         # Highlight the target of jump or branch functions
         if address:
@@ -297,6 +304,7 @@ def highlight_stuff():
                 else:
                     break
                 begin = column + 1
+
     # These conditions allow user to scroll out of view of the target without losing highlighting
     if targeting in REGISTERS_ENCODE:
         prev_reg_target = targeting
@@ -421,9 +429,13 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     has_char = bool(event.char) and event.keysym != 'Escape' and not ctrl_held
 
+    print(event.keysym)
+
     is_undoing = buffer and ctrl_held and event.keysym == 'comma'
     is_redoing = buffer and ctrl_held and event.keysym == 'period'
     is_cutting = ctrl_held and event.keysym == 'x'
+    if is_cutting:
+        asdf = None
     is_pasting = ctrl_held and event.keysym == 'v'
     is_copying = ctrl_held and event.keysym == 'c'
     is_deleting = ctrl_d or event.keysym == 'Delete'
@@ -491,13 +503,21 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         return
 
     # Copy/Paste and selection handling
+    selection_line_mod = False
     try:
         selection_start, sel_start_line, sel_start_column = get_cursor(handle, tk.SEL_FIRST)
         selection_end, sel_end_line, sel_end_column = get_cursor(handle, tk.SEL_LAST)
         # Select whole columns if selecting multiple lines
+        print(selection_start, selection_end)
         if sel_start_line != sel_end_line:
-            selection_start = modify_cursor(selection_start, 0, 'min', split_text)
-            selection_end = modify_cursor(selection_end, 0, 'max', split_text)
+            # if sel_start_column == len(split_text[sel_start_line - 1]):
+            #     selection_line_mod += 1
+            #     selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 1, 0, split_text)
+            if sel_end_column == 0:
+                selection_line_mod = True
+                selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, -1, 0, split_text)
+            selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 0, 'min', split_text)
+            selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, 0, 'max', split_text)
     except:
         selection_start, sel_start_line, sel_start_column = '1.0', 0, 0
         selection_end, sel_end_line, sel_end_column = '1.0', 0, 0
@@ -506,13 +526,18 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     selection_lines = sel_end_line - sel_start_line
     selection_function = has_selection and (selection_removable or is_copying)
     standard_key = not is_backspacing and not is_returning and has_char
-    lower_outer_bound_selection_char = handle.get(modify_cursor(selection_start, 0, -1, split_text))
+    temp_cursor, _, __ = modify_cursor(selection_start, 0, -1, split_text)
+    lower_outer_bound_selection_char = handle.get(temp_cursor)
     upper_outer_bound_selection_char = handle.get(selection_end)
     paste_text = ''
     lines_diff = 0
 
     # Because using mark_set() on SEL_FIRST or SEL_LAST seems to corrupt the widgets beyond repair at a windows level,
     # A work around with a custom clipboard is required in order for the code to be able to serve it's intended purpose
+    if has_selection and not selection_lines and is_pasting and '\n' in clipboard:
+        selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 0, 'min', split_text)
+        selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, 0, 'max', split_text)
+
     if selection_function:
         selection_text = handle.get(selection_start, selection_end)
 
@@ -545,8 +570,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                 lines_diff -= len(split_clip) - 1
                 winnie_clip = '\n'.join(split_clip)
                 if not selection_function:
-                    min_del = modify_cursor(cursor, 0, 'min', split_text)
-                    max_del = modify_cursor(cursor, -lines_diff, 'max', split_text)
+                    min_del, _, __ = modify_cursor(cursor, 0, 'min', split_text)
+                    max_del, _, __ = modify_cursor(cursor, -lines_diff, 'max', split_text)
                     handle.delete(min_del, max_del)
                     lines_diff = 0
             paste_text = winnie_clip
@@ -557,25 +582,35 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     if lines_diff > 0:
         handle.insert(insertion_place, '\n' * lines_diff)
     elif lines_diff < 0:
-        handle.delete(insertion_place, modify_cursor(insertion_place, -lines_diff, 'max', split_text))
+        temp_cursor, _, __ = modify_cursor(insertion_place, -lines_diff, 'max', split_text)
+        handle.delete(insertion_place, temp_cursor)
 
     if is_pasting or is_cutting:
         def move_next(handle):
             move_amount = 1 if is_pasting else 0
-            handle.mark_set(tk.INSERT, modify_cursor(handle.index(tk.INSERT), move_amount, 'max', handle.get('1.0', tk.END)[:-1]))
+            temp_cursor, _, __ = modify_cursor(handle.index(tk.INSERT), move_amount, 'max', handle.get('1.0', tk.END)[:-1])
+            handle.mark_set(tk.INSERT, temp_cursor)
         handle.insert(insertion_place, paste_text)
-        window.after(0, lambda: (apply_hack_changes(),
-                                 apply_comment_changes(),
-                                 move_next(handle),
-                                 navigate_to(navigation)))
+        if not selection_line_mod or is_pasting:
+            window.after(0, lambda: (apply_hack_changes(),
+                                     apply_comment_changes(),
+                                     move_next(handle),
+                                     navigate_to(navigation)))
     # Copy/Paste end
 
     # Easier than recalculating for each condition in the copy/paste section
     cursor, line, column = get_cursor(handle)
+    # selection_start, sel_start_line, sel_start_column, selection_end, sel_end_line, sel_end_column = selection_calc()
+    # has_selection = selection_start != selection_end
+    if selection_removable:
+        selection_start, sel_start_line, sel_start_column, selection_end, sel_end_line, sel_end_column = 0,0,0,0,0,0
+        has_selection = False
     joined_text = handle.get('1.0', tk.END)[:-1]
     split_text = joined_text.split('\n')
 
     nl_at_cursor = handle.get(cursor) == '\n'
+    if has_selection:
+        nl_at_cursor = nl_at_cursor or handle.get(selection_end) == '\n'
     # Make any key delete the final character of the line if word is about to wrap onto next line
     # Also validate all code except line currently editing
     if standard_key:
@@ -586,33 +621,33 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     # Make delete do nothing if cursor precedes a new line
     # Make backspace act as left arrow if cursor at column 0 then validate code (ignoring the line if cursor not at column 0)
-    elif (is_backspacing and (column == 0 and line > 1)) or (is_deleting and nl_at_cursor and not shift_held):
-        if is_deleting or sel_start_line:
-            apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
+    elif ((is_backspacing and (column == 0 and line > 1)) or (is_deleting and nl_at_cursor and not shift_held)) and not has_selection:
         # if not selection_lines: # was needed to stop something but now is not?
-        if not has_selection:
-            handle.insert(cursor,'\n')
-            handle.mark_set(tk.INSERT, cursor)
+        if is_deleting:
+            apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
+        handle.insert(cursor,'\n')
+        handle.mark_set(tk.INSERT, cursor)
         if is_backspacing:
             apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
 
     # Make return send the cursor to the end of the next line and validate code
     elif is_returning:
         move_lines = -1 if line == max_lines else 0
-        cursor = modify_cursor(cursor, move_lines, 'max', split_text)
+        cursor, _, __ = modify_cursor(cursor, move_lines, 'max', split_text)
         handle.mark_set(tk.INSERT, cursor)
         handle.delete(cursor)
-        new_cursor = modify_cursor(cursor, 1, 'max', split_text)
+        new_cursor, _, __ = modify_cursor(cursor, 1, 'max', split_text)
         window.after(0, lambda: (apply_function(), handle.mark_set(tk.INSERT, new_cursor)))
 
     cursor, line, column = get_cursor(handle)
     split_text = handle.get('1.0', tk.END)[:-1].split('\n')
+    print('selection, ',selection_start, selection_end)
 
     # Prevent delete or backspace from modifying textbox any further than the bounds of the selected text (if selected text is only on one line)
     if has_selection and not selection_lines:
-        if ((is_deleting and column != len(split_text[line - 1])) or (is_backspacing and column != 0)):
+        if (is_deleting and column != len(split_text[line - 1])) or (is_backspacing and column != 0):
             replace_char = lower_outer_bound_selection_char if is_backspacing else upper_outer_bound_selection_char
-        elif is_backspacing and column == 0:
+        elif (is_backspacing and column == 0) or (is_deleting and sel_end_column == len(split_text[sel_end_line - 1])):
             replace_char = '\n'
         else:
             replace_char = ''
@@ -628,6 +663,15 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     if vert_arrows:
         apply_function()
+
+    if selection_removable and selection_line_mod and (standard_key or is_cutting):
+        def move_to():
+            temp_cursor = get_cursor(handle)[0]
+            handle.insert(temp_cursor, '\n')
+            handle.mark_set(tk.INSERT, temp_cursor)
+            apply_function()
+
+        window.after(0, move_to)
 
     # The delays are necessary to solve complications for text modified by the key after this function fires
     window.after(0, highlight_stuff)
@@ -731,7 +775,7 @@ def navigate_to(index):
         if new_line < 1 or new_line > max_lines:
             new_cursor_loc = cursor_value(keep_within(new_line, 1, max_lines), 0)
         else:
-            new_cursor_loc = modify_cursor(cursor, shift_amount, 0, text)
+            new_cursor_loc, _, __ = modify_cursor(cursor, shift_amount, 0, text)
 
         handle.mark_set(tk.INSERT, new_cursor_loc)
 
@@ -743,10 +787,8 @@ def navigate_to(index):
 
     if prev_cursor_location in range(navigation, limit):
         line = prev_cursor_location - navigation
-        hack_file_text_box.mark_set(tk.INSERT, modify_cursor('1.0',
-                                                             line,
-                                                             'max',
-                                                             hack_file_text_box.get('1.0', tk.END)[:-1]))
+        temp_cursor, _, __ = modify_cursor('1.0', line, 'max', hack_file_text_box.get('1.0', tk.END)[:-1])
+        hack_file_text_box.mark_set(tk.INSERT, temp_cursor)
 
     highlight_stuff()
 
@@ -859,7 +901,7 @@ def close_window(side = 'right'):
 
 
 def open_files(mode = ''):
-    global disasm
+    global disasm, change_rom_name_button
 
     if disasm:
         if not save_changes_to_file():
@@ -868,6 +910,10 @@ def open_files(mode = ''):
         [text_box.delete('1.0', tk.END) for text_box in ALL_TEXT_BOXES]
     else:
         [text_box.configure(state=tk.NORMAL) for text_box in ALL_TEXT_BOXES]
+
+    if change_rom_name_button:
+        change_rom_name_button.destroy()
+        change_rom_name_button = None
 
     # Set data for rest of this function
     if mode == 'new':
@@ -1038,7 +1084,8 @@ def help_box():
         'Light Green: Currently targeted register',
         'Light Cyan: Instructions which are targeted by selected jump or branch',
         'Dark Pink: Jumps or branches which target selected instruction',
-        'Light Sky-Blue: Means there is a jump or branch somewhere in the assembly which targets the highlighted instruction',
+        # Jump mapping needs fixing before it will be useful
+        # 'Light Sky-Blue: Means there is a jump or branch somewhere in the assembly which targets the highlighted instruction',
         '',
         '',
         '----Keyboard----',
@@ -1088,6 +1135,10 @@ def follow_jump():
         navigate_to(address)
 
 
+def test_function():
+    dictie = disasm.find_vector_instructions()
+    asdf = None
+
 menu_bar = tk.Menu(window)
 
 file_menu = tk.Menu(menu_bar, tearoff=0)
@@ -1102,8 +1153,11 @@ menu_bar.add_cascade(label='File', menu=file_menu)
 
 tool_menu = tk.Menu(menu_bar, tearoff=0) # todo
 tool_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
-# tool_menu.add_separator()
-# tool_menu.add_command(label='Test', command=test_function)
+# ----------------------------------------------------------------------------------
+tool_menu.add_separator()
+tool_menu.add_command(label='Test', command=test_function)
+# ----------------------------------------------------------------------------------
+
 menu_bar.add_cascade(label='Tools', menu=tool_menu)
 
 opts_menu = tk.Menu(menu_bar, tearoff=0)
@@ -1129,8 +1183,7 @@ window.bind('<FocusOut>', lambda e: replace_clipboard())
 window.bind('<Button-1>', lambda e: (reset_target(),
                                      apply_hack_changes(),
                                      apply_comment_changes(),
-                                     highlight_stuff()) \
-                                     if disasm else None)
+                                     highlight_stuff()) if disasm else None)
 hack_file_text_box.bind('<Control-f>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-j>', lambda e: follow_jump())
 
