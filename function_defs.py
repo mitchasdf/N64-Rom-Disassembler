@@ -26,10 +26,6 @@ def hexi(dec_num):
     return hex(dec_num)[2:].upper()
 
 
-def hex_space(string):
-    return ' '.join([string[i:i+2] for i in range(0, len(string), 2)])
-
-
 def extend_zeroes(str,amount):
     return '0' * (amount - len(str)) + str
 

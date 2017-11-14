@@ -17,7 +17,9 @@ disasm = None
 
 window = tk.Tk()
 window.title('ROM Disassembler')
-window.geometry('1337x810+550+50')
+window.geometry('1335x810+550+50')
+window.iconbitmap('n64_disassembler.ico')
+window.config(bg='#606060')
 
 working_dir = os.path.dirname(os.path.realpath(__file__)) + '\\'
 FRESH_APP_CONFIG = {
@@ -25,20 +27,36 @@ FRESH_APP_CONFIG = {
     'previous_hack_location': working_dir,
     'scroll_amount': 8,
     'immediate_identifier': '$',
-    'previous_navigation': 0,
-    'game_address_mode': False
+    'hex_mode': False,
+    'hex_space_separation': True,
+    'game_address_mode': False,
+    'cursor_line_colour': '#686868',
+    'tag_config': {
+          'function_end': '#303060',
+          'jump_to': '#606660',
+          'jump_from': '#D06060',
+          'branch': '#985845',
+          'jump': '#995643',
+          'bad': '#DD3333',
+          'out_of_range': '#BB2222',
+          'target': '#009880',
+          'nop': '#606060',
+          'liken': '#308A30'
+    }
 }
 
 # Setup app_config either fresh or from file
 if os.path.exists(CONFIG_FILE):
     try:
-        config_in_file = unpickle_data(CONFIG_FILE)
         # Allows me to easily modify the app config items
-        for key in FRESH_APP_CONFIG:
-            if key not in config_in_file.keys():
+        config_in_file = unpickle_data(CONFIG_FILE)
+        config_keys = [key for key in config_in_file]
+        fresh_keys = [key for key in FRESH_APP_CONFIG]
+        for key in fresh_keys:
+            if key not in config_keys:
                 config_in_file[key] = FRESH_APP_CONFIG[key]
-        for key in config_in_file:
-            if key not in FRESH_APP_CONFIG.keys():
+        for key in config_keys:
+            if key not in fresh_keys:
                 del config_in_file[key]
         app_config = config_in_file.copy()
     except Exception as e:
@@ -72,33 +90,28 @@ else:
     Conditional management of each keypress is required to stop all of those problems from happening.
 '''
 
-address_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED)
-base_file_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED)
-hack_file_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED)
-comments_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED)
+BACKGROUND = '#454545'
+FOREGROUND = '#D0D0D0'
+address_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED,
+                           bg=BACKGROUND, fg=FOREGROUND)
+base_file_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED,
+                             bg=BACKGROUND, fg=FOREGROUND)
+hack_file_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED,
+                             bg=BACKGROUND, fg=FOREGROUND)
+comments_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED,
+                            bg=BACKGROUND, fg=FOREGROUND)
 
 ALL_TEXT_BOXES = [address_text_box,
                   base_file_text_box,
                   hack_file_text_box,
                   comments_text_box]
 
+[text_box.tag_config('cursor_line', background=app_config['cursor_line_colour']) for text_box in ALL_TEXT_BOXES]
+[hack_file_text_box.tag_config(tag, background=app_config['tag_config'][tag]) for tag in app_config['tag_config']]
 
-tag_config = {
-              'function_end': 'light slate blue',
-              'jump_to': 'LightBlue1',
-              'branch': 'dark salmon',
-              'jump': 'salmon',  # These colour names tho
-              'jump_from': 'tomato',
-              'bad': 'orange red',
-              'out_of_range': 'DarkOrange',
-              'target': 'turquoise',
-              'liken': 'SeaGreen2',
-              'nop': '#D0D0D0'
-              }
-[hack_file_text_box.tag_config(tag, background=tag_config[tag]) for tag in tag_config]
-
-# [current_buffer_position, [(navigation, cursor_location, text_box_content, immediate_id, game_address_mode), ...]]
-#                                                                          |------for hack_buffer only-----|
+# [current_buffer_position, [(navigation, cursor_location, text_box_content
+# , immediate_id, game_address_mode, hex_mode), ...]]
+# |-----------for hack_buffer only----------|
 hack_buffer = [-1, []]
 comments_buffer = [-1, []]
 buffer_max = 20000
@@ -108,6 +121,31 @@ user_errors = {}
 
 max_lines = 42
 navigation = 0
+
+
+def change_colours(text_bg, text_fg, win_bg, cursor_line_colour, new_tag_config):
+    [hack_file_text_box.tag_delete(tag) for tag in app_config['tag_config']]
+    [(text_box.tag_delete('cursor_line'),
+      text_box.tag_config('cursor_line', background=cursor_line_colour))
+     for text_box in ALL_TEXT_BOXES]
+    [hack_file_text_box.tag_config(tag, background=new_tag_config[tag]) for tag in new_tag_config]
+    [text_box.config(bg=text_bg, fg=text_fg) for text_box in ALL_TEXT_BOXES]
+    window.config(bg=win_bg)
+    highlight_stuff(skip_moving_cursor=True)
+
+
+def get_text_content(handle):
+    text_content = handle.get('1.0', tk.END)
+    # In case other machines don't append an extra \n character for no reason like mine does
+    if '\n'.count(text_content) == max_lines:
+        text_content = text_content[:-1]
+    return text_content
+
+
+def hex_space(string):
+    if not app_config['hex_space_separation']:
+        return string
+    return ' '.join([string[i:i+2] for i in range(0, len(string), 2)])
 
 
 def clear_error(key):
@@ -160,12 +198,10 @@ def geometry(geo):
     mul_symbol = geo.find('x')
     plus_symbol_one = geo.find('+')
     plus_symbol_two = geo.find('+', plus_symbol_one + 1)
-
     window_w = int(geo[:mul_symbol])
     window_h = int(geo[mul_symbol + 1:plus_symbol_one])
     window_x = int(geo[plus_symbol_one + 1:plus_symbol_two])
     window_y = int(geo[plus_symbol_two + 1:])
-
     return window_w, window_h, window_x, window_y
 
 
@@ -184,110 +220,156 @@ def get_word_at(list, line, column):
 
 # Is called pretty much after every time the view is changed
 prev_reg_target, prev_address_target, prev_cursor_location = '', 0, 0
-def highlight_stuff():
+def highlight_stuff(event=None, skip_moving_cursor=False):
     global prev_reg_target, prev_address_target, prev_cursor_location
 
-    [hack_file_text_box.tag_remove(tag, '1.0', tk.END) for tag in tag_config]
+    [hack_file_text_box.tag_remove(tag, '1.0', tk.END) for tag in app_config['tag_config']]
+    [text_box.tag_remove('cursor_line', '1.0', tk.END) for text_box in ALL_TEXT_BOXES]
 
-    cursor, c_line, column = get_cursor(hack_file_text_box)
-    text = hack_file_text_box.get('1.0', tk.END)[:-1].split('\n')
+    # I gave up looking for the 1 case causing attribute error
+    # Attribute error has slowly become a feature
+    try:
+        if not event:
+            cursor, c_line, column = get_cursor(hack_file_text_box)
+            hack_function = True
+        else:
+            cursor, c_line, column = get_cursor(event.widget)
+            hack_function = True if event.widget is hack_file_text_box else False
+    except AttributeError:
+        cursor, c_line, column = get_cursor(hack_file_text_box)
+        hack_function = True
+    text = get_text_content(hack_file_text_box).split('\n')
     targeting = get_word_at(text, c_line, column)
 
     if not prev_cursor_location:
         prev_cursor_location = navigation + c_line - 1
+    elif not skip_moving_cursor:
+        new_cursor = False
+        if prev_cursor_location < navigation:
+            new_cursor = '1.0'
+        elif prev_cursor_location > navigation + max_lines:
+            new_cursor = cursor_value(max_lines, 0)
+        if new_cursor:
+            hack_file_text_box.mark_set(tk.INSERT, new_cursor)
+            cursor, c_line, column = get_cursor(hack_file_text_box)
 
-    try:
-        jumps_from = disasm.jumps_to[str(prev_cursor_location)]
-    except KeyError:
-        jumps_from = []
+    jumps_from = {}
+
+    [text_box.tag_add('cursor_line',
+                      cursor_value(c_line, 0),
+                      cursor_value(c_line + 1, 0))
+     for text_box in ALL_TEXT_BOXES]
 
     if prev_address_target or not column:
         c_line = 0
 
     for i in range(len(text)):
-        line = i + 1
-        line_text = text[i]
-        this_word = line_text[:line_text.find(' ')]
-        imm_id = text[i].find(app_config['immediate_identifier'])
-        address = None
         navi = navigation + i
+        if not app_config['hex_mode']:
+            line = i + 1
+            line_text = text[i]
+            this_word = line_text[:line_text.find(' ')]
+            imm_id = text[i].find(app_config['immediate_identifier'])
+            address = None
 
-        # Highlight the end of each function
-        if text[i] == 'JR RA':
-            hack_file_text_box.tag_add('function_end',
-                                       cursor_value(line, 0),
-                                       cursor_value(line, 5))
+            # Highlight the end of each function
+            if text[i] == 'JR RA':
+                hack_file_text_box.tag_add('function_end',
+                                           cursor_value(line, 0),
+                                           cursor_value(line, 5))
 
-        # Highlight branch functions
-        elif this_word in BRANCH_FUNCTIONS:
-            hack_file_text_box.tag_add('branch',
-                                       cursor_value(line, 0),
-                                       cursor_value(line, len(text[i])))
-            if not c_line:
-                address = prev_address_target
-            elif line == c_line:
-                address = text[i][imm_id + 1:]
-
-        # Highlight jump functions
-        elif this_word in JUMP_FUNCTIONS:
-            hack_file_text_box.tag_add('jump',
-                                       cursor_value(line, 0),
-                                       cursor_value(line, len(text[i])))
-            if not c_line:
-                address = prev_address_target
-            elif line == c_line and this_word in ['J', 'JAL']:
-                address = text[i][imm_id + 1:]
-
-        elif line_text == 'NOP':
-            hack_file_text_box.tag_add('nop',
-                                       cursor_value(line, 0),
-                                       cursor_value(line, len(text[i])))
-
-        # Highlight the target of jump or branch functions
-        if address:
-            if c_line:
+            # Highlight branch functions
+            elif this_word in BRANCH_FUNCTIONS:
+                hack_file_text_box.tag_add('branch',
+                                           cursor_value(line, 0),
+                                           cursor_value(line, len(text[i])))
+                hex_address = line_text[imm_id + 1:]
+                if not c_line:
+                    address = prev_address_target
+                elif line == c_line:
+                    address = hex_address
                 try:
-                    # Raises error if user types non-numeric characters where an address/offset is
-                    address = deci(address)
-                except:
-                    address = -1
-                else:
-                    if app_config['game_address_mode']:
-                        address -= disasm.game_offset
-                    address >>= 2
-                    prev_address_target = address
-            if address in range(navigation, navigation + max_lines):
-                place = address - navigation
-                hack_file_text_box.tag_add('target',
-                                           cursor_value(place + 1, 0),
-                                           cursor_value(place + 2, 0))
+                    possibly_value_error = deci(hex_address) >> 2
+                    jumps_from[str(navi)] = possibly_value_error
+                except ValueError:
+                    ''
 
-        # Highlight instructions in which jump to the cursors location
-        if navi in jumps_from:
-            hack_file_text_box.tag_add('jump_from',
-                                       cursor_value(line, 0),
-                                       cursor_value(line + 1, 0))
 
-        # Highlight instructions in which are a target of any jump or branch
-        # Because the disasm.jumps dict is so huge, a try/except works "exceptionally" faster than iterative methods
-        try:
-            a = disasm.jumps_to[str(navi)]
+            # Highlight jump functions
+            elif this_word in JUMP_FUNCTIONS:
+                hack_file_text_box.tag_add('jump',
+                                           cursor_value(line, 0),
+                                           cursor_value(line, len(text[i])))
+                hex_address = line_text[imm_id + 1:]
+                if not c_line:
+                    address = prev_address_target
+                elif line == c_line and this_word in ['J', 'JAL']:
+                    address = hex_address
+                try:
+                    possibly_value_error = deci(hex_address) >> 2
+                    jumps_from[str(navi)] = possibly_value_error
+                except ValueError:
+                    ''
 
-            # We only want to hit this line of code if str(navi) in disasm.jumps_to
-            hack_file_text_box.tag_add('jump_to',
-                                       cursor_value(line, 0),
-                                       cursor_value(line + 1, 0))
-        except KeyError:
-            a = None
+            elif line_text == 'NOP':
+                hack_file_text_box.tag_add('nop',
+                                           cursor_value(line, 0),
+                                           cursor_value(line, len(text[i])))
+
+            # Highlight the target of jump or branch functions
+            if address:
+                if hack_function:
+                    if c_line:
+                        try:
+                            # Raises error if user types non-numeric characters where an address/offset is
+                            address = deci(address)
+                        except:
+                            address = -1
+                        else:
+                            if app_config['game_address_mode']:
+                                address -= disasm.game_offset
+                            address >>= 2
+                            prev_address_target = address
+                            jumps_from[str(navi)] = address
+                    if address in range(navigation, navigation + max_lines):
+                        place = address - navigation
+                        hack_file_text_box.tag_add('target',
+                                                   cursor_value(place + 1, 0),
+                                                   cursor_value(place + 2, 0))
+
+            # Highlight instructions in which are a target of any jump or branch
+            # Because the disasm.jumps dict is so huge, a try/except works "exceptionally" faster than iterative methods
+            try:
+                _ = disasm.jumps_to[str(navi)]
+
+                # We only want to hit this line of code if str(navi) in disasm.jumps_to
+                hack_file_text_box.tag_add('jump_to',
+                                           cursor_value(line, 0),
+                                           cursor_value(line + 1, 0))
+            except KeyError:
+                ''
 
         # Highlight errors
         key = str(navi)
-        if key in user_errors.keys():
+        if key in user_errors:
             err_code = user_errors[key][0]
             hack_file_text_box.tag_add('bad' if err_code > -3 else 'out_of_range',
                                        cursor_value(i + 1, 0),
                                        cursor_value(i + 2, 0))
-            
+
+    if not app_config['hex_mode'] and hack_function:
+        for i in range(len(text)):
+            navi = navigation + i
+            try:
+                address = jumps_from[str(navi)]
+            except:
+                continue
+            if address == prev_cursor_location:
+                # Highlight instructions in which jump to the cursors location
+                hack_file_text_box.tag_add('jump_from',
+                                           cursor_value(i + 1, 0),
+                                           cursor_value(i + 2, 0))
+
     # Highlight all of the same registers on screen if cursor is targeting one
     def highlight_targets(target):
         for i in range(len(text)):
@@ -315,12 +397,13 @@ def highlight_stuff():
 
 def reset_target():
     global prev_reg_target, prev_address_target, prev_cursor_location
-    prev_reg_target, prev_address_target, prev_cursor_location = '', 0, 0
+    prev_reg_target, prev_address_target = '', 0
+    prev_cursor_location = 0
 
 
 # The hacked text box syntax checker and change applier
 def apply_hack_changes(ignore_slot = None):
-    current_text = hack_file_text_box.get('1.0', tk.END)[:-1].upper()
+    current_text = get_text_content(hack_file_text_box).upper()
     split_text = current_text.split('\n')
     for i in range(max_lines):
         navi = navigation + i
@@ -328,9 +411,11 @@ def apply_hack_changes(ignore_slot = None):
             continue
         is_hex_part = navi < 16
         string_key = '{}'.format(navi)
-        if is_hex_part:
+        if is_hex_part or app_config['hex_mode']:
             without_spaces = split_text[i].replace(' ', '')
             try:
+                if len(without_spaces) != 8:
+                    raise Exception()
                 int_of = deci(without_spaces)
             except:
                 user_errors[string_key] = (-1, split_text[i])
@@ -353,7 +438,7 @@ def apply_hack_changes(ignore_slot = None):
 
 # Disassembler.comments accumulator
 def apply_comment_changes():
-    current_text = comments_text_box.get('1.0', tk.END)[:-1]
+    current_text = get_text_content(comments_text_box)
     split_text = current_text.split('\n')
     for i in range(max_lines):
         navi = navigation + i
@@ -398,16 +483,14 @@ def replace_clipboard():
             window.clipboard_append(clipboard)
 
 
-# Custom keyboard events and textbox behaviour upon any keypress in text boxes
+# Textbox behaviour upon key presses
 clipboard = ''
 def keyboard_events(handle, max_char, event, buffer = None, hack_function = False):
     global clipboard
     if not disasm:
         return
     reset_target()
-    joined_text = handle.get('1.0', tk.END)
-    if joined_text.count('\n') == max_lines:
-        joined_text = joined_text[:-1]
+    joined_text = get_text_content(handle)
     split_text = joined_text.split('\n')
 
     cursor, line, column = get_cursor(handle)
@@ -426,8 +509,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     shift_held = bool(event.state & 0x0001)
     alt_held = bool(event.state & 0x0008) or bool(event.state & 0x0080)
-
     has_char = bool(event.char) and event.keysym != 'Escape' and not ctrl_held
+    just_function_key = event.keysym in ['Alt_L', 'Alt_R', 'Shift_L', 'Shift_R', 'Control_L', 'Control_R']
 
     is_undoing = buffer and ctrl_held and event.keysym == 'comma'
     is_redoing = buffer and ctrl_held and event.keysym == 'period'
@@ -449,7 +532,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d or is_pasting or is_cutting):
         buffer_frame = (navigation, cursor, joined_text,
                         app_config['immediate_identifier'],
-                        app_config['game_address_mode'])\
+                        app_config['game_address_mode'],
+                        app_config['hex_mode'])\
                         if hack_function else \
                         (navigation, cursor, joined_text)
         buffer_append(buffer, buffer_frame)
@@ -461,7 +545,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             if part[0] != navigation or part[2] != joined_text:
                 buffer_frame = (navigation, cursor, joined_text,
                                 app_config['immediate_identifier'],
-                                app_config['game_address_mode']) \
+                                app_config['game_address_mode'],
+                                app_config['hex_mode']) \
                                 if hack_function else \
                                 (navigation, cursor, joined_text)
                 buffer_append(buffer, buffer_frame)
@@ -478,6 +563,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             navigate_to(buffer[1][place][0])
             cursor = buffer[1][place][1]
             text_content = buffer[1][place][2]
+
             handle.delete('1.0', tk.END)
             handle.insert('1.0', text_content)
             handle.mark_set(tk.INSERT, cursor)
@@ -485,6 +571,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             if hack_function:
                 immediate_id = buffer[1][place][3]
                 game_address_mode = buffer[1][place][4]
+                hex_mode = buffer[1][place][5]
                 if immediate_id != app_config['immediate_identifier']:
                     app_config['immediate_identifier'] = immediate_id
                     pickle_data(app_config, CONFIG_FILE)
@@ -492,10 +579,16 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                 if game_address_mode != app_config['game_address_mode']:
                     app_config['game_address_mode'] = game_address_mode
                     pickle_data(app_config, CONFIG_FILE)
+                if hex_mode != app_config['hex_mode']:
+                    app_config['hex_mode'] = hex_mode
+                    pickle_data(app_config, CONFIG_FILE)
                     disasm.game_address_mode = game_address_mode
             apply_hack_changes()
             apply_comment_changes()
-            highlight_stuff()
+            navigate_to(navigation)
+            handle.mark_set(tk.INSERT, cursor)
+            reset_target()
+            highlight_stuff(skip_moving_cursor=True)
         return
 
     # Copy/Paste and selection handling
@@ -529,9 +622,15 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     # Because using mark_set() on SEL_FIRST or SEL_LAST seems to corrupt the widgets beyond repair at a windows level,
     # A work around with a custom clipboard is required in order for the code to be able to serve it's intended purpose
-    if has_selection and not selection_lines and is_pasting and '\n' in clipboard:
-        selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 0, 'min', split_text)
-        selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, 0, 'max', split_text)
+    if has_selection and not selection_lines:
+        if is_pasting and '\n' in clipboard:
+            selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 0, 'min', split_text)
+            selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, 0, 'max', split_text)
+        if is_deleting:
+            selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, 0, -1, split_text)
+        if is_backspacing:
+            selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 0, 1, split_text)
+
 
     if selection_function:
         selection_text = handle.get(selection_start, selection_end)
@@ -583,7 +682,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     if is_pasting or is_cutting:
         def move_next(handle):
             move_amount = 1 if is_pasting else 0
-            temp_cursor, _, __ = modify_cursor(handle.index(tk.INSERT), move_amount, 'max', handle.get('1.0', tk.END)[:-1])
+            temp_cursor, _, __ = modify_cursor(handle.index(tk.INSERT), move_amount, 'max', get_text_content(handle))
             handle.mark_set(tk.INSERT, temp_cursor)
         handle.insert(insertion_place, paste_text)
         if not selection_line_mod or is_pasting:
@@ -600,7 +699,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     if selection_removable:
         selection_start, sel_start_line, sel_start_column, selection_end, sel_end_line, sel_end_column = 0,0,0,0,0,0
         has_selection = False
-    joined_text = handle.get('1.0', tk.END)[:-1]
+    joined_text = get_text_content(handle)
     split_text = joined_text.split('\n')
 
     nl_at_cursor = handle.get(cursor) == '\n'
@@ -635,7 +734,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         window.after(0, lambda: (apply_function(), handle.mark_set(tk.INSERT, new_cursor)))
 
     cursor, line, column = get_cursor(handle)
-    split_text = handle.get('1.0', tk.END)[:-1].split('\n')
+    split_text = get_text_content(handle).split('\n')
 
     # Prevent delete or backspace from modifying textbox any further than the bounds of the selected text (if selected text is only on one line)
     if has_selection and not selection_lines:
@@ -668,7 +767,11 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         window.after(0, move_to)
 
     # The delays are necessary to solve complications for text modified by the key after this function fires
-    window.after(0, highlight_stuff)
+    # window.after(0, highlight_stuff)
+
+    # The delays are necessary to solve complications for text modified by the key after this function fires
+    if not just_function_key:
+        window.after(0, lambda: highlight_stuff(event))
 
 
 base_file_text_box.bind('<Key>', lambda event:
@@ -699,14 +802,19 @@ def change_rom_name():
         navigate_to(navigation)
 
 
+def destroy_change_rom_name_button():
+    global change_rom_name_button
+    if change_rom_name_button:
+        change_rom_name_button.destroy()
+        change_rom_name_button = None
+
+
 def navigate_to(index):
     global navigation, change_rom_name_button, disasm
     if not disasm:
         return
 
-    if change_rom_name_button:
-        change_rom_name_button.destroy()
-        change_rom_name_button = None
+    destroy_change_rom_name_button()
 
     shift_amount = navigation
 
@@ -739,24 +847,33 @@ def navigate_to(index):
     # Calculate what addresses to display in the address box, and disassemble ints into instructions, display header section as hex
     address_range = [extend_zeroes(hexi((i * 4) + (disasm.game_offset
                                                    if disasm.game_address_mode else 0)), 8) for i in range(navigation, limit)]
-    base_disassembled = [disasm.decode(ints_in_base_sample[i], navigation + i) if navigation + i > 15 else \
-                         hex_space(extend_zeroes(hexi(ints_in_base_sample[i]), 8)) \
+
+    base_disassembled = [disasm.decode(ints_in_base_sample[i], navigation + i)
+                         if navigation + i > 15 and not app_config['hex_mode'] else
+                         hex_space(extend_zeroes(hexi(ints_in_base_sample[i]), 8))
                          for i in range(len(ints_in_base_sample))]
-    hack_disassembled = [disasm.decode(ints_in_hack_sample[i], navigation + i) if navigation + i > 15 else \
-                         hex_space(extend_zeroes(hexi(ints_in_hack_sample[i]), 8)) \
+    hack_disassembled = [disasm.decode(ints_in_hack_sample[i], navigation + i)
+                         if navigation + i > 15 and not app_config['hex_mode'] else
+                         hex_space(extend_zeroes(hexi(ints_in_hack_sample[i]), 8))
                          for i in range(len(ints_in_hack_sample))]
 
     # Replace disassembled data in the hack file with any errors the user has made
     for i in range(len(hack_disassembled)):
+        if not hack_disassembled[i]:
+            hack_disassembled[i] = 'UNKNOWN/NOT AN INSTRUCTION'
+        if not base_disassembled[i]:
+            base_disassembled[i] = 'UNKNOWN/NOT AN INSTRUCTION'
         string_key = '{}'.format(navigation + i)
         if string_key in user_errors.keys():
             hack_disassembled[i] = user_errors[string_key][1]
 
     # Display floating Rom Name Change button
     if disasm.header_items['Rom Name'][0] // 4 in range(navigation, limit):
-        change_rom_name_button = tk.Button(window, text = 'Change', command = change_rom_name)
+        change_rom_name_button = tk.Button(window, text = 'Change', command = change_rom_name,
+                                           bg='#606060', fg='#D0D0D0',
+                                           activebackground='#606060', activeforeground='#D0D0D0')
         y_offset = ((disasm.header_items['Rom Name'][0] // 4) - navigation) * 18
-        change_rom_name_button.place(x = 965, y = 46 + y_offset, height = 20)
+        change_rom_name_button.place(x = 965, y = 46 + y_offset, height = 21)
 
     # Update all 4 text boxes
     def update_text_box(handle, text):
@@ -781,7 +898,7 @@ def navigate_to(index):
 
     if prev_cursor_location in range(navigation, limit):
         line = prev_cursor_location - navigation
-        temp_cursor, _, __ = modify_cursor('1.0', line, 'max', hack_file_text_box.get('1.0', tk.END)[:-1])
+        temp_cursor, _, __ = modify_cursor('1.0', line, 'max', get_text_content(hack_file_text_box))
         hack_file_text_box.mark_set(tk.INSERT, temp_cursor)
 
     highlight_stuff()
@@ -895,7 +1012,7 @@ def close_window(side = 'right'):
 
 
 def open_files(mode = ''):
-    global disasm, change_rom_name_button
+    global disasm
 
     if disasm:
         if not save_changes_to_file():
@@ -904,10 +1021,7 @@ def open_files(mode = ''):
         [text_box.delete('1.0', tk.END) for text_box in ALL_TEXT_BOXES]
     else:
         [text_box.configure(state=tk.NORMAL) for text_box in ALL_TEXT_BOXES]
-
-    if change_rom_name_button:
-        change_rom_name_button.destroy()
-        change_rom_name_button = None
+    destroy_change_rom_name_button()
 
     # Set data for rest of this function
     if mode == 'new':
@@ -920,14 +1034,20 @@ def open_files(mode = ''):
         hack_dialog_function = filedialog.askopenfilename
 
     # Obtain file locations from user input
-    base_file_path = filedialog.askopenfilename(initialdir = app_config['previous_base_location'], title = base_title)
+    if open_my_roms_automatically:
+        base_file_path = 'C:\\Users\\Mitchell\\Desktop\\n64split\\base sm64.z64'
+    else:
+        base_file_path = filedialog.askopenfilename(initialdir = app_config['previous_base_location'], title = base_title)
     if not base_file_path:
         return
     base_file_path = os.path.realpath(base_file_path)
     base_dir = base_file_path[:base_file_path.rfind('\\') + 1]
 
     hack_dir = base_dir if mode == 'new' else app_config['previous_hack_location']
-    hack_file_path = hack_dialog_function(initialdir = hack_dir, title = hack_title)
+    if open_my_roms_automatically:
+        hack_file_path = 'C:\\Users\\Mitchell\\Desktop\\n64split\\hack sm64.z64'
+    else:
+        hack_file_path = hack_dialog_function(initialdir = hack_dir, title = hack_title)
     if not hack_file_path:
         return
     base_dot = base_file_path.rfind('.')
@@ -983,12 +1103,13 @@ def open_files(mode = ''):
         navigate_to(0)
         buffer_append(hack_buffer, (navigation,
                                     cursor_value(1, 0),
-                                    hack_file_text_box.get('1.0', tk.END)[:-1],
+                                    get_text_content(hack_file_text_box),
                                     app_config['immediate_identifier'],
-                                    app_config['game_address_mode']))
+                                    app_config['game_address_mode'],
+                                    app_config['hex_mode']))
         buffer_append(comments_buffer, (navigation,
                                         cursor_value(1, 0),
-                                        comments_text_box.get('1.0', tk.END)[:-1]))
+                                        get_text_content(comments_text_box)))
         timer_tick('Disasm init')
 
         # ints = ints_of_4_byte_aligned_region(disasm.hack_file)
@@ -1006,13 +1127,25 @@ def toggle_address_mode():
     apply_comment_changes()
     buffer_append(hack_buffer, (navigation,
                                 hack_file_text_box.index(tk.INSERT),
-                                hack_file_text_box.get('1.0', tk.END)[:-1],
+                                get_text_content(hack_file_text_box),
                                 app_config['immediate_identifier'],
                                 app_config['game_address_mode']))
     toggle_to = not app_config['game_address_mode']
     app_config['game_address_mode'] = toggle_to
     if disasm:
         disasm.game_address_mode = toggle_to
+    pickle_data(app_config, CONFIG_FILE)
+    navigate_to(navigation)
+
+
+def toggle_hex_mode():
+    app_config['hex_mode'] = not app_config['hex_mode']
+    pickle_data(app_config, CONFIG_FILE)
+    navigate_to(navigation)
+
+
+def toggle_hex_space():
+    app_config['hex_space_separation'] = not app_config['hex_space_separation']
     pickle_data(app_config, CONFIG_FILE)
     navigate_to(navigation)
 
@@ -1024,7 +1157,7 @@ def change_immediate_id():
     symbol = simpledialog.askstring('Set immediate identifier symbol',
                                     'Must be one of {}'.format(' '.join(accepted_symbols)))
     if symbol and symbol[:1] in accepted_symbols:
-        hack_text = hack_file_text_box.get('1.0', tk.END)[:-1]
+        hack_text = get_text_content(hack_file_text_box)
         buffer_append(hack_buffer, (navigation,
                                     hack_file_text_box.index(tk.INSERT),
                                     hack_text,
@@ -1078,18 +1211,18 @@ def help_box():
         'Light Green: Currently targeted register',
         'Light Cyan: Instructions which are targeted by selected jump or branch',
         'Dark Pink: Jumps or branches which target selected instruction',
-        # Jump mapping needs fixing before it will be useful
-        # 'Light Sky-Blue: Means there is a jump or branch somewhere in the assembly which targets the highlighted instruction',
+        'Light Sky-Blue: Means there is a jump or branch somewhere in the assembly which targets the highlighted instruction',
         '',
         '',
         '----Keyboard----',
         'Ctrl+N: Open base rom and start new hacked file',
         'Ctrl+O: Open base rom and existing hacked rom',
         'Ctrl+S: Quick save',
-        'Ctrl+J: Follow jump/branch at text insert cursor',
-        'Ctrl+F: Find all jumps to function at text insert cursor',
+        'Ctrl+F: Follow jump/branch at text insert cursor',
+        'Ctrl+G: Find all jumps to function at text insert cursor',
         'F4: Navigate to address',
         'F5: Toggle mode which displays and handles addresses using the game\'s entry point',
+        'F6: Toggle hex mode',
         'Ctrl+{Comma} ("<" key): Undo',
         'Ctrl+{Fullstop} (">" key): Redo',
         '',
@@ -1104,38 +1237,85 @@ def about_box():
         'Created by Mitchell Parry-Shaw with Python 3.5 during 2017 sometime.',
         'There really isn\'t much else to tell you. Sorry.'
     ])
-    simpledialog.messagebox._show('Shoutouts to simpleflips', message)
+    simpledialog.messagebox._show('Shoutouts to simpleflips')
 
 
 def find_jumps():
+    if not disasm:
+        return
     cursor, line, column = get_cursor(hack_file_text_box)
     navi = (line - 1) + navigation
     jumps = disasm.find_jumps(navi)
-    # todo: make jump gui
+    print(jumps)
 
 
 def follow_jump():
+    if not disasm:
+        return
     cursor, line, column = get_cursor(hack_file_text_box)
     navi = (line - 1) + navigation
     navi_4 = navi << 2
     int_word = ints_of_4_byte_aligned_region(disasm.hack_file[navi_4: navi_4 + 4])[0]
     opcode = (int_word & 0xFC000000) >> 26
-    navi += 1  # Address calculated based on delay slot
-    if opcode in JUMP_INTS:
+    navi += 1  # Address calculated based on address of delay slot
+    address = 0
+    if JUMP_INTS[opcode]:
         address = (int_word & 0x03FFFFFF) + (navi & 0x3C000000)
-        navigate_to(address)
-    elif opcode in BRANCH_INTS:
+    elif BRANCH_INTS[opcode]:
         address = sign_16_bit_value(int_word & 0xFFFF) + navi
-        navigate_to(address)
+    if address:
+        text_box_contents = get_text_content(hack_file_text_box)
+        # (navigation, cursor_location, text_box_content, immediate_id, game_address_mode)
+        frame = hack_buffer[1][hack_buffer[0]]
+        if frame[0] != navigation or frame[1] != cursor or frame[2] != text_box_contents:
+            buffer_append(hack_buffer,
+                        (navigation, cursor, text_box_contents, app_config['immediate_identifier'],
+                         app_config['game_address_mode'], app_config['hex_mode']))
+        half_way = max_lines >> 1
+        navigate_to(address - half_way)
+        text_box_contents = get_text_content(hack_file_text_box)
+        cursor_loc = modify_cursor(cursor_value(half_way, 0), 1, 'max', text_box_contents)[0]
+        hack_file_text_box.mark_set(tk.INSERT, cursor_loc)
+        buffer_append(hack_buffer,
+                    (navigation, cursor_loc, text_box_contents,
+                    app_config['immediate_identifier'], app_config['game_address_mode'], app_config['hex_mode']))
+        highlight_stuff(skip_moving_cursor=True)
+
+
+colours_window = None
+def set_colour_scheme():
+    if colours_window:
+        return
+
 
 
 def test_function():
-    dictie = disasm.find_vector_instructions()
-    asdf = None
+    # dictie = disasm.find_vector_instructions()
+    # navigate_to(0x000E66A8 >> 2)
+    #
+    # asdf = None
+    change_colours(text_bg='#AAAAAA',text_fg='#444444', win_bg='#000000', cursor_line_colour='#999999',
+                   new_tag_config={
+                      'function_end': '#AAAAAA',
+                      'jump_to': '#505050',
+                      'jump_from': '#303030',
+                      'branch': '#000000',
+                      'jump': '#202020',
+                      'bad': '#646464',
+                      'out_of_range': '#505050',
+                      'target': '#909090',
+                      'nop': '#000000',
+                      'liken': '#323232'
+                   })
+
+
 
 menu_bar = tk.Menu(window)
 
-file_menu = tk.Menu(menu_bar, tearoff=0)
+MENU_BACKGROUND = '#FFFFFF'
+MENU_FOREGROUND = '#000000'
+
+file_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
 file_menu.add_command(label='Start new (Ctrl+N)', command=lambda: open_files('new'))
 file_menu.add_command(label='Open existing (Ctrl+O)', command=lambda: open_files('existing'))
 file_menu.add_separator()
@@ -1145,22 +1325,26 @@ file_menu.add_separator()
 file_menu.add_command(label='Exit', command=lambda: close_window('left'))
 menu_bar.add_cascade(label='File', menu=file_menu)
 
-tool_menu = tk.Menu(menu_bar, tearoff=0) # todo
-tool_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
+nav_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
+nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
+nav_menu.add_command(label='')
 # ----------------------------------------------------------------------------------
-tool_menu.add_separator()
-tool_menu.add_command(label='Test', command=test_function)
+nav_menu.add_separator()
+nav_menu.add_command(label='Test', command=test_function)
 # ----------------------------------------------------------------------------------
 
-menu_bar.add_cascade(label='Tools', menu=tool_menu)
+menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 
-opts_menu = tk.Menu(menu_bar, tearoff=0)
+opts_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
 opts_menu.add_command(label='Toggle "game entry point" mode (F5)', command=toggle_address_mode)
+opts_menu.add_command(label='Toggle hex mode (F6)', command=toggle_hex_mode)
+opts_menu.add_command(label='Toggle hex space separation (F7)', command=toggle_hex_space)
 opts_menu.add_command(label='Change immediate value identifier', command=change_immediate_id)
 opts_menu.add_command(label='Set scroll amount', command=set_scroll_amount)
+opts_menu.add_command(label='Set colour scheme', command=set_colour_scheme)
 menu_bar.add_cascade(label='Options', menu=opts_menu)
 
-help_menu = tk.Menu(menu_bar,tearoff=0)
+help_menu = tk.Menu(menu_bar,tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
 help_menu.add_command(label='Help', command=help_box)
 help_menu.add_command(label='About', command=about_box)
 menu_bar.add_cascade(label='Help', menu=help_menu)
@@ -1169,17 +1353,25 @@ window.config(menu=menu_bar)
 
 window.bind('<F4>', lambda e: navigation_prompt())
 window.bind('<F5>', lambda e: toggle_address_mode())
+window.bind('<F6>', lambda e: toggle_hex_mode())
+window.bind('<F7>', lambda e: toggle_hex_space())
 window.bind('<Control-s>', lambda e: save_changes_to_file())
 window.bind('<Control-n>', lambda e: open_files(mode='new'))
 window.bind('<Control-o>', lambda e: open_files())
 window.bind('<MouseWheel>', scroll_callback)
 window.bind('<FocusOut>', lambda e: replace_clipboard())
+hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
+hack_file_text_box.bind('<Control-f>', lambda e: follow_jump())
 window.bind('<Button-1>', lambda e: (reset_target(),
                                      apply_hack_changes(),
                                      apply_comment_changes(),
-                                     highlight_stuff()) if disasm else None)
-hack_file_text_box.bind('<Control-f>', lambda e: find_jumps())
-hack_file_text_box.bind('<Control-j>', lambda e: follow_jump())
+                                     highlight_stuff(e)) if disasm else None)
+
+# text_box_locations = [
+#     [6, 45, 85, 760],
+#     [95, 45, 315, 760],
+#     []
+# ]
 
 address_text_box.place(x=6, y=45, width=85, height=760)
 base_file_text_box.place(x=95, y=45, width=315, height=760)
@@ -1187,4 +1379,9 @@ hack_file_text_box.place(x=414, y=45, width=315, height=760)
 comments_text_box.place(x=733, y=45, width=597, height=760)
 
 window.protocol('WM_DELETE_WINDOW', close_window)
+
+open_my_roms_automatically = True
+if open_my_roms_automatically:
+    window.after(1, lambda: (destroy_change_rom_name_button(), open_files()))
+
 window.mainloop()
