@@ -1,9 +1,10 @@
 
 import tkinter as tk
-from tkinter import simpledialog, filedialog
+from tkinter import simpledialog, filedialog, colorchooser
 import os
 from function_defs import *
 from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS
+import webbrowser
 
 CONFIG_FILE = 'rom disassembler.config'
 
@@ -17,9 +18,8 @@ disasm = None
 
 window = tk.Tk()
 window.title('ROM Disassembler')
-window.geometry('1335x810+550+50')
+window.geometry('1335x820+550+50')
 window.iconbitmap('n64_disassembler.ico')
-window.config(bg='#606060')
 
 working_dir = os.path.dirname(os.path.realpath(__file__)) + '\\'
 FRESH_APP_CONFIG = {
@@ -30,10 +30,13 @@ FRESH_APP_CONFIG = {
     'hex_mode': False,
     'hex_space_separation': True,
     'game_address_mode': False,
+    'mem_edit_offset': {},
     'cursor_line_colour': '#686868',
+    'window_background_colour': '#606060',
+    'text_bg_colour': '#454545',
+    'text_fg_colour': '#D0D0D0',
     'tag_config': {
-          'function_end': '#303060',
-          'jump_to': '#606660',
+          'jump_to': '#1d6152',
           'jump_from': '#D06060',
           'branch': '#985845',
           'jump': '#995643',
@@ -41,9 +44,11 @@ FRESH_APP_CONFIG = {
           'out_of_range': '#BB2222',
           'target': '#009880',
           'nop': '#606060',
+          'function_end': '#303060',
           'liken': '#308A30'
     }
 }
+
 
 # Setup app_config either fresh or from file
 if os.path.exists(CONFIG_FILE):
@@ -59,15 +64,21 @@ if os.path.exists(CONFIG_FILE):
             if key not in fresh_keys:
                 del config_in_file[key]
         app_config = config_in_file.copy()
+        del app_config['tag_config']
+        app_config['tag_config'] = {}
+        for tag in FRESH_APP_CONFIG['tag_config']:
+            app_config['tag_config'][tag] = config_in_file['tag_config'][tag]
     except Exception as e:
-        app_config = FRESH_APP_CONFIG.copy()
-        simpledialog.messagebox._show('Error',
-                                      'There was a problem loading the config file. '
-                                      'Starting with default configuration.'
-                                      '\n\nError: {}'.format(e))
+        # app_config = FRESH_APP_CONFIG.copy()
+        # simpledialog.messagebox._show('Error',
+        #                               'There was a problem loading the config file. '
+        #                               'Starting with default configuration.'
+        #                               '\n\nError: {}'.format(e))
+        raise Exception(e)
 else:
     app_config = FRESH_APP_CONFIG.copy()
 
+window.config(bg=app_config['window_background_colour'])
 '''
     A GUI with custom behaviour is required for user-friendliness.
     
@@ -90,21 +101,19 @@ else:
     Conditional management of each keypress is required to stop all of those problems from happening.
 '''
 
-BACKGROUND = '#454545'
-FOREGROUND = '#D0D0D0'
-address_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED,
-                           bg=BACKGROUND, fg=FOREGROUND)
-base_file_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED,
-                             bg=BACKGROUND, fg=FOREGROUND)
-hack_file_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED,
-                             bg=BACKGROUND, fg=FOREGROUND)
-comments_text_box = tk.Text(window, font = 'Courier', state=tk.DISABLED,
-                            bg=BACKGROUND, fg=FOREGROUND)
+
+address_text_box = tk.Text(window)
+base_file_text_box = tk.Text(window)
+hack_file_text_box = tk.Text(window)
+comments_text_box = tk.Text(window)
 
 ALL_TEXT_BOXES = [address_text_box,
                   base_file_text_box,
                   hack_file_text_box,
                   comments_text_box]
+[text_box.config(font=('Courier',12), state=tk.DISABLED,
+                 bg=app_config['text_bg_colour'], fg=app_config['text_fg_colour'])
+ for text_box in ALL_TEXT_BOXES]
 
 [text_box.tag_config('cursor_line', background=app_config['cursor_line_colour']) for text_box in ALL_TEXT_BOXES]
 [hack_file_text_box.tag_config(tag, background=app_config['tag_config'][tag]) for tag in app_config['tag_config']]
@@ -130,7 +139,11 @@ def change_colours(text_bg, text_fg, win_bg, cursor_line_colour, new_tag_config)
      for text_box in ALL_TEXT_BOXES]
     [hack_file_text_box.tag_config(tag, background=new_tag_config[tag]) for tag in new_tag_config]
     [text_box.config(bg=text_bg, fg=text_fg) for text_box in ALL_TEXT_BOXES]
+    address_translate_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg,activeforeground=text_fg)
     window.config(bg=win_bg)
+    [handle.config(bg=text_bg,fg=text_fg) for handle in [address_input, address_output]]
+    if change_rom_name_button:
+        change_rom_name_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg, activeforeground=text_fg)
     highlight_stuff(skip_moving_cursor=True)
 
 
@@ -218,6 +231,22 @@ def get_word_at(list, line, column):
     return list[line - 1][lower_bound_punc + 1: upper_bound_punc]
 
 
+# Without this, if the mouse_x location is anywhere beyond halfway between the x positions of
+#   the end character and the right end of the text box, the text input cursor will move to
+#   the beginning of the next line
+def correct_cursor(event):
+    try:
+        handle, cursor_x, cursor_y = event.widget, event.x, event.y
+        x, y, w, h = handle.bbox(tk.INSERT)
+        if cursor_x != keep_within(cursor_x, x, x+w) or cursor_y != keep_within(cursor_y, y, y+h):
+            cursor, line, column = get_cursor(handle)
+            if not column:
+                text_content = get_text_content(handle)
+                handle.mark_set(tk.INSERT, modify_cursor(cursor, -1, 'max', text_content)[0])
+    except:
+        ''
+
+
 # Is called pretty much after every time the view is changed
 prev_reg_target, prev_address_target, prev_cursor_location = '', 0, 0
 def highlight_stuff(event=None, skip_moving_cursor=False):
@@ -240,6 +269,7 @@ def highlight_stuff(event=None, skip_moving_cursor=False):
         hack_function = True
     text = get_text_content(hack_file_text_box).split('\n')
     targeting = get_word_at(text, c_line, column)
+
 
     if not prev_cursor_location:
         prev_cursor_location = navigation + c_line - 1
@@ -375,7 +405,7 @@ def highlight_stuff(event=None, skip_moving_cursor=False):
         for i in range(len(text)):
             line = i + 1
             begin = 0
-            while True:
+            while hack_function:
                 column = text[i].find(target, begin)
                 word_at = get_word_at(text, line, column)
                 if column >= 0:
@@ -869,11 +899,12 @@ def navigate_to(index):
 
     # Display floating Rom Name Change button
     if disasm.header_items['Rom Name'][0] // 4 in range(navigation, limit):
+        bg, fg = app_config['text_bg_colour'], app_config['text_fg_colour']
         change_rom_name_button = tk.Button(window, text = 'Change', command = change_rom_name,
-                                           bg='#606060', fg='#D0D0D0',
-                                           activebackground='#606060', activeforeground='#D0D0D0')
+                                           bg=bg, fg=fg,
+                                           activebackground=bg, activeforeground=fg)
         y_offset = ((disasm.header_items['Rom Name'][0] // 4) - navigation) * 18
-        change_rom_name_button.place(x = 965, y = 46 + y_offset, height = 21)
+        change_rom_name_button.place(x = 965, y = 36 + y_offset, height = 21)
 
     # Update all 4 text boxes
     def update_text_box(handle, text):
@@ -971,7 +1002,6 @@ def save_changes_to_file(save_as=False):
 
 
 def close_window(side = 'right'):
-    global disasm
     if not disasm:
         window.destroy()
         return
@@ -992,8 +1022,14 @@ def close_window(side = 'right'):
     close_win.title('Exit')
     label = tk.Label(close_win, text = 'Save work?').place(x = 150, y = 12)
 
-    yes_button = tk.Button(close_win, text='Yes',command = lambda:\
-        (save_changes_to_file(), window.destroy(), close_win.destroy()))
+    def yes_button_callback():
+        if save_changes_to_file():
+            window.destroy()
+            if colours_window:
+                colours_window.destroy()
+        close_win.destroy()
+
+    yes_button = tk.Button(close_win, text='Yes',command = yes_button_callback)
     no_button = tk.Button(close_win, text='No',command = lambda:\
         (window.destroy(), close_win.destroy()))
 
@@ -1001,8 +1037,6 @@ def close_window(side = 'right'):
     no_button.place(x=75, y=10, width=50)
 
     def cancel_close_win():
-        global closing
-        closing = False
         close_win.destroy()
 
     close_win.protocol('WM_DELETE_WINDOW', cancel_close_win)
@@ -1187,57 +1221,61 @@ def set_scroll_amount():
 def help_box():
     message = '\n'.join([
         '----General Info----',
-        'The base rom file is never modified, even if you try to make modifications to the textbox.',
+        'The base rom file is never modified, even if you try to make modifications to the textbox. '
         'It is simply there to reflect on if you need to see the original code at any point.',
         '',
-        'In order to save any changes you have made, all errors must be resolved before the save feature will allow it.',
+        'In order to save any changes you have made, all errors must be corrected before the save feature will allow it. '
         'Trying to save while an error exists will result in your navigation shifting to the next error instead.',
         '',
-        'The header part displays and edits as hex values.',
-        '',
-        'The comments file will be output to where your hacked rom is located.',
-        'The comments file must always be located in the same folder as your hacked rom in order for it to load.',
+        'The comments file will be output to where your hacked rom is located. '
+        'The comments file must always be located in the same folder as your hacked rom in order for it to load. '
         'You can also open the comments files with a text editor if required.',
         '',
         'When setting the scroll amount, use "0x" to specify a hexadecimal value, or leave it out to specify a decimal value.',
         '',
+        'The "Translate Address" section is for addresses you find with your memory editor to be translated to the corresponding '
+        'memory address for your emulator. In order to use this feature you will have to grab the game entry point address from '
+        'your memory editor and paste it into "Options->Set memory editor offset"',
+        '',
         '',
         '----Highlighting----',
-        'Red: Error - Invalid syntax',
-        'Orange: Error - Immediate value used beyond it\'s limit',
-        'Pink: Jump functions',
-        'Light Pink: Branch functions',
-        'Light Purple: JR RA',
-        'Light Green: Currently targeted register',
-        'Light Cyan: Instructions which are targeted by selected jump or branch',
-        'Dark Pink: Jumps or branches which target selected instruction',
-        'Light Sky-Blue: Means there is a jump or branch somewhere in the assembly which targets the highlighted instruction',
+        'There are different coloured highlights for jumps/branches and more. See "Options->Change Colour Scheme" '
+        'for more details',
         '',
         '',
         '----Keyboard----',
-        'Ctrl+N: Open base rom and start new hacked file',
-        'Ctrl+O: Open base rom and existing hacked rom',
         'Ctrl+S: Quick save',
         'Ctrl+F: Follow jump/branch at text insert cursor',
         'Ctrl+G: Find all jumps to function at text insert cursor',
         'F4: Navigate to address',
         'F5: Toggle mode which displays and handles addresses using the game\'s entry point',
         'F6: Toggle hex mode',
+        'F7: Toggle byte separation during hex mode',
         'Ctrl+{Comma} ("<" key): Undo',
         'Ctrl+{Fullstop} (">" key): Redo',
         '',
-        'The hacked rom text box and comments text box have separate undo/redo buffers.',
-        'Both buffers can hold up to 20,000 keystrokes worth of frames each.'
+        'The hacked rom text box and comments text box have separate undo/redo buffers. '
+        'Both buffers can hold up to 20,000  frames each.'
     ])
     simpledialog.messagebox._show('Help', message)
 
 
 def about_box():
-    message = '\n'.join([
-        'Created by Mitchell Parry-Shaw with Python 3.5 during 2017 sometime.',
-        'There really isn\'t much else to tell you. Sorry.'
-    ])
-    simpledialog.messagebox._show('Shoutouts to simpleflips')
+
+    def callback(event):
+        webbrowser.open_new('https://github.com/mikeryan/n64dev/tree/master/docs/n64ops')
+
+    about = tk.Tk()
+    about.title('About')
+    message = tk.Label(about, text='Made by Mitchell Parry-Shaw'
+                                   '\nDisassembler created using data from:')
+    link = tk.Label(about, text='https://github.com/mikeryan/n64dev/tree/master/docs/n64ops', fg="blue", cursor="hand2")
+    message.pack()
+    link.pack(side=tk.RIGHT)
+    link.bind("<Button-1>", callback)
+    about.focus_force()
+    about.bind('<FocusOut>', lambda e: about.destroy())
+    about.mainloop()
 
 
 def find_jumps():
@@ -1246,7 +1284,6 @@ def find_jumps():
     cursor, line, column = get_cursor(hack_file_text_box)
     navi = (line - 1) + navigation
     jumps = disasm.find_jumps(navi)
-    print(jumps)
 
 
 def follow_jump():
@@ -1283,31 +1320,232 @@ def follow_jump():
 
 
 colours_window = None
+
 def set_colour_scheme():
+    global colours_window
     if colours_window:
         return
+    if not disasm:
+        simpledialog.messagebox._show('Please note', 'You will need to open rom files in order to see your text '
+                                                     'colour changes.')
+    colours_window = tk.Tk()
+    colours_window.title('Colour scheme')
+    colours_window.geometry('{}x{}'.format(458, 456))
 
+    def colour_buttons_callback(which, with_colour=''):
+        if not with_colour:
+            if which in app_config['tag_config']:
+                start_colour = app_config['tag_config'][which]
+            else:
+                start_colour = app_config[which]
+            new_colour = colorchooser.askcolor(color=start_colour)
+        else:
+            int_colour = int('0x' + with_colour[1:], 16)
+            r, g, b = (int_colour & 0xFF0000) >> 16, (int_colour & 0xFF00) >> 8, int_colour & 0xFF
+            new_colour = ((r, g, b), with_colour)
+        if not new_colour[0]:
+            return
+        if which in app_config['tag_config']:
+            app_config['tag_config'][which] = new_colour[1]
+        else:
+            app_config[which] = new_colour[1]
+        grey_scale = (new_colour[0][0] + new_colour[0][1] + new_colour[0][2]) / 3
+        if grey_scale < 128:
+            fg = '#FFFFFF'
+        else:
+            fg = '#000000'
+        bg = new_colour[1]
+        custom_buttons[which].config(bg=bg, activebackground=bg, fg=fg, activeforeground=fg)
+        change_colours(app_config['text_bg_colour'], app_config['text_fg_colour'],
+                       app_config['window_background_colour'], app_config['cursor_line_colour'],
+                       app_config['tag_config'])
+        pickle_data(app_config, CONFIG_FILE)
+
+    button_text = {
+        'text_bg_colour': 'Textbox Background',
+        'text_fg_colour': 'Text Colour',
+        'window_background_colour': 'Window Background',
+        'cursor_line_colour': 'Input Cursor Line',
+        'liken': 'Selected Register',
+        'target': 'Target Of Selected Jump/Branch',
+        'jump_from': 'Jumps/Branches To Selected Instruction',
+        'jump_to': 'All Targets Of Any Jump/Branch',
+        'branch': 'Branch Instructions',
+        'jump': 'Jump Instructions',
+        'nop': 'NOP',
+        'function_end': 'JR RA',
+        'bad': 'Syntax Errors',
+        'out_of_range': 'Immediate Out Of Range Errors',
+    }
+    current_colours = {}
+    for i in button_text:
+        if i in app_config['tag_config']:
+            current_colours[i] = app_config['tag_config'][i]
+        else:
+            current_colours[i] = app_config[i]
+    dark_colours = {}
+    for i in button_text:
+        if i in FRESH_APP_CONFIG['tag_config']:
+            dark_colours[i] = FRESH_APP_CONFIG['tag_config'][i]
+        else:
+            dark_colours[i] = FRESH_APP_CONFIG[i]
+    bright_colours = {
+        'text_bg_colour': '#ffffff',
+        'text_fg_colour': '#000000',
+        'window_background_colour': '#e8e8e8',
+        'cursor_line_colour': '#ebebeb',
+        'liken': '#1be9b0',
+        'target': '#35ffe1',
+        'jump_from': '#f9c5bf',
+        'jump_to': '#c6fff2',
+        'branch': '#f37a7a',
+        'jump': '#f89789',
+        'nop': '#d8d8d8',
+        'function_end': '#ca88e6',
+        'bad': '#dd3333',
+        'out_of_range': '#be2323'
+    }
+    custom_buttons = {}
+    previous_setting_buttons = {}
+    default_dark_buttons = {}
+    default_bright_buttons = {}
+    for tag in button_text:
+        custom_buttons[tag] = tk.Button(colours_window)
+        previous_setting_buttons[tag] = tk.Button(colours_window)
+        default_bright_buttons[tag] = tk.Button(colours_window)
+        default_dark_buttons[tag] = tk.Button(colours_window)
+
+    # For some reason, I cannot set the command inside a loop. It sets all callbacks with 'out_of_range', the final iteration
+    custom_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour'))
+    custom_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour'))
+    custom_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour'))
+    custom_buttons['cursor_line_colour'].config(command=lambda: colour_buttons_callback('cursor_line_colour'))
+    custom_buttons['jump_to'].config(command=lambda: colour_buttons_callback('jump_to'))
+    custom_buttons['jump_from'].config(command=lambda: colour_buttons_callback('jump_from'))
+    custom_buttons['branch'].config(command=lambda: colour_buttons_callback('branch'))
+    custom_buttons['jump'].config(command=lambda: colour_buttons_callback('jump'))
+    custom_buttons['liken'].config(command=lambda: colour_buttons_callback('liken'))
+    custom_buttons['target'].config(command=lambda: colour_buttons_callback('target'))
+    custom_buttons['nop'].config(command=lambda: colour_buttons_callback('nop'))
+    custom_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end'))
+    custom_buttons['bad'].config(command=lambda: colour_buttons_callback('bad'))
+    custom_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range'))
+    previous_setting_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',current_colours['text_bg_colour']))
+    previous_setting_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',current_colours['text_fg_colour']))
+    previous_setting_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour',current_colours['window_background_colour']))
+    previous_setting_buttons['cursor_line_colour'].config(command=lambda: colour_buttons_callback('cursor_line_colour',current_colours['cursor_line_colour']))
+    previous_setting_buttons['jump_to'].config(command=lambda: colour_buttons_callback('jump_to',current_colours['jump_to']))
+    previous_setting_buttons['jump_from'].config(command=lambda: colour_buttons_callback('jump_from',current_colours['jump_from']))
+    previous_setting_buttons['branch'].config(command=lambda: colour_buttons_callback('branch',current_colours['branch']))
+    previous_setting_buttons['jump'].config(command=lambda: colour_buttons_callback('jump',current_colours['jump']))
+    previous_setting_buttons['liken'].config(command=lambda: colour_buttons_callback('liken',current_colours['liken']))
+    previous_setting_buttons['target'].config(command=lambda: colour_buttons_callback('target',current_colours['target']))
+    previous_setting_buttons['nop'].config(command=lambda: colour_buttons_callback('nop',current_colours['nop']))
+    previous_setting_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end',current_colours['function_end']))
+    previous_setting_buttons['bad'].config(command=lambda: colour_buttons_callback('bad',current_colours['bad']))
+    previous_setting_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range',current_colours['out_of_range']))
+    default_dark_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',dark_colours['text_bg_colour']))
+    default_dark_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',dark_colours['text_fg_colour']))
+    default_dark_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour',dark_colours['window_background_colour']))
+    default_dark_buttons['cursor_line_colour'].config(command=lambda: colour_buttons_callback('cursor_line_colour',dark_colours['cursor_line_colour']))
+    default_dark_buttons['jump_to'].config(command=lambda: colour_buttons_callback('jump_to',dark_colours['jump_to']))
+    default_dark_buttons['jump_from'].config(command=lambda: colour_buttons_callback('jump_from',dark_colours['jump_from']))
+    default_dark_buttons['branch'].config(command=lambda: colour_buttons_callback('branch',dark_colours['branch']))
+    default_dark_buttons['jump'].config(command=lambda: colour_buttons_callback('jump',dark_colours['jump']))
+    default_dark_buttons['liken'].config(command=lambda: colour_buttons_callback('liken',dark_colours['liken']))
+    default_dark_buttons['target'].config(command=lambda: colour_buttons_callback('target',dark_colours['target']))
+    default_dark_buttons['nop'].config(command=lambda: colour_buttons_callback('nop',dark_colours['nop']))
+    default_dark_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end',dark_colours['function_end']))
+    default_dark_buttons['bad'].config(command=lambda: colour_buttons_callback('bad',dark_colours['bad']))
+    default_dark_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range',dark_colours['out_of_range']))
+    default_bright_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',bright_colours['text_bg_colour']))
+    default_bright_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',bright_colours['text_fg_colour']))
+    default_bright_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour',bright_colours['window_background_colour']))
+    default_bright_buttons['cursor_line_colour'].config(command=lambda: colour_buttons_callback('cursor_line_colour',bright_colours['cursor_line_colour']))
+    default_bright_buttons['jump_to'].config(command=lambda: colour_buttons_callback('jump_to',bright_colours['jump_to']))
+    default_bright_buttons['jump_from'].config(command=lambda: colour_buttons_callback('jump_from',bright_colours['jump_from']))
+    default_bright_buttons['branch'].config(command=lambda: colour_buttons_callback('branch',bright_colours['branch']))
+    default_bright_buttons['jump'].config(command=lambda: colour_buttons_callback('jump',bright_colours['jump']))
+    default_bright_buttons['liken'].config(command=lambda: colour_buttons_callback('liken',bright_colours['liken']))
+    default_bright_buttons['target'].config(command=lambda: colour_buttons_callback('target',bright_colours['target']))
+    default_bright_buttons['nop'].config(command=lambda: colour_buttons_callback('nop',bright_colours['nop']))
+    default_bright_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end',bright_colours['function_end']))
+    default_bright_buttons['bad'].config(command=lambda: colour_buttons_callback('bad',bright_colours['bad']))
+    default_bright_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range',bright_colours['out_of_range']))
+
+    y_offset = 0
+    for button in custom_buttons:
+        if button in app_config['tag_config']:
+            bg = app_config['tag_config'][button]
+        else:
+            bg = app_config[button]
+        int_of_bg = int('0x' + bg[1:], 16)
+        grey_scale = (((int_of_bg & 0xFF0000) >> 16) + ((int_of_bg & 0xFF00) >> 8) + (int_of_bg & 0xFF)) / 3
+        if grey_scale < 128:
+            fg = '#FFFFFF'
+        else:
+            fg = '#000000'
+        tk.Label(colours_window, text='Customise').place(x=85,y=10)
+        custom_buttons[button].config(text=button_text[button],
+                                      bg=bg, activebackground=bg, fg=fg, activeforeground=fg)
+        custom_buttons[button].place(x=5, y=35+y_offset, width=222)
+
+        tk.Label(colours_window, text='Current').place(x=244,y=9)
+        previous_setting_buttons[button].config(bg=current_colours[button], activebackground=current_colours[button])
+        previous_setting_buttons[button].place(x=242, y=35+y_offset, width=50)
+
+        tk.Label(colours_window, text='Default Bright').place(x=303,y=9)
+        default_bright_buttons[button].config(bg=bright_colours[button], activebackground=bright_colours[button])
+        default_bright_buttons[button].place(x=319, y=35+y_offset, width=50)
+
+        tk.Label(colours_window, text='Default Dark').place(x=385, y=9)
+        default_dark_buttons[button].config(bg=dark_colours[button], activebackground=dark_colours[button])
+        default_dark_buttons[button].place(x=396, y=35+y_offset, width=50)
+
+        y_offset += 30
+
+    def close_colours_win():
+        global colours_window
+        colours_window.destroy()
+        colours_window = None
+    colours_window.protocol('WM_DELETE_WINDOW', close_colours_win)
+    colours_window.mainloop()
+
+
+def set_mem_edit_offset():
+    if not disasm:
+        return
+    user_input = simpledialog.askstring('','Set game offset for memory editor')
+    if not user_input:
+        return
+    try:
+        user_input = deci(user_input)
+        app_config['mem_edit_offset'][disasm.hack_file_name] = user_input
+        pickle_data(app_config, CONFIG_FILE)
+    except:
+        simpledialog.messagebox._show('Error', 'Not able to convert input to a number.')
+
+
+def translate_box():
+    if not disasm:
+        return
+    address_output.delete('1.0', tk.END)
+    address_to_translate = address_input.get('1.0',tk.END).replace('\n','')
+    try:
+        if disasm.hack_file_name not in app_config['mem_edit_offset']:
+            simpledialog.messagebox._show('Warning','You have not set your memory editor offset yet.')
+            raise Exception()
+        int_address = deci(address_to_translate)
+        mem_offset = app_config['mem_edit_offset'][disasm.hack_file_name]
+        address_output.insert('1.0', extend_zeroes(hexi((int_address - mem_offset) + disasm.game_offset), 8))
+    except Exception as e:
+        address_output.insert('1.0', 'Error')
+    finally:
+        address_input.delete('1.0', tk.END)
 
 
 def test_function():
-    # dictie = disasm.find_vector_instructions()
-    # navigate_to(0x000E66A8 >> 2)
-    #
-    # asdf = None
-    change_colours(text_bg='#AAAAAA',text_fg='#444444', win_bg='#000000', cursor_line_colour='#999999',
-                   new_tag_config={
-                      'function_end': '#AAAAAA',
-                      'jump_to': '#505050',
-                      'jump_from': '#303030',
-                      'branch': '#000000',
-                      'jump': '#202020',
-                      'bad': '#646464',
-                      'out_of_range': '#505050',
-                      'target': '#909090',
-                      'nop': '#000000',
-                      'liken': '#323232'
-                   })
-
+    pass
 
 
 menu_bar = tk.Menu(window)
@@ -1316,8 +1554,8 @@ MENU_BACKGROUND = '#FFFFFF'
 MENU_FOREGROUND = '#000000'
 
 file_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
-file_menu.add_command(label='Start new (Ctrl+N)', command=lambda: open_files('new'))
-file_menu.add_command(label='Open existing (Ctrl+O)', command=lambda: open_files('existing'))
+file_menu.add_command(label='Start new', command=lambda: open_files('new'))
+file_menu.add_command(label='Open existing', command=lambda: open_files('existing'))
 file_menu.add_separator()
 file_menu.add_command(label='Save (Ctrl+S)', command=save_changes_to_file)
 file_menu.add_command(label='Save as...', command=lambda: save_changes_to_file(True))
@@ -1336,12 +1574,13 @@ nav_menu.add_command(label='Test', command=test_function)
 menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 
 opts_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
+opts_menu.add_command(label='Change colour scheme', command=set_colour_scheme)
 opts_menu.add_command(label='Toggle "game entry point" mode (F5)', command=toggle_address_mode)
 opts_menu.add_command(label='Toggle hex mode (F6)', command=toggle_hex_mode)
 opts_menu.add_command(label='Toggle hex space separation (F7)', command=toggle_hex_space)
 opts_menu.add_command(label='Change immediate value identifier', command=change_immediate_id)
+opts_menu.add_command(label='Set memory editor offset', command=set_mem_edit_offset)
 opts_menu.add_command(label='Set scroll amount', command=set_scroll_amount)
-opts_menu.add_command(label='Set colour scheme', command=set_colour_scheme)
 menu_bar.add_cascade(label='Options', menu=opts_menu)
 
 help_menu = tk.Menu(menu_bar,tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
@@ -1356,8 +1595,6 @@ window.bind('<F5>', lambda e: toggle_address_mode())
 window.bind('<F6>', lambda e: toggle_hex_mode())
 window.bind('<F7>', lambda e: toggle_hex_space())
 window.bind('<Control-s>', lambda e: save_changes_to_file())
-window.bind('<Control-n>', lambda e: open_files(mode='new'))
-window.bind('<Control-o>', lambda e: open_files())
 window.bind('<MouseWheel>', scroll_callback)
 window.bind('<FocusOut>', lambda e: replace_clipboard())
 hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
@@ -1365,20 +1602,28 @@ hack_file_text_box.bind('<Control-f>', lambda e: follow_jump())
 window.bind('<Button-1>', lambda e: (reset_target(),
                                      apply_hack_changes(),
                                      apply_comment_changes(),
-                                     highlight_stuff(e)) if disasm else None)
+                                     window.after(1, lambda: (correct_cursor(e), highlight_stuff(e, skip_moving_cursor=True)))
+                                     if disasm else None))
 
-# text_box_locations = [
-#     [6, 45, 85, 760],
-#     [95, 45, 315, 760],
-#     []
-# ]
+address_input = tk.Text(window, font='Courier', bg=app_config['text_bg_colour'], fg=app_config['text_fg_colour'])
+address_output = tk.Text(window, font='Courier', bg=app_config['text_bg_colour'], fg=app_config['text_fg_colour'])
+address_translate_button = tk.Button(window, text='Translate Address', command=translate_box,
+                                     bg=app_config['text_bg_colour'], activebackground=app_config['text_bg_colour'],
+                                     fg=app_config['text_fg_colour'], activeforeground=app_config['text_fg_colour'])
 
-address_text_box.place(x=6, y=45, width=85, height=760)
-base_file_text_box.place(x=95, y=45, width=315, height=760)
-hack_file_text_box.place(x=414, y=45, width=315, height=760)
-comments_text_box.place(x=733, y=45, width=597, height=760)
+address_input.bind('<Return>', lambda e: window.after(1, lambda: translate_box()))
+address_input.bind('<Control-v>', lambda e: window.after(1, lambda: translate_box()))
 
+address_input.place(x=5, y=8, width=85, height=21)
+address_translate_button.place(x=95, y=8, height=21)
+address_output.place(x=203, y=8, width=85, height=21)
+
+address_text_box.place(x=6, y=35, width=85, height=760)
+base_file_text_box.place(x=95, y=35, width=315, height=760)
+hack_file_text_box.place(x=414, y=35, width=315, height=760)
+comments_text_box.place(x=733, y=35, width=597, height=760)
 window.protocol('WM_DELETE_WINDOW', close_window)
+
 
 open_my_roms_automatically = True
 if open_my_roms_automatically:
