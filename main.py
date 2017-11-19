@@ -1897,7 +1897,7 @@ def translate_box():
             raise Exception()
         int_address = deci(address_to_translate)
         mem_offset = app_config['mem_edit_offset'][disasm.hack_file_name]
-        output_text = extend_zeroes(hexi((int_address - mem_offset) + disasm.game_offset), 8)
+        output_text = extend_zeroes(hexi((int_address - mem_offset) + disasm.game_offset + 0x1000), 8)
         address_output.insert('1.0', output_text)
         if app_config['auto_copy']:
             window.clipboard_clear()
