@@ -503,7 +503,7 @@ def apply_comment_changes():
         string_key = '{}'.format(navi)
         hex_navi = extend_zeroes(hexi((navi << 2) + increment), 8)
         if not split_text[i]:
-            if string_key in disasm.comments:
+            if is_in_comments(string_key):
                 del disasm.comments[string_key]
             for key in config:
                 if key[:8] == hex_navi:
@@ -537,7 +537,7 @@ def apply_comment_changes():
                 if breaking:
                     break
             continue
-        if string_key not in disasm.comments:
+        if not is_in_comments(string_key):
             disasm.comments[string_key] = split_text[i]
         if split_text[i] == disasm.comments[string_key]:
             continue
@@ -711,8 +711,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                     disasm.game_address_mode = game_address_mode
             apply_hack_changes()
             apply_comment_changes()
-            # navigate_to(navigation)
-            handle.mark_set(tk.INSERT, cursor)
             reset_target()
             highlight_stuff(skip_moving_cursor=True)
         return
@@ -1980,7 +1978,7 @@ comments_text_box.place(x=733, y=35, width=597, height=760)
 window.protocol('WM_DELETE_WINDOW', close_window)
 
 
-open_my_roms_automatically = True
+open_my_roms_automatically = False
 if open_my_roms_automatically:
     window.after(1, lambda: (destroy_change_rom_name_button(), open_files()))
 
