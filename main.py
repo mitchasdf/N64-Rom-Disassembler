@@ -354,7 +354,6 @@ def highlight_stuff(event=None, skip_moving_cursor=False):
                 except ValueError:
                     ''
 
-
             # Highlight jump functions
             elif this_word in JUMP_FUNCTIONS:
                 hack_file_text_box.tag_add('jump',
@@ -401,8 +400,6 @@ def highlight_stuff(event=None, skip_moving_cursor=False):
             # Because the disasm.jumps dict is so huge, a try/except works "exceptionally" faster than iterative methods
             try:
                 _ = disasm.jumps_to[str(navi)]
-
-                # We only want to hit this line of code if str(navi) in disasm.jumps_to
                 hack_file_text_box.tag_add('jump_to',
                                            cursor_value(line, 0),
                                            cursor_value(line + 1, 0))
@@ -411,8 +408,6 @@ def highlight_stuff(event=None, skip_moving_cursor=False):
 
             try:
                 _ = disasm.branches_to[str(navi)]
-
-                # We only want to hit this line of code if str(navi) in disasm.jumps_to
                 hack_file_text_box.tag_add('branch_to',
                                            cursor_value(line, 0),
                                            cursor_value(line + 1, 0))
@@ -1381,7 +1376,7 @@ def change_immediate_id():
 def set_scroll_amount():
     amount = simpledialog.askstring('Set scroll amount', 'Current: {}'.format(app_config['scroll_amount']))
     try:
-        amount = deci(amount) if amount[:2] == '0x' else int(amount)
+        amount = deci(amount) >> 2  if amount[:2] == '0x' else int(amount)
     except:
         return
     app_config['scroll_amount'] = amount
@@ -1407,7 +1402,7 @@ def help_box():
         'The comments file must always be located in the same folder as your hacked rom in order for it to load. '
         'You can also open the comments files with a text editor if required.',
         '',
-        'When setting the scroll amount, use "0x" to specify a hexadecimal value, or leave it out to specify a decimal value.',
+        'When setting the scroll amount, use "0x" to specify an amount of addresses (this will be a hex value divided by 4).',
         '',
         '',
         '----Translate Address----',
@@ -1447,8 +1442,10 @@ def help_box():
         'The functions in the jump window will be memorised until you delete them. '
         'You can delete functions from memory by selecting it in the jumps window and '
         'pressing the delete key. '
-        'Adding a comment to the very top of the function using the comments text box will cause it to become labeled '
-        'as such within the jumps window.'
+        'Adding a comment to the very top of the function (or the jump to the function) using the comments text box will '
+        'cause it to become labeled as such within the jumps window. '
+        'The mapped jumps are only mapped by a "distance from UNKNOWN/NOT AN INSTRUCTION" algorithm, so there may be some '
+        'miss-decoded jumps from sections that aren\'t instructions.'
     ])
     simpledialog.messagebox._show('Help', message)
     simpledialog.messagebox._show('Help (continued)', message_2)
@@ -1558,6 +1555,7 @@ def find_jumps(just_window=False):
             jumps_window.destroy()
             jumps_window = None
         jumps_window.protocol('WM_DELETE_WINDOW', jumps_window_equals_none)
+        jumps_window.bind('<Escape>', lambda e: jumps_window_equals_none())
         jumps_window.after(1, lambda: jumps_window.mainloop())
     elif jumps:
         jumps_window.focus_force()
@@ -1626,6 +1624,7 @@ def view_comments():
             global comments_window
             comments_window.destroy()
             comments_window = None
+        comments_window.bind('<Escape>', lambda e: comments_window_equals_none())
         comments_window.protocol('WM_DELETE_WINDOW', comments_window_equals_none)
         comments_window.mainloop()
 
@@ -1868,6 +1867,7 @@ def set_colour_scheme():
         global colours_window
         colours_window.destroy()
         colours_window = None
+    colours_window.bind('<Escape>', lambda e: close_colours_win())
     colours_window.protocol('WM_DELETE_WINDOW', close_colours_win)
     colours_window.mainloop()
 

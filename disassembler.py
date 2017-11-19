@@ -1210,22 +1210,31 @@ class Disassembler:
                 dict[key] = []
                 dict[key].append(value)
 
-        ints = ints_of_4_byte_aligned_region(self.hack_file[0x1000:])
-        final = 0
+        ints = ints_of_4_byte_aligned_region(self.hack_file)
+        cut = 15
+        collect = 7
+        buffer = []
         for i in range(len(ints)):
-            navi = i + 0x400
-            decoded = self.decode(ints[i], navi)
+            decoded = self.decode(ints[i], i)
             if not decoded:
-                break
+                del buffer
+                buffer = []
+                continue
             opcode = (ints[i] & 0xFC000000) >> 26
             if JUMP_INTS[opcode]:
-                address = (ints[i] & 0x03FFFFFF) + ((navi + 1) & 0x3C000000)
-                dict_append(self.jumps_to, str(address), navi)
+                address = (ints[i] & 0x03FFFFFF) + ((i + 1) & 0x3C000000)
+                buffer.insert(0, (self.jumps_to, str(address), i))
             elif BRANCH_INTS[opcode] or decoded[:2] == 'BC':
-                address = sign_16_bit_value(ints[i] & 0xFFFF) + navi + 1
-                dict_append(self.branches_to, str(address), navi)
-            final = navi
-        self.comments[str(final)] = 'Disassembler stopped mapping jumps here'
+                address = sign_16_bit_value(ints[i] & 0xFFFF) + i + 1
+                buffer.insert(0, (self.branches_to, str(address), i))
+            else:
+                buffer.insert(0, None)
+            if len(buffer) == cut:
+                popped = buffer.pop(collect)
+                if isinstance(popped, tuple):
+                    dict_append(dict=popped[0],
+                                key=popped[1],
+                                value=popped[2])
         if exists(self.jumps_file):
             remove(self.jumps_file)
         with open(self.jumps_file, 'wb') as jumps_file:
