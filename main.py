@@ -30,6 +30,7 @@ FRESH_APP_CONFIG = {
     'hex_mode': False,
     'hex_space_separation': True,
     'game_address_mode': False,
+    'auto_copy': 0,
     'mem_edit_offset': {},
     'jumps_displaying': {},
     'cursor_line_colour': '#686868',
@@ -141,19 +142,30 @@ def save_config():
     pickle_data(app_config, CONFIG_FILE)
 
 
-def change_colours(text_bg, text_fg, win_bg, cursor_line_colour, new_tag_config):
+def change_colours():
+    text_bg = app_config['text_bg_colour']
+    text_fg = app_config['text_fg_colour']
+    win_bg = app_config['cursor_line_colour']
+    cursor_line_colour = app_config['window_background_colour']
+    new_tag_config = app_config['tag_config']
     [hack_file_text_box.tag_delete(tag) for tag in app_config['tag_config']]
     [(text_box.tag_delete('cursor_line'),
       text_box.tag_config('cursor_line', background=cursor_line_colour))
      for text_box in ALL_TEXT_BOXES]
     [hack_file_text_box.tag_config(tag, background=new_tag_config[tag]) for tag in new_tag_config]
-    [text_box.config(bg=text_bg, fg=text_fg) for text_box in ALL_TEXT_BOXES]
-    address_translate_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg,activeforeground=text_fg)
+    [text_box.config(bg=text_bg, fg=text_fg) for text_box in ALL_TEXT_BOXES + [address_input, address_output]]
+    address_translate_button.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg)
+    auto_copy_checkbtn.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg, selectcolor=win_bg)
     window.config(bg=win_bg)
-    [handle.config(bg=text_bg,fg=text_fg) for handle in [address_input, address_output]]
     if change_rom_name_button:
         change_rom_name_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg, activeforeground=text_fg)
+
     highlight_stuff(skip_moving_cursor=True)
+
+    '''
+    bg=app_config['window_background_colour'], fg=app_config['text_fg_colour'],
+    activeforeground=app_config['text_fg_colour'], activebackground=app_config['window_background_colour'],
+    selectcolor=app_config['window_background_colour'])'''
 
 
 def get_text_content(handle):
@@ -267,6 +279,8 @@ def correct_cursor(event):
 prev_reg_target, prev_address_target, prev_cursor_location = '', 0, 0
 def highlight_stuff(event=None, skip_moving_cursor=False):
     global prev_reg_target, prev_address_target, prev_cursor_location
+    if not disasm:
+        return
 
     [hack_file_text_box.tag_remove(tag, '1.0', tk.END) for tag in app_config['tag_config']]
     [text_box.tag_remove('cursor_line', '1.0', tk.END) for text_box in ALL_TEXT_BOXES]
@@ -1380,8 +1394,11 @@ def help_box():
         'The base rom file is never modified, even if you try to make modifications to the textbox. '
         'It is simply there to reflect on if you need to see the original code at any point.',
         '',
-        'Once you have decided the name for your hacked rom, it is best not to ever change it. '
-        'If you do change it, you will lose your app data pertaining to that rom.',
+        'Once you have decided the FILE name (not inner rom title) for your hacked rom, it is best not '
+        'to ever change it. If you do change the file name, you will lose some app data pertaining to that rom. '
+        'The location of the rom doesn\'t matter to the app data, as long as the name always stays the same. '
+        'If you do end up changing the name by accident, you can change it back to what it was and the app data '
+        'will still remain.',
         '',
         'In order to save any changes you have made, all errors must be corrected before the save feature will allow it. '
         'Trying to save while an error exists will result in your navigation shifting to the next error instead.',
@@ -1392,10 +1409,13 @@ def help_box():
         '',
         'When setting the scroll amount, use "0x" to specify a hexadecimal value, or leave it out to specify a decimal value.',
         '',
+        '',
+        '----Translate Address----',
         'The "Translate Address" section is for addresses you find with your memory editor to be translated to the corresponding '
         'memory address for your emulator. In order to use this feature you will have to grab the game entry point address from '
-        'your memory editor and paste it into "Options->Set memory editor offset". After this you can paste your addresses you '
-        'need translating into the left text box.'
+        'your memory editor and paste it into "Options->Set memory editor offset". After this, you may use the text box on the left '
+        'side of the translate button to translate addresses. You may copy an address in to automatically have it translated. '
+        'When auto copy output to clipboard is on, every time an address is translated your clipboard will be replaced with the output.'
     ])
     message_2 = '\n'.join([
         '----Highlighting----',
@@ -1419,7 +1439,8 @@ def help_box():
         '',
         '',
         '----Jumps window----',
-        'Click on any instruction inside the function (within the hack text box) that you wish to find all jumps to. '
+        'Click on any instruction inside the function (within the hack text box) that you wish to find all jumps to '
+        'and press Ctrl+G. '
         'This will open your jumps window and from there you can use it to navigate around all jumps to the function. '
         'If no functions show up when you press Ctrl+G, then there aren\'t any jumps to that function. Be on the lookout '
         'for the highlighted instructions for "Targets of any Jump" in your colour scheme menu. '
@@ -1680,9 +1701,7 @@ def set_colour_scheme():
             fg = '#000000'
         bg = new_colour[1]
         custom_buttons[which].config(bg=bg, activebackground=bg, fg=fg, activeforeground=fg)
-        change_colours(app_config['text_bg_colour'], app_config['text_fg_colour'],
-                       app_config['window_background_colour'], app_config['cursor_line_colour'],
-                       app_config['tag_config'])
+        change_colours()
         save_config()
 
     button_text = {
@@ -1878,11 +1897,20 @@ def translate_box():
             raise Exception()
         int_address = deci(address_to_translate)
         mem_offset = app_config['mem_edit_offset'][disasm.hack_file_name]
-        address_output.insert('1.0', extend_zeroes(hexi((int_address - mem_offset) + disasm.game_offset), 8))
+        output_text = extend_zeroes(hexi((int_address - mem_offset) + disasm.game_offset), 8)
+        address_output.insert('1.0', output_text)
+        if app_config['auto_copy']:
+            window.clipboard_clear()
+            window.clipboard_append(output_text)
     except:
         address_output.insert('1.0', 'Error')
     finally:
         address_input.delete('1.0', tk.END)
+
+
+def toggle_auto_copy():
+    app_config['auto_copy'] = auto_copy_var.get()
+    save_config()
 
 
 def test_function():
@@ -1950,19 +1978,22 @@ window.bind('<FocusOut>', lambda e: replace_clipboard())
 hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-f>', lambda e: follow_jump())
 # ---------------------------------------------------------------------------
-hack_file_text_box.bind('<Control-a>', lambda e: testthing())
+# hack_file_text_box.bind('<Control-a>', lambda e: testthing())
 # ---------------------------------------------------------------------------
-window.bind('<Button-1>', lambda e: (reset_target(),
-                                     apply_hack_changes(),
-                                     apply_comment_changes(),
-                                     window.after(1, lambda: (correct_cursor(e), highlight_stuff(e, skip_moving_cursor=True)))
-                                     if disasm else None))
 
-address_input = tk.Text(window, font='Courier', bg=app_config['text_bg_colour'], fg=app_config['text_fg_colour'])
-address_output = tk.Text(window, font='Courier', bg=app_config['text_bg_colour'], fg=app_config['text_fg_colour'])
-address_translate_button = tk.Button(window, text='Translate Address', command=translate_box,
-                                     bg=app_config['text_bg_colour'], activebackground=app_config['text_bg_colour'],
-                                     fg=app_config['text_fg_colour'], activeforeground=app_config['text_fg_colour'])
+
+def text_box_callback(event):
+    if disasm:
+        reset_target()
+        apply_hack_changes()
+        apply_comment_changes()
+        window.after(1, lambda: (correct_cursor(event), highlight_stuff(event, skip_moving_cursor=True)))
+
+[tbox.bind('<Button-1>', text_box_callback) for tbox in ALL_TEXT_BOXES]
+
+address_input = tk.Text(window, font='Courier')
+address_output = tk.Text(window, font='Courier')
+address_translate_button = tk.Button(window, text='Translate Address', command=translate_box)
 
 address_input.bind('<Return>', lambda e: window.after(1, lambda: translate_box()))
 address_input.bind('<Control-v>', lambda e: window.after(1, lambda: translate_box()))
@@ -1971,12 +2002,18 @@ address_input.place(x=6, y=8, width=85, height=21)
 address_translate_button.place(x=95, y=8, height=21)
 address_output.place(x=203, y=8, width=85, height=21)
 
+auto_copy_var = tk.IntVar()
+auto_copy_checkbtn = tk.Checkbutton(window, text='Auto copy output to clipboard', var=auto_copy_var, command=lambda:window.after(1,lambda:toggle_auto_copy()))
+auto_copy_checkbtn.place(x=300, y=5)
+auto_copy_var.set(app_config['auto_copy'])
+
 address_text_box.place(x=6, y=35, width=85, height=760)
 base_file_text_box.place(x=95, y=35, width=315, height=760)
 hack_file_text_box.place(x=414, y=35, width=315, height=760)
 comments_text_box.place(x=733, y=35, width=597, height=760)
 window.protocol('WM_DELETE_WINDOW', close_window)
 
+change_colours()
 
 open_my_roms_automatically = False
 if open_my_roms_automatically:
