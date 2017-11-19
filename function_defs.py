@@ -38,6 +38,10 @@ def ints_of_4_byte_aligned_region(bytes, byteorder = 'big'):
     return [int.from_bytes(bytes[i:i+4], byteorder = byteorder, signed = False) for i in range(0, len(bytes), 4)]
 
 
+def int_of_4_byte_aligned_region(bytes, byteorder = 'big'):
+    return int.from_bytes(bytes, byteorder = byteorder, signed = False)
+
+
 def sign_16_bit_value(int):
     return int - 65536 if int & 32768 else int
 

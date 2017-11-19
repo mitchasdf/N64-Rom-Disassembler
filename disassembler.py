@@ -1,7 +1,7 @@
 
 from function_defs import deci, hexi, ints_of_4_byte_aligned_region, \
     string_to_dict, extend_zeroes, sign_16_bit_value, unsign_16_bit_value, \
-    get_8_bit_ints_from_32_bit_int
+    get_8_bit_ints_from_32_bit_int, int_of_4_byte_aligned_region
 from pickle import dump, load
 from os.path import exists
 from os import remove
@@ -36,8 +36,7 @@ CODE_20 = 'CODE_20'  # Code (20bit)  -- Numerical Parameter
 VS = 'VS'
 VD = 'VD'
 VT = 'VT'
-EL = 'EL'
-DEL = 'DEL'
+MOD = 'MOD'
 
 ADDRESS_ALIGNMENT = 0x04000000
 ADDRESS_ALIGNMENT_4 = 0x10000000
@@ -51,8 +50,7 @@ MAXIMUM_VALUES = {  # For Disassembler.encode(): How high the limit will be for 
     'VOFFSET': 0x3F,
     'OP': 0x1F,
     'SA': 0x1F,
-    'EL': 0xF,
-    'DEL': 0xF
+    'MOD': 0xF,
 }
 
 HEX_EXTEND = {  # For Disassembler.decode(): How many digits are minimally required to represent each numerical value
@@ -63,8 +61,7 @@ HEX_EXTEND = {  # For Disassembler.decode(): How many digits are minimally requi
     'CODE_10': 3,
     'VOFFSET': 2,
     'OP': 2,
-    'EL': 2,
-    'DEL': 2,
+    'MOD': 2,
     'SA': 1
 }
 
@@ -77,8 +74,7 @@ CODE_TYPES = {  # For Disassembler.decode(): The instances in which the paramete
     'VOFFSET': 'HEX',
     'OP': 'HEX',
     'SA': 'HEX',
-    'EL': 'HEX',
-    'DEL': 'HEX',
+    'MOD': 'VHEX',
     'BASE': 'MAIN',
     'RT': 'MAIN',
     'RD': 'MAIN',
@@ -117,8 +113,7 @@ LENGTHS = {  # For Disassembler.fit(), how long each segment of data will be, in
     'FMT': 5,
     'OP': 5,
     'COND': 4,
-    'DEL': 4,
-    'EL': 4,
+    'MOD': 4,
     'ES': 2,
     'CO': 1
 }
@@ -159,7 +154,7 @@ REGISTERS = {
         'RA'
     ],
 
-    'FLOAT': ['F' + str(i) for i in range(32)],
+    'FLOAT': ['F' + extend_zeroes(str(i), 2) for i in range(32)],
 
     'CP0': [
         'INDEX',
@@ -196,7 +191,7 @@ REGISTERS = {
         '*RESERVED6*'
     ],
 
-    'VECTOR': ['VECT' + str(i) for i in range(32)]
+    'VECTOR': ['V' + extend_zeroes(str(i), 2) for i in range(32)]
 }
 
 CODES_USING_ADDRESSES = ['BC1F', 'BC1FL', 'BC1T', 'BC1TL', 'BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL',
@@ -236,16 +231,16 @@ REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of registe
     'SP': 29,
     'S8': 30,
     'RA': 31,
-    'F0': 0,
-    'F1': 1,
-    'F2': 2,
-    'F3': 3,
-    'F4': 4,
-    'F5': 5,
-    'F6': 6,
-    'F7': 7,
-    'F8': 8,
-    'F9': 9,
+    'F00': 0,
+    'F01': 1,
+    'F02': 2,
+    'F03': 3,
+    'F04': 4,
+    'F05': 5,
+    'F06': 6,
+    'F07': 7,
+    'F08': 8,
+    'F09': 9,
     'F10': 10,
     'F11': 11,
     'F12': 12,
@@ -268,38 +263,38 @@ REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of registe
     'F29': 29,
     'F30': 30,
     'F31': 31,
-    'VECT0': 0,
-    'VECT1': 1,
-    'VECT2': 2,
-    'VECT3': 3,
-    'VECT4': 4,
-    'VECT5': 5,
-    'VECT6': 6,
-    'VECT7': 7,
-    'VECT8': 8,
-    'VECT9': 9,
-    'VECT10': 10,
-    'VECT11': 11,
-    'VECT12': 12,
-    'VECT13': 13,
-    'VECT14': 14,
-    'VECT15': 15,
-    'VECT16': 16,
-    'VECT17': 17,
-    'VECT18': 18,
-    'VECT19': 19,
-    'VECT20': 20,
-    'VECT21': 21,
-    'VECT22': 22,
-    'VECT23': 23,
-    'VECT24': 24,
-    'VECT25': 25,
-    'VECT26': 26,
-    'VECT27': 27,
-    'VECT28': 28,
-    'VECT29': 29,
-    'VECT30': 30,
-    'VECT31': 31,
+    'V00': 0,
+    'V01': 1,
+    'V02': 2,
+    'V03': 3,
+    'V04': 4,
+    'V05': 5,
+    'V06': 6,
+    'V07': 7,
+    'V08': 8,
+    'V09': 9,
+    'V10': 10,
+    'V11': 11,
+    'V12': 12,
+    'V13': 13,
+    'V14': 14,
+    'V15': 15,
+    'V16': 16,
+    'V17': 17,
+    'V18': 18,
+    'V19': 19,
+    'V20': 20,
+    'V21': 21,
+    'V22': 22,
+    'V23': 23,
+    'V24': 24,
+    'V25': 25,
+    'V26': 26,
+    'V27': 27,
+    'V28': 28,
+    'V29': 29,
+    'V30': 30,
+    'V31': 31,
     'INDEX': 0,
     'RANDOM': 1,
     'ENTRYLO0': 2,
@@ -552,7 +547,7 @@ BRANCH_INTS = [True if i in [1, 4, 5, 6, 7, 20, 21, 22, 23] else False for i in 
 
 class Disassembler:
     def __init__(self, base_file_path='', hacked_file_path='', game_address_mode=False, immediate_identifier='$'):
-        def open_rom(file_path):
+        def open_rom(self, file_path):
             with open(file_path, 'rb') as file:
                 file_data = bytearray(file.read())
             rom_validation = file_data[0:4].hex()
@@ -578,13 +573,18 @@ class Disassembler:
                     i += 4
             elif rom_validation != '80371240':
                 raise Exception('"{}" Not a rom file'.format(file_path))
+            elif self.base_file:
+                if len(self.base_file) != len(file_data):
+                    raise Exception('These roms are different sizes. If you have already had your hacked rom extended, '
+                                    'then you can "start a new hacked rom" and pick your extended rom as the base file.')
             part_at = file_path.rfind('\\') + 1
             folder = file_path[:part_at]
             file_name = file_path[part_at:]
             return folder, file_name, file_data
 
-        self.base_folder, self.base_file_name, self.base_file = open_rom(base_file_path)
-        self.hack_folder, self.hack_file_name, self.hack_file = open_rom(hacked_file_path)
+        self.base_file = bytearray()
+        self.base_folder, self.base_file_name, self.base_file = open_rom(self,base_file_path)
+        self.hack_folder, self.hack_file_name, self.hack_file = open_rom(self,hacked_file_path)
 
         self.header_items = {
             # Section labeled   [data_start, data_end (not inclusive)]
@@ -604,6 +604,7 @@ class Disassembler:
 
         self.comments_file = '{} comments.txt'.format(self.hack_folder + self.hack_file_name)
         self.comments = {}
+        self.file_length = len(self.base_file)
         def fresh_comments():
             # Start new comments off with some header labels
             for i in self.header_items.keys():
@@ -621,17 +622,24 @@ class Disassembler:
                     self.comments[comments_location] = self.comments[comments_location] + ' | ' + i
                 else:
                     self.comments[comments_location] = i
+            end_place = str((self.file_length >> 2) - 1)
+            self.comments[end_place] = 'End of file'
+
         if not exists(self.comments_file):
             fresh_comments()
         else:
             # Load the existing comments
             try:
                 with open(self.comments_file, 'r') as file:
-                    self.comments = string_to_dict(file.read())
+                    file_contents = file.read()
+                if not file_contents:
+                    fresh_comments()
+                else:
+                    self.comments = string_to_dict(file_contents)
             except Exception as e:
                 err_tk = tkinter.Tk()
                 err_tk.withdraw()
-                messagebox._show('Comments file cannot be loaded - so this rom cannot be loaded until this is fixed.\n'
+                messagebox._show('Error', 'The comments file cannot be loaded - so this rom cannot be loaded until this is fixed.\n'
                                  'This is only necessary because if we went ahead and loaded, your comments file would'
                                  ' be erased and overwritten with fresh data.')
                 raise Exception('"{}"\n\n'.format(self.comments_file) + str(e))
@@ -647,18 +655,12 @@ class Disassembler:
         self.game_address_mode = game_address_mode
         self.immediate_identifier = immediate_identifier
 
-        self.mnemonics = []
         self.encodes = {}
-        self.opcodes = {}
         self.appearances = {}
-        self.comparable_bits = []
         self.identifying_bits = {}
         self.opcode_matrix = []
-        self.file_length = len(self.base_file)
-        self.jumps = {}
         self.jumps_to = {}
-        self.documentation = {}
-        self.amount = 0
+        self.branches_to = {}
         self.jumps_file = '{}{} jumps.data'.format(self.hack_folder, self.hack_file_name)
 
         ''' Format: fit(mnemonic, encoding, appearance)
@@ -695,10 +697,10 @@ class Disassembler:
             The fitment parameters only "look" like the MIPS documentation, but a few things have been changed to 
                better accommodate the encoding and decoding process.
             
-            For performance, all Pseudo Opcodes are omitted.
+            For performance and 100% reliable decoding process, all Pseudo Opcodes are omitted.
         '''
 
-        # Missing 0th to 5th bit OPCODES: 18, 19, 28, 29, 30, 31, 50, 51, 54, 58, 59, 62
+        # Missing 0th to 5th bit OPCODES:  19, 28, 29, 30, 31, 54, 58, 59, 62
 
         # Load and Store instructions
         self.fit('LB',    [[OPCODE, 32], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
@@ -925,37 +927,51 @@ class Disassembler:
         self.fit('TRUNC.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 13]],  [FD, FS])
         self.fit('TRUNC.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 13]],  [FD, FS])
 
-        # Vector Instructions
-        # self.fit('LBV', [OPCODE, 50], BASE, )
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
-        # self.fit()
+        # Vector Load/Store
+        # Opcode 50 and 51 may or may not need swapping
+        self.fit('LBV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('LSV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('LLV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('LDV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('LQV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('LRV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('LPV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('LUV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('LHV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('LFV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('LWV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('LTV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('SBV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('SSV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('SLV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('SDV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('SQV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('SRV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('SPV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('SUV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('SHV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('SFV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('SWV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        self.fit('STV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+
+        # Vector Math
+        self.fit('VMULF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 0]], [VD, VT, VS, MOD])
+        self.fit('VMULU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 1]], [VD, VT, VS, MOD])
+        self.fit('VRNDP', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 2]], [VD, VT, VS, MOD])
+        self.fit('VMULQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 3]], [VD, VT, VS, MOD])
+        self.fit('VMUDL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 4]], [VD, VT, VS, MOD])
+        self.fit('VMUDM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 5]], [VD, VT, VS, MOD])
+        self.fit('VMUDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 6]], [VD, VT, VS, MOD])
+        self.fit('VMUDH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 7]], [VD, VT, VS, MOD])
+        self.fit('VMACF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 8]], [VD, VT, VS, MOD])
+        self.fit('VMACU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 9]], [VD, VT, VS, MOD])
+        self.fit('VRNDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 10]], [VD, VT, VS, MOD])
+        self.fit('VMACQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 11]], [VD, VT, VS, MOD])
+        self.fit('VMADL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 12]], [VD, VT, VS, MOD])
+        self.fit('VMADM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 13]], [VD, VT, VS, MOD])
+        self.fit('VMADN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 14]], [VD, VT, VS, MOD])
+        self.fit('VMADH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 15]], [VD, VT, VS, MOD])
+        # Unfinished
 
     def fit(self, mnemonic, encoding, appearance):
         appearance_bit_correspondence = {}
@@ -1077,11 +1093,15 @@ class Disassembler:
                 if self.game_address_mode and (is_address or is_offset):
                     inner_value += self.game_offset
                 decode_text = self.immediate_identifier + extend_zeroes(hexi(inner_value), HEX_EXTEND[param_name])
+            elif param_type == 'VHEX':
+                decode_text = '[' + extend_zeroes(hexi(inner_value), HEX_EXTEND[param_name]) + ']'
             else: # Will be a register
                 decode_text = REGISTERS[param_type][inner_value]
                 if param_name == 'BASE':
                     decode_text = '(' + decode_text + ')'
-            if parameters != '':
+            if param_type == 'VHEX':
+                ''
+            elif parameters != '':
                 if param_name == 'BASE':
                     decode_text = ' ' + decode_text
                 else:
@@ -1107,20 +1127,34 @@ class Disassembler:
         try:
             while len(string):
                 punc = string.find(', ')
+                punc_2 = string.find('], ')
+                cut = 2
+                if punc < 0 or punc_2 >= 0:
+                    punc = string.find('[')
+                    cut = 1
+                if punc < 0:
+                    punc = string.find('], ')
+                    cut = 3
                 if punc < 0:
                     punc = string.find(' (')
+                    cut = 2
                 if punc < 0:
                     punc = string.find(')')
+                    cut = 1
+                if punc < 0:
+                    punc = string.find(']')
+                    cut = 1
                 if punc < 0:
                     punc = len(string)
+                    cut = 0
                 str_parameters.append(string[:punc])
-                string = string[punc + 2:]
+                string = string[punc + cut:]
                 if len(str_parameters) == len(self.appearances[opcode]):
                     break
             int_result = self.identifying_bits[opcode]
             for i in range(len(self.appearances[opcode])):
                 param = str_parameters[i]
-                if param[0] == self.immediate_identifier:
+                if param[0] == self.immediate_identifier or self.appearances[opcode][i][0] == 'MOD':
                     param = deci(param[1:])
                     is_address = self.appearances[opcode][i][0] == 'ADDRESS'
                     is_offset = self.appearances[opcode][i][0] == 'OFFSET'
@@ -1163,11 +1197,19 @@ class Disassembler:
         try:
             if exists(self.jumps_file):
                 with open(self.jumps_file, 'rb') as jumps_file:
-                    self.jumps_to = load(jumps_file)
+                    self.jumps_to, self.branches_to = load(jumps_file)
                 return
         except:
             # If we can't load the file, map the jumps again. No biggie.
             ''
+
+        def dict_append(dict, key, value):
+            try:
+                dict[key].append(value)
+            except KeyError:
+                dict[key] = []
+                dict[key].append(value)
+
         ints = ints_of_4_byte_aligned_region(self.hack_file[0x1000:])
         final = 0
         for i in range(len(ints)):
@@ -1176,62 +1218,88 @@ class Disassembler:
             if not decoded:
                 break
             opcode = (ints[i] & 0xFC000000) >> 26
-            if BRANCH_INTS[opcode] or decoded[:2] == 'BC':
-                address = sign_16_bit_value(ints[i] & 0xFFFF) + navi + 1
-            elif JUMP_INTS[opcode]:
+            if JUMP_INTS[opcode]:
                 address = (ints[i] & 0x03FFFFFF) + ((navi + 1) & 0x3C000000)
-            else:
-                address = 0
-            if address > 0x400:
-                key = str(address)
-                try:
-                    self.jumps_to[key].append(navi)
-                except KeyError:
-                    self.jumps_to[key] = []
-                    self.jumps_to[key].append(navi)
-            final = i
+                dict_append(self.jumps_to, str(address), navi)
+            elif BRANCH_INTS[opcode] or decoded[:2] == 'BC':
+                address = sign_16_bit_value(ints[i] & 0xFFFF) + navi + 1
+                dict_append(self.branches_to, str(address), navi)
+            final = navi
         self.comments[str(final)] = 'Disassembler stopped mapping jumps here'
         if exists(self.jumps_file):
             remove(self.jumps_file)
         with open(self.jumps_file, 'wb') as jumps_file:
-            dump(self.jumps_to, jumps_file)
+            dump((self.jumps_to, self.branches_to), jumps_file)
 
     def find_jumps(self, index):
         this_function = []
         i = 0
         # Locate the top of the function
         # We can't really start mapping here, because it needs to find the bottom of the previous function first
-        while i >= 0:
+        while i + index >= 0:
             navi = (index + i) << 2
             if navi < 0:
                 return []
-            int_word = ints_of_4_byte_aligned_region(self.hack_file[navi:navi + 4])[0]
+            int_word = int_of_4_byte_aligned_region(self.hack_file[navi:navi + 4])
             instruction = self.decode(int_word, index + i)
-            if instruction[:2] == 'JR':
+            if instruction[:5] == 'JR RA':
                 # Skip the delay slot
                 i += 2
                 break
             i -= 1
+        start_of_function = i + index
         # Map to the bottom of the function
-        while i < len(self.hack_file) >> 2:
+        while i + index < len(self.hack_file) >> 2:
             navi = (index + i) << 2
-            int_word = ints_of_4_byte_aligned_region(self.hack_file[navi:navi + 4])[0]
+            int_word = int_of_4_byte_aligned_region(self.hack_file[navi:navi + 4])
             instruction = self.decode(int_word, index + i)
             this_function.append(index + i)
-            if instruction[:2] == 'JR':
-                break
             i += 1
+            if instruction[:5] == 'JR RA':
+                break
+        end_of_function = i + index
         jumps = []
         for i in this_function:
             key = str(i)
             if key in self.jumps_to:
                 offsetting = 0 if not self.game_address_mode else self.game_offset
-                [jumps.append(extend_zeroes(hexi((j << 2) + offsetting), 8))\
+                [jumps.append(extend_zeroes(hexi((j << 2) + offsetting), 8))
                  for j in self.jumps_to[key]]
-        return jumps
+        if self.game_address_mode:
+            start_of_function += self.game_offset >> 2
+            end_of_function += self.game_offset >> 2
+        return jumps, start_of_function, end_of_function
+
+    def unmap_branch(self, address, target):
+        if target in self.branches_to:
+            try:
+                place = self.branches_to[target].find(address)
+                self.branches_to = self.branches_to[:place] + self.branches_to[place+1:]
+            except:
+                ''
+
+    def unmap_jump(self, address, target):
+        if target in self.jumps_to:
+            try:
+                place = self.jumps_to[target].find(address)
+                self.jumps_to = self.jumps_to[:place] + self.jumps_to[place+1:]
+            except:
+                ''
+
+    def map_branch(self, address, target):
+        if target not in self.branches_to:
+            self.branches_to[target] = []
+        if address not in self.branches_to[target]:
+            self.branches_to[target].append(address)
+
+    def map_jump(self, address, target):
+        if target not in self.jumps_to:
+            self.jumps_to[target] = []
+        if address not in self.jumps_to[target]:
+            self.jumps_to[target].append(address)
 
     def find_vector_instructions(self):
-        ints = ints_of_4_byte_aligned_region(self.hack_file)
+        ints = ints_of_4_byte_aligned_region(self.hack_file[0x1000:])
         missing_opcodes = [True if i in [18, 19, 28, 29, 30, 31, 50, 51, 54, 58, 59, 62] else False for i in range(64)]
         # missing_opcodes = [True if i in [18] else False for i in range(64)]
         # return_dict = {
@@ -1250,11 +1318,11 @@ class Disassembler:
         # }
         # in testing stage
         for i, instruction in enumerate(ints):
-            decoded = self.decode(instruction, i)
+            decoded = self.decode(instruction, i + 0x400)
             if decoded == 'UNKNOWN/NOT AN INSTRUCTION':
                 opcode = (instruction & 0xFC000000) >> 26
                 if missing_opcodes[opcode]:
-                    self.comments[str(i)] = extend_zeroes(bin(instruction)[2:], 32)
+                    self.comments[str(i + 0x400)] = extend_zeroes(bin(instruction)[2:], 32)
                     # return_dict[str(opcode)].append((extend_zeroes(hexi(i << 2),8), instruction))
         # return return_dict
 

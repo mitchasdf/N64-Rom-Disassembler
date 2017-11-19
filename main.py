@@ -18,7 +18,7 @@ disasm = None
 
 window = tk.Tk()
 window.title('ROM Disassembler')
-window.geometry('1335x820+550+50')
+window.geometry('1335x820+50+50')
 window.iconbitmap('n64_disassembler.ico')
 
 working_dir = os.path.dirname(os.path.realpath(__file__)) + '\\'
@@ -31,18 +31,20 @@ FRESH_APP_CONFIG = {
     'hex_space_separation': True,
     'game_address_mode': False,
     'mem_edit_offset': {},
+    'jumps_displaying': {},
     'cursor_line_colour': '#686868',
     'window_background_colour': '#606060',
     'text_bg_colour': '#454545',
     'text_fg_colour': '#D0D0D0',
     'tag_config': {
           'jump_to': '#1d6152',
+          'branch_to': '#1f5d11',
           'jump_from': '#D06060',
+          'target': '#009880',
           'branch': '#985845',
-          'jump': '#995643',
+          'jump': '#A2463C',
           'bad': '#DD3333',
           'out_of_range': '#BB2222',
-          'target': '#009880',
           'nop': '#606060',
           'function_end': '#303060',
           'liken': '#308A30'
@@ -67,7 +69,10 @@ if os.path.exists(CONFIG_FILE):
         del app_config['tag_config']
         app_config['tag_config'] = {}
         for tag in FRESH_APP_CONFIG['tag_config']:
-            app_config['tag_config'][tag] = config_in_file['tag_config'][tag]
+            try:
+                app_config['tag_config'][tag] = config_in_file['tag_config'][tag]
+            except:
+                app_config['tag_config'][tag] = FRESH_APP_CONFIG['tag_config'][tag]
     except Exception as e:
         # app_config = FRESH_APP_CONFIG.copy()
         # simpledialog.messagebox._show('Error',
@@ -132,6 +137,10 @@ max_lines = 42
 navigation = 0
 
 
+def save_config():
+    pickle_data(app_config, CONFIG_FILE)
+
+
 def change_colours(text_bg, text_fg, win_bg, cursor_line_colour, new_tag_config):
     [hack_file_text_box.tag_delete(tag) for tag in app_config['tag_config']]
     [(text_box.tag_delete('cursor_line'),
@@ -164,7 +173,7 @@ def hex_space(string):
 def clear_error(key):
     if isinstance(key, int):
         key = '{}'.format(key)
-    if key in user_errors.keys():
+    if key in user_errors:
         del user_errors[key]
 
 
@@ -221,9 +230,16 @@ def geometry(geo):
 def get_word_at(list, line, column):
     line_text = list[line - 1]
     lower_bound_punc = line_text.rfind('(', 0, column)
+    # if lower_bound_punc < 0:
+    #     lower_bound_punc = line_text.rfind('[', 0, column)
     if lower_bound_punc < 0:
         lower_bound_punc = line_text.rfind(' ', 0, column)
     upper_bound_punc = line_text.find(',', column)
+    upp_punc_2 = line_text.find('], ', column)
+    if upper_bound_punc < 0 or upp_punc_2 >= 0:
+        upper_bound_punc = line_text.find('[', column)
+    if upper_bound_punc < 0:
+        upper_bound_punc = line_text.find('], ', column)
     if upper_bound_punc < 0:
         upper_bound_punc = line_text.find(')', column)
     if upper_bound_punc < 0:
@@ -379,6 +395,16 @@ def highlight_stuff(event=None, skip_moving_cursor=False):
             except KeyError:
                 ''
 
+            try:
+                _ = disasm.branches_to[str(navi)]
+
+                # We only want to hit this line of code if str(navi) in disasm.jumps_to
+                hack_file_text_box.tag_add('branch_to',
+                                           cursor_value(line, 0),
+                                           cursor_value(line + 1, 0))
+            except KeyError:
+                ''
+
         # Highlight errors
         key = str(navi)
         if key in user_errors:
@@ -470,14 +496,84 @@ def apply_hack_changes(ignore_slot = None):
 def apply_comment_changes():
     current_text = get_text_content(comments_text_box)
     split_text = current_text.split('\n')
+    config = app_config['jumps_displaying'][disasm.hack_file_name].copy()
+    increment = disasm.game_offset if app_config['game_address_mode'] else 0
     for i in range(max_lines):
         navi = navigation + i
         string_key = '{}'.format(navi)
+        hex_navi = extend_zeroes(hexi((navi << 2) + increment), 8)
         if not split_text[i]:
-            if string_key in disasm.comments.keys():
+            if string_key in disasm.comments:
                 del disasm.comments[string_key]
+            for key in config:
+                if key[:8] == hex_navi:
+                    del app_config['jumps_displaying'][disasm.hack_file_name][key]
+                    new_key = key[:19]
+                    app_config['jumps_displaying'][disasm.hack_file_name][new_key] = config[key]
+                    save_config()
+                    if jumps_window:
+                        try:
+                            index = function_list_box.get(0, tk.END).index(key)
+                            function_list_box.delete(index)
+                            function_list_box.insert(index, new_key)
+                        except ValueError:
+                            ''
+                    break
+                breaking = False
+                for i, address in enumerate(config[key]):
+                    if address[:8] == hex_navi:
+                        dictin = app_config['jumps_displaying'][disasm.hack_file_name][key]
+                        dictin[i] = address[:8]
+                        save_config()
+                        if jumps_window:
+                            try:
+                                index = jump_list_box.get(0, tk.END).index(address)
+                                jump_list_box.delete(index)
+                                jump_list_box.insert(index, dictin[i])
+                            except ValueError:
+                                ''
+                        breaking = True
+                        break
+                if breaking:
+                    break
+            continue
+        if string_key not in disasm.comments:
+            disasm.comments[string_key] = split_text[i]
+        if split_text[i] == disasm.comments[string_key]:
             continue
         disasm.comments[string_key] = split_text[i]
+        for key in config:
+            if key[:8] == hex_navi:
+                del app_config['jumps_displaying'][disasm.hack_file_name][key]
+                new_key = key[:19] + ' ' + disasm.comments[string_key]
+                app_config['jumps_displaying'][disasm.hack_file_name][new_key] = config[key]
+                save_config()
+                if jumps_window:
+                    try:
+                        index = function_list_box.get(0, tk.END).index(key)
+                        function_list_box.delete(index)
+                        function_list_box.insert(index, new_key)
+                    except ValueError:
+                        ''
+                break
+            breaking = False
+            for i, address in enumerate(config[key]):
+                if address[:8] == hex_navi:
+                    dictin = app_config['jumps_displaying'][disasm.hack_file_name][key]
+                    dictin[i] = address[:8] + ' ' + disasm.comments[string_key]
+                    save_config()
+                    if jumps_window:
+                        try:
+                            index = jump_list_box.get(0, tk.END).index(address)
+                            jump_list_box.delete(index)
+                            jump_list_box.insert(index, dictin[i])
+                        except ValueError:
+                            ''
+                    breaking = True
+                    break
+            if breaking:
+                break
+
 
 
 def buffer_append(buffer, tuple):
@@ -604,19 +700,19 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                 hex_mode = buffer[1][place][5]
                 if immediate_id != app_config['immediate_identifier']:
                     app_config['immediate_identifier'] = immediate_id
-                    pickle_data(app_config, CONFIG_FILE)
+                    save_config()
                     disasm.immediate_identifier = immediate_id
                 if game_address_mode != app_config['game_address_mode']:
                     app_config['game_address_mode'] = game_address_mode
-                    pickle_data(app_config, CONFIG_FILE)
+                    save_config()
                 if hex_mode != app_config['hex_mode']:
                     app_config['hex_mode'] = hex_mode
-                    pickle_data(app_config, CONFIG_FILE)
+                    save_config()
                     disasm.game_address_mode = game_address_mode
-            apply_hack_changes()
-            apply_comment_changes()
             navigate_to(navigation)
             handle.mark_set(tk.INSERT, cursor)
+            apply_hack_changes()
+            apply_comment_changes()
             reset_target()
             highlight_stuff(skip_moving_cursor=True)
         return
@@ -797,11 +893,11 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         window.after(0, move_to)
 
     # The delays are necessary to solve complications for text modified by the key after this function fires
-    # window.after(0, highlight_stuff)
-
-    # The delays are necessary to solve complications for text modified by the key after this function fires
     if not just_function_key:
-        window.after(0, lambda: highlight_stuff(event))
+        if handle is comments_text_box:
+            window.after(0, lambda: (apply_comment_changes(), highlight_stuff(event)))
+        else:
+            window.after(0, lambda: highlight_stuff(event))
 
 
 base_file_text_box.bind('<Key>', lambda event:
@@ -988,12 +1084,24 @@ def save_changes_to_file(save_as=False):
             return False
         new_dir = new_file_path[:new_file_path.rfind('\\') + 1]
         app_config['previous_hack_location'] = new_dir
-        pickle_data(app_config, CONFIG_FILE)
+        save_config()
         disasm.hack_file_name = new_file_name
         disasm.comments_file = new_file_name + '.comments'
 
-    with open(disasm.comments_file, 'w') as file:
-        file.write(dict_to_string(disasm.comments))
+    with open(disasm.comments_file + '(Backup).txt', 'w') as backup_comments_file:
+        with open(disasm.comments_file, 'r') as comments_file:
+            backup_comments_file.write(comments_file.read())
+
+    try:
+        with open(disasm.comments_file, 'w') as file:
+            file.write(dict_to_string(disasm.comments))
+        os.remove(disasm.comments_file + '(Backup).txt')
+    except Exception as e:
+        simpledialog.messagebox._show('Error', 'There was trouble saving your comments file. '
+                                               'A backup of your old comments can be found next to the original comments file.'
+                                               '\nYou should go there now and rescue the backup before attempting to save again.'
+                                               '\nIf you save again, that backup will be over-written.'
+                                               '\n\n' + str(e))
 
     with open(disasm.hack_folder + disasm.hack_file_name, 'wb') as file:
         file.write(disasm.hack_file)
@@ -1002,8 +1110,17 @@ def save_changes_to_file(save_as=False):
 
 
 def close_window(side = 'right'):
-    if not disasm:
+    def destroy_them():
+        if colours_window:
+            colours_window.destroy()
+        if jumps_window:
+            jumps_window.destroy()
+        if comments_window:
+            comments_window.destroy()
         window.destroy()
+
+    if not disasm:
+        destroy_them()
         return
 
     close_win_width = 270
@@ -1024,14 +1141,12 @@ def close_window(side = 'right'):
 
     def yes_button_callback():
         if save_changes_to_file():
-            window.destroy()
-            if colours_window:
-                colours_window.destroy()
+            destroy_them()
         close_win.destroy()
 
     yes_button = tk.Button(close_win, text='Yes',command = yes_button_callback)
     no_button = tk.Button(close_win, text='No',command = lambda:\
-        (window.destroy(), close_win.destroy()))
+        (destroy_them(), close_win.destroy()))
 
     yes_button.place(x=10, y=10, width=50)
     no_button.place(x=75, y=10, width=50)
@@ -1109,7 +1224,7 @@ def open_files(mode = ''):
     # Remember dirs for next browse
     app_config['previous_base_location'] = base_dir
     app_config['previous_hack_location'] = hack_dir
-    pickle_data(app_config, CONFIG_FILE)
+    save_config()
 
     # Initialise disassembler with paths to the 2 files, apply saved settings from app_config
     try:
@@ -1144,6 +1259,8 @@ def open_files(mode = ''):
         buffer_append(comments_buffer, (navigation,
                                         cursor_value(1, 0),
                                         get_text_content(comments_text_box)))
+        if disasm.hack_file_name not in app_config['jumps_displaying']:
+            app_config['jumps_displaying'][disasm.hack_file_name] = {}
         timer_tick('Disasm init')
 
         # ints = ints_of_4_byte_aligned_region(disasm.hack_file)
@@ -1157,36 +1274,76 @@ def open_files(mode = ''):
 
 
 def toggle_address_mode():
+    global function_list_box, jump_list_box
     apply_hack_changes()
     apply_comment_changes()
+    cursor, line, column = get_cursor(hack_file_text_box)
     buffer_append(hack_buffer, (navigation,
                                 hack_file_text_box.index(tk.INSERT),
                                 get_text_content(hack_file_text_box),
                                 app_config['immediate_identifier'],
-                                app_config['game_address_mode']))
+                                app_config['game_address_mode'],
+                                app_config['hex_mode']))
     toggle_to = not app_config['game_address_mode']
     app_config['game_address_mode'] = toggle_to
     if disasm:
         disasm.game_address_mode = toggle_to
-    pickle_data(app_config, CONFIG_FILE)
+    save_config()
     navigate_to(navigation)
+    hack_file_text_box.mark_set(tk.INSERT, cursor)
+    highlight_stuff(skip_moving_cursor=True)
+    increment = disasm.game_offset if toggle_to else -disasm.game_offset
+    config_data = app_config['jumps_displaying'][disasm.hack_file_name].copy()
+    for key in config_data:
+        del app_config['jumps_displaying'][disasm.hack_file_name][key]
+        addy_1 = deci(key[:8]) + increment
+        addy_2 = deci(key[11:19]) + increment
+        comment = key[19:]
+        addy_1 = extend_zeroes(hexi(addy_1), 8)
+        addy_2 = extend_zeroes(hexi(addy_2), 8)
+        new_key = '{} - {}{}'.format(addy_1, addy_2, comment)
+        app_config['jumps_displaying'][disasm.hack_file_name][new_key] = []
+        for address in config_data[key]:
+            new_address = extend_zeroes(hexi(deci(address) + increment), 8)
+            app_config['jumps_displaying'][disasm.hack_file_name][new_key].append(new_address)
+    save_config()
+    if jumps_window:
+        function_list_box.delete(0, tk.END)
+        jump_list_box.delete(0, tk.END)
+        for key in app_config['jumps_displaying'][disasm.hack_file_name]:
+            function_list_box.insert(tk.END, key)
 
 
 def toggle_hex_mode():
+    apply_hack_changes()
+    apply_comment_changes()
+    cursor, line, column = get_cursor(hack_file_text_box)
+    buffer_append(hack_buffer, (navigation,
+                                cursor,
+                                get_text_content(hack_file_text_box),
+                                app_config['immediate_identifier'],
+                                app_config['game_address_mode'],
+                                app_config['hex_mode']))
     app_config['hex_mode'] = not app_config['hex_mode']
-    pickle_data(app_config, CONFIG_FILE)
+    save_config()
     navigate_to(navigation)
+    hack_file_text_box.mark_set(tk.INSERT, cursor)
+    highlight_stuff(skip_moving_cursor=True)
 
 
 def toggle_hex_space():
+    cursor, line, column = get_cursor(hack_file_text_box)
     app_config['hex_space_separation'] = not app_config['hex_space_separation']
-    pickle_data(app_config, CONFIG_FILE)
+    save_config()
     navigate_to(navigation)
+    hack_file_text_box.mark_set(tk.INSERT, cursor)
+    highlight_stuff(skip_moving_cursor=True)
+
 
 
 def change_immediate_id():
-    accepted_symbols = ['<', '>', ':', ';', '\'', '"', '|', '{', '}', '[', ']',
-                        '=', '+', '-', '_', '*', '&', '^', '%', '$', '#', '.',
+    accepted_symbols = ['<', '>', ':', ';', '\'', '"', '|', '{', '}',
+                        '=', '+', '-', '_', '*', '&', '^', '%', '$', '#',
                         '@', '!', '`', '~', '/', '?', '\\']
     symbol = simpledialog.askstring('Set immediate identifier symbol',
                                     'Must be one of {}'.format(' '.join(accepted_symbols)))
@@ -1196,7 +1353,8 @@ def change_immediate_id():
                                     hack_file_text_box.index(tk.INSERT),
                                     hack_text,
                                     app_config['immediate_identifier'],
-                                    app_config['game_address_mode']))
+                                    app_config['game_address_mode'],
+                                    app_config['hex_mode']))
         hack_text.replace(app_config['immediate_identifier'], symbol[:1])
         hack_file_text_box.delete('1.0', tk.END)
         hack_file_text_box.insert('1.0', hack_text)
@@ -1205,7 +1363,7 @@ def change_immediate_id():
         app_config['immediate_identifier'] = symbol[:1]
         if disasm:
             disasm.immediate_identifier = symbol[:1]
-        pickle_data(app_config, CONFIG_FILE)
+        save_config()
 
 
 def set_scroll_amount():
@@ -1215,7 +1373,7 @@ def set_scroll_amount():
     except:
         return
     app_config['scroll_amount'] = amount
-    pickle_data(app_config, CONFIG_FILE)
+    save_config()
 
 
 def help_box():
@@ -1223,6 +1381,9 @@ def help_box():
         '----General Info----',
         'The base rom file is never modified, even if you try to make modifications to the textbox. '
         'It is simply there to reflect on if you need to see the original code at any point.',
+        '',
+        'Once you have decided the name for your hacked rom, it is best not to ever change it. '
+        'If you do change it, you will lose your app data pertaining to that rom.',
         '',
         'In order to save any changes you have made, all errors must be corrected before the save feature will allow it. '
         'Trying to save while an error exists will result in your navigation shifting to the next error instead.',
@@ -1235,9 +1396,10 @@ def help_box():
         '',
         'The "Translate Address" section is for addresses you find with your memory editor to be translated to the corresponding '
         'memory address for your emulator. In order to use this feature you will have to grab the game entry point address from '
-        'your memory editor and paste it into "Options->Set memory editor offset"',
-        '',
-        '',
+        'your memory editor and paste it into "Options->Set memory editor offset". After this you can paste your addresses you '
+        'need translating into the left text box.'
+    ])
+    message_2 = '\n'.join([
         '----Highlighting----',
         'There are different coloured highlights for jumps/branches and more. See "Options->Change Colour Scheme" '
         'for more details',
@@ -1255,9 +1417,22 @@ def help_box():
         'Ctrl+{Fullstop} (">" key): Redo',
         '',
         'The hacked rom text box and comments text box have separate undo/redo buffers. '
-        'Both buffers can hold up to 20,000  frames each.'
+        'Both buffers can hold up to 20,000  frames each.',
+        '',
+        '',
+        '----Jumps window----',
+        'Click on any instruction inside the function (within the hack text box) that you wish to find all jumps to. '
+        'This will open your jumps window and from there you can use it to navigate around all jumps to the function. '
+        'If no functions show up when you press Ctrl+G, then there aren\'t any jumps to that function. Be on the lookout '
+        'for the highlighted instructions for "Targets of any Jump" in your colour scheme menu. '
+        'The functions in the jump window will be memorised until you delete them. '
+        'You can delete functions from memory by selecting it in the jumps window and '
+        'pressing the delete key. '
+        'Adding a comment to the very top of the function using the comments text box will cause it to become labeled '
+        'as such within the jumps window.'
     ])
     simpledialog.messagebox._show('Help', message)
+    simpledialog.messagebox._show('Help (continued)', message_2)
 
 
 def about_box():
@@ -1278,12 +1453,162 @@ def about_box():
     about.mainloop()
 
 
-def find_jumps():
+def is_in_comments(key):
+    try:
+        _ = disasm.comments[key]
+        return True
+    except:
+        return False
+
+
+jumps_window = None
+function_list_box = None
+jump_list_box = None
+# jumps_displaying = {}
+def find_jumps(just_window=False):
+    global jumps_window, function_list_box, jump_list_box
     if not disasm:
         return
-    cursor, line, column = get_cursor(hack_file_text_box)
+    if just_window:
+        cursor, line, column = '1.0', 1, 0
+    else:
+        cursor, line, column = get_cursor(hack_file_text_box)
     navi = (line - 1) + navigation
-    jumps = disasm.find_jumps(navi)
+    jumps, function_start, function_end = disasm.find_jumps(navi)
+    jumps_displaying = app_config['jumps_displaying'][disasm.hack_file_name]
+
+    if not jumps_window:
+        jumps_window = tk.Tk()
+        jumps_window.title('Jumps to Functions')
+        jumps_window.geometry('{}x{}'.format(600,460))
+        jumps_window.bind('<F5>', lambda e: toggle_address_mode())
+        function_list_box = tk.Listbox(jumps_window, font=('Courier', 12))
+        jump_list_box = tk.Listbox(jumps_window, font=('Courier', 12))
+
+        def function_list_callback():
+            curselect = function_list_box.curselection()
+            if not curselect:
+                return
+            key = function_list_box.get(curselect[0])
+            increment = 0 if not app_config['game_address_mode'] else -(disasm.game_offset >> 2)
+            start_address = deci(key[:8]) >> 2
+            half_way = max_lines >> 1
+            navigate_to((start_address - half_way) + increment)
+            hack_file_text_box.mark_set(tk.INSERT,
+                                        modify_cursor('1.0', half_way, 'max', get_text_content(hack_file_text_box))[0])
+            highlight_stuff(skip_moving_cursor=True)
+
+            jump_list_box.delete(0, tk.END)
+            for address in jumps_displaying[key]:
+                jump_list_box.insert(tk.END, address)
+
+        def function_list_key(event):
+            if event.keysym == 'Delete':
+                curselect = function_list_box.curselection()
+                if curselect:
+                    try:
+                        del jumps_displaying[function_list_box.get(curselect[0])]
+                        save_config()
+                    finally:
+                        function_list_box.delete(curselect[0])
+                        jump_list_box.delete(0, tk.END)
+
+        def jump_list_callback():
+            curselect = jump_list_box.curselection()
+            if not curselect:
+                return
+            increment = 0 if not app_config['game_address_mode'] else -(disasm.game_offset >> 2)
+            address = jump_list_box.get(curselect[0])[:8]
+            navi = (deci(address) >> 2) + increment
+            navigate_to(navi - (max_lines >> 1))
+            hack_file_text_box.mark_set(tk.INSERT,
+                                        modify_cursor('1.0', max_lines >> 1, 'max', get_text_content(hack_file_text_box))[0])
+            highlight_stuff(skip_moving_cursor=True)
+
+        function_list_box.bind('<<ListboxSelect>>', lambda _: function_list_callback())
+        jump_list_box.bind('<<ListboxSelect>>', lambda _: jump_list_callback())
+        function_list_box.bind('<Key>', function_list_key)
+        for key in jumps_displaying:
+            function_list_box.insert(tk.END,key)
+        tk.Label(jumps_window, text='Functions').place(x=6,y=5)
+        tk.Label(jumps_window, text='Jumps to Function').place(x=6,y=232)
+        function_list_box.place(x=5,y=27,width=590,height=200)
+        jump_list_box.place(x=5,y=255,width=590,height=200)
+        def jumps_window_equals_none():
+            global jumps_window
+            jumps_window.destroy()
+            jumps_window = None
+        jumps_window.protocol('WM_DELETE_WINDOW', jumps_window_equals_none)
+        jumps_window.after(1, lambda: jumps_window.mainloop())
+    elif jumps:
+        jumps_window.focus_force()
+    key = extend_zeroes(hexi(function_start << 2),8) + ' - ' + extend_zeroes(hexi(function_end << 2),8)
+    key_not_in_jumps_displaying = True
+    config = jumps_displaying.copy()
+    increment = -disasm.game_offset if app_config['game_address_mode'] else 0
+    try:
+        comment_key = str((deci(key[:8]) + increment) >> 2)
+    except ValueError:
+        # User attempting to get jumps from the top of the header
+        return
+    for display_key in config:
+        key_not_in_jumps_displaying = key_not_in_jumps_displaying and display_key[:19] != key
+        if not key_not_in_jumps_displaying:
+            if is_in_comments(comment_key):
+                new_key = key + ' ' + disasm.comments[comment_key]
+            else:
+                new_key = key
+            if new_key != display_key:
+                del jumps_displaying[display_key]
+                key_not_in_jumps_displaying = True
+                key = new_key
+    if not config:
+        if is_in_comments(comment_key):
+            key += ' {}'.format(disasm.comments[comment_key])
+    if key_not_in_jumps_displaying and jumps:
+        for i in range(len(jumps)):
+            comment_key = str((deci(jumps[i]) + increment) >> 2)
+            if is_in_comments(comment_key):
+                jumps[i] += ' ' + disasm.comments[comment_key]
+        jumps_displaying[key] = jumps
+        save_config()
+        if function_list_box:
+            function_list_box.insert(tk.END, key)
+
+
+comments_window = None
+def view_comments():
+    global comments_window
+    if not disasm:
+        return
+    if comments_window:
+        comments_window.focus_force()
+    else:
+        comments_window = tk.Tk()
+        comments_window.title('Comments')
+        comments_window.geometry('{}x{}'.format(710,510))
+        comments_list = tk.Listbox(comments_window, font=('Courier', 12))
+        comments_list.place(x=5,y=5,width=700,height=500)
+        for key in sorted([int(key) for key in disasm.comments]):
+            comments_list.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi(key << 2),8), disasm.comments[str(key)]))
+        def comments_list_callback(event):
+            curselect = comments_list.curselection()
+            if not curselect:
+                return
+            navi = deci(comments_list.get(curselect[0])[:8]) >> 2
+            navigate_to(navi - (max_lines >> 1))
+            new_cursor, line, column = modify_cursor('1.0', max_lines >> 1, 'max', get_text_content(comments_text_box))
+            hack_file_text_box.mark_set(tk.INSERT, '{}.0'.format(line))
+            # comments_text_box.focus_force()
+            comments_text_box.mark_set(tk.INSERT, new_cursor)
+            highlight_stuff(skip_moving_cursor=True)
+        comments_list.bind('<<ListboxSelect>>', comments_list_callback)
+        def comments_window_equals_none():
+            global comments_window
+            comments_window.destroy()
+            comments_window = None
+        comments_window.protocol('WM_DELETE_WINDOW', comments_window_equals_none)
+        comments_window.mainloop()
 
 
 def follow_jump():
@@ -1298,6 +1623,7 @@ def follow_jump():
     address = 0
     if JUMP_INTS[opcode]:
         address = (int_word & 0x03FFFFFF) + (navi & 0x3C000000)
+        print(hexi(address << 2))
     elif BRANCH_INTS[opcode]:
         address = sign_16_bit_value(int_word & 0xFFFF) + navi
     if address:
@@ -1330,7 +1656,7 @@ def set_colour_scheme():
                                                      'colour changes.')
     colours_window = tk.Tk()
     colours_window.title('Colour scheme')
-    colours_window.geometry('{}x{}'.format(458, 456))
+    colours_window.geometry('{}x{}'.format(458, 486))
 
     def colour_buttons_callback(which, with_colour=''):
         if not with_colour:
@@ -1359,23 +1685,24 @@ def set_colour_scheme():
         change_colours(app_config['text_bg_colour'], app_config['text_fg_colour'],
                        app_config['window_background_colour'], app_config['cursor_line_colour'],
                        app_config['tag_config'])
-        pickle_data(app_config, CONFIG_FILE)
+        save_config()
 
     button_text = {
-        'text_bg_colour': 'Textbox Background',
-        'text_fg_colour': 'Text Colour',
-        'window_background_colour': 'Window Background',
-        'cursor_line_colour': 'Input Cursor Line',
-        'liken': 'Selected Register',
-        'target': 'Target Of Selected Jump/Branch',
-        'jump_from': 'Jumps/Branches To Selected Instruction',
-        'jump_to': 'All Targets Of Any Jump/Branch',
+        'text_bg_colour': 'Textbox background',
+        'text_fg_colour': 'Text colour',
+        'window_background_colour': 'Window background',
+        'cursor_line_colour': 'Input cursor line',
+        'liken': 'Selected register',
+        'target': 'Target of selected Jump/Branch',
+        'jump_from': 'Jumps/Branches to selected instruction',
+        'jump_to': 'Targets of any Jump',
+        'branch_to': 'Targets of any Branch',
         'branch': 'Branch Instructions',
         'jump': 'Jump Instructions',
         'nop': 'NOP',
         'function_end': 'JR RA',
-        'bad': 'Syntax Errors',
-        'out_of_range': 'Immediate Out Of Range Errors',
+        'bad': 'Syntax errors',
+        'out_of_range': 'Immediate out of range errors',
     }
     current_colours = {}
     for i in button_text:
@@ -1397,7 +1724,8 @@ def set_colour_scheme():
         'liken': '#1be9b0',
         'target': '#35ffe1',
         'jump_from': '#f9c5bf',
-        'jump_to': '#c6fff2',
+        'branch_to': '#c6fff2',
+        'jump_to': '#c9d9ff',
         'branch': '#f37a7a',
         'jump': '#f89789',
         'nop': '#d8d8d8',
@@ -1420,6 +1748,7 @@ def set_colour_scheme():
     custom_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour'))
     custom_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour'))
     custom_buttons['cursor_line_colour'].config(command=lambda: colour_buttons_callback('cursor_line_colour'))
+    custom_buttons['branch_to'].config(command=lambda: colour_buttons_callback('branch_to'))
     custom_buttons['jump_to'].config(command=lambda: colour_buttons_callback('jump_to'))
     custom_buttons['jump_from'].config(command=lambda: colour_buttons_callback('jump_from'))
     custom_buttons['branch'].config(command=lambda: colour_buttons_callback('branch'))
@@ -1434,6 +1763,7 @@ def set_colour_scheme():
     previous_setting_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',current_colours['text_fg_colour']))
     previous_setting_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour',current_colours['window_background_colour']))
     previous_setting_buttons['cursor_line_colour'].config(command=lambda: colour_buttons_callback('cursor_line_colour',current_colours['cursor_line_colour']))
+    previous_setting_buttons['branch_to'].config(command=lambda: colour_buttons_callback('branch_to',current_colours['branch_to']))
     previous_setting_buttons['jump_to'].config(command=lambda: colour_buttons_callback('jump_to',current_colours['jump_to']))
     previous_setting_buttons['jump_from'].config(command=lambda: colour_buttons_callback('jump_from',current_colours['jump_from']))
     previous_setting_buttons['branch'].config(command=lambda: colour_buttons_callback('branch',current_colours['branch']))
@@ -1448,6 +1778,7 @@ def set_colour_scheme():
     default_dark_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',dark_colours['text_fg_colour']))
     default_dark_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour',dark_colours['window_background_colour']))
     default_dark_buttons['cursor_line_colour'].config(command=lambda: colour_buttons_callback('cursor_line_colour',dark_colours['cursor_line_colour']))
+    default_dark_buttons['branch_to'].config(command=lambda: colour_buttons_callback('branch_to',dark_colours['branch_to']))
     default_dark_buttons['jump_to'].config(command=lambda: colour_buttons_callback('jump_to',dark_colours['jump_to']))
     default_dark_buttons['jump_from'].config(command=lambda: colour_buttons_callback('jump_from',dark_colours['jump_from']))
     default_dark_buttons['branch'].config(command=lambda: colour_buttons_callback('branch',dark_colours['branch']))
@@ -1462,6 +1793,7 @@ def set_colour_scheme():
     default_bright_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',bright_colours['text_fg_colour']))
     default_bright_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour',bright_colours['window_background_colour']))
     default_bright_buttons['cursor_line_colour'].config(command=lambda: colour_buttons_callback('cursor_line_colour',bright_colours['cursor_line_colour']))
+    default_bright_buttons['branch_to'].config(command=lambda: colour_buttons_callback('branch_to',bright_colours['branch_to']))
     default_bright_buttons['jump_to'].config(command=lambda: colour_buttons_callback('jump_to',bright_colours['jump_to']))
     default_bright_buttons['jump_from'].config(command=lambda: colour_buttons_callback('jump_from',bright_colours['jump_from']))
     default_bright_buttons['branch'].config(command=lambda: colour_buttons_callback('branch',bright_colours['branch']))
@@ -1472,6 +1804,9 @@ def set_colour_scheme():
     default_bright_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end',bright_colours['function_end']))
     default_bright_buttons['bad'].config(command=lambda: colour_buttons_callback('bad',bright_colours['bad']))
     default_bright_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range',bright_colours['out_of_range']))
+
+    def change_all(colour_dict):
+        [colour_buttons_callback(tag, colour_dict[tag]) for tag in colour_dict]
 
     y_offset = 0
     for button in custom_buttons:
@@ -1490,19 +1825,27 @@ def set_colour_scheme():
                                       bg=bg, activebackground=bg, fg=fg, activeforeground=fg)
         custom_buttons[button].place(x=5, y=35+y_offset, width=222)
 
-        tk.Label(colours_window, text='Current').place(x=244,y=9)
-        previous_setting_buttons[button].config(bg=current_colours[button], activebackground=current_colours[button])
-        previous_setting_buttons[button].place(x=242, y=35+y_offset, width=50)
-
-        tk.Label(colours_window, text='Default Bright').place(x=303,y=9)
-        default_bright_buttons[button].config(bg=bright_colours[button], activebackground=bright_colours[button])
-        default_bright_buttons[button].place(x=319, y=35+y_offset, width=50)
-
-        tk.Label(colours_window, text='Default Dark').place(x=385, y=9)
         default_dark_buttons[button].config(bg=dark_colours[button], activebackground=dark_colours[button])
         default_dark_buttons[button].place(x=396, y=35+y_offset, width=50)
 
+        default_bright_buttons[button].config(bg=bright_colours[button], activebackground=bright_colours[button])
+        default_bright_buttons[button].place(x=319, y=35+y_offset, width=50)
+
+        previous_setting_buttons[button].config(bg=current_colours[button], activebackground=current_colours[button])
+        previous_setting_buttons[button].place(x=242, y=35+y_offset, width=50)
         y_offset += 30
+
+    c_bg, c_fg = current_colours['text_bg_colour'], current_colours['text_fg_colour']
+    tk.Button(colours_window, text='Current', bg=c_bg, fg=c_fg, activebackground=c_bg, activeforeground=c_fg,
+              command=lambda:change_all(current_colours)).place(x=242,y=5,width=50)
+
+    b_bg, b_fg = bright_colours['text_bg_colour'], bright_colours['text_fg_colour']
+    tk.Button(colours_window, text='Bright', bg=b_bg, fg=b_fg, activebackground=b_bg, activeforeground=b_fg,
+              command=lambda:change_all(bright_colours)).place(x=319,y=5,width=50)
+
+    d_bg, d_fg = dark_colours['text_bg_colour'], dark_colours['text_fg_colour']
+    tk.Button(colours_window, text='Dark', bg=d_bg, fg=d_fg, activebackground=d_bg, activeforeground=d_fg,
+              command=lambda:change_all(dark_colours)).place(x=396, y=5,width=50)
 
     def close_colours_win():
         global colours_window
@@ -1521,7 +1864,7 @@ def set_mem_edit_offset():
     try:
         user_input = deci(user_input)
         app_config['mem_edit_offset'][disasm.hack_file_name] = user_input
-        pickle_data(app_config, CONFIG_FILE)
+        save_config()
     except:
         simpledialog.messagebox._show('Error', 'Not able to convert input to a number.')
 
@@ -1538,7 +1881,7 @@ def translate_box():
         int_address = deci(address_to_translate)
         mem_offset = app_config['mem_edit_offset'][disasm.hack_file_name]
         address_output.insert('1.0', extend_zeroes(hexi((int_address - mem_offset) + disasm.game_offset), 8))
-    except Exception as e:
+    except:
         address_output.insert('1.0', 'Error')
     finally:
         address_input.delete('1.0', tk.END)
@@ -1546,6 +1889,14 @@ def translate_box():
 
 def test_function():
     pass
+
+
+def testthing():
+    cursor, line, column = get_cursor(hack_file_text_box)
+    nav = (line + navigation - 1)
+    navi = nav << 2
+    inter = int_of_4_byte_aligned_region(disasm.hack_file[navi:navi+4])
+    disasm.comments[nav] = extend_zeroes(bin(inter)[2:], 32)
 
 
 menu_bar = tk.Menu(window)
@@ -1565,10 +1916,11 @@ menu_bar.add_cascade(label='File', menu=file_menu)
 
 nav_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
 nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
-nav_menu.add_command(label='')
+nav_menu.add_command(label='Browse Comments', command=view_comments)
+nav_menu.add_command(label='Browse Jumps', command= lambda: find_jumps(just_window=True))
 # ----------------------------------------------------------------------------------
-nav_menu.add_separator()
-nav_menu.add_command(label='Test', command=test_function)
+# nav_menu.add_separator()
+# nav_menu.add_command(label='Test', command=test_function)
 # ----------------------------------------------------------------------------------
 
 menu_bar.add_cascade(label='Navigation', menu=nav_menu)
@@ -1599,6 +1951,9 @@ window.bind('<MouseWheel>', scroll_callback)
 window.bind('<FocusOut>', lambda e: replace_clipboard())
 hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-f>', lambda e: follow_jump())
+# ---------------------------------------------------------------------------
+hack_file_text_box.bind('<Control-a>', lambda e: testthing())
+# ---------------------------------------------------------------------------
 window.bind('<Button-1>', lambda e: (reset_target(),
                                      apply_hack_changes(),
                                      apply_comment_changes(),
@@ -1614,7 +1969,7 @@ address_translate_button = tk.Button(window, text='Translate Address', command=t
 address_input.bind('<Return>', lambda e: window.after(1, lambda: translate_box()))
 address_input.bind('<Control-v>', lambda e: window.after(1, lambda: translate_box()))
 
-address_input.place(x=5, y=8, width=85, height=21)
+address_input.place(x=6, y=8, width=85, height=21)
 address_translate_button.place(x=95, y=8, height=21)
 address_output.place(x=203, y=8, width=85, height=21)
 
