@@ -74,12 +74,12 @@ if os.path.exists(CONFIG_FILE):
             except:
                 app_config['tag_config'][tag] = FRESH_APP_CONFIG['tag_config'][tag]
     except Exception as e:
-        # app_config = FRESH_APP_CONFIG.copy()
-        # simpledialog.messagebox._show('Error',
-        #                               'There was a problem loading the config file. '
-        #                               'Starting with default configuration.'
-        #                               '\n\nError: {}'.format(e))
-        raise Exception(e)
+        app_config = FRESH_APP_CONFIG.copy()
+        simpledialog.messagebox._show('Error',
+                                      'There was a problem loading the config file. '
+                                      'Starting with default configuration.'
+                                      '\n\nError: {}'.format(e))
+        # raise Exception(e)
 else:
     app_config = FRESH_APP_CONFIG.copy()
 
@@ -709,10 +709,10 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                     app_config['hex_mode'] = hex_mode
                     save_config()
                     disasm.game_address_mode = game_address_mode
-            navigate_to(navigation)
-            handle.mark_set(tk.INSERT, cursor)
             apply_hack_changes()
             apply_comment_changes()
+            # navigate_to(navigation)
+            handle.mark_set(tk.INSERT, cursor)
             reset_target()
             highlight_stuff(skip_moving_cursor=True)
         return
@@ -1623,7 +1623,6 @@ def follow_jump():
     address = 0
     if JUMP_INTS[opcode]:
         address = (int_word & 0x03FFFFFF) + (navi & 0x3C000000)
-        print(hexi(address << 2))
     elif BRANCH_INTS[opcode]:
         address = sign_16_bit_value(int_word & 0xFFFF) + navi
     if address:
@@ -1643,6 +1642,7 @@ def follow_jump():
                     (navigation, cursor_loc, text_box_contents,
                     app_config['immediate_identifier'], app_config['game_address_mode'], app_config['hex_mode']))
         highlight_stuff(skip_moving_cursor=True)
+
 
 
 colours_window = None
