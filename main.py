@@ -203,7 +203,6 @@ def get_cursor(handle, cursor_tag = tk.INSERT):
 
 # To easily move cursor by x,y amount or floor/ceil the column
 def modify_cursor(cursor, line_amount, column_amount, text):
-    global max_lines
     # cursor value format:
     # '{line}.{column}'
     #  1-base  0-base
@@ -548,12 +547,11 @@ def apply_hack_changes(ignore_slot = None):
                             dic = disasm.branches_to
                         mapped_target, mapped_address = disasm.map(dic, navi, str_target)
                         if mapped_address:
-                            jumps = app_config['jumps_displaying'][disasm.hack_file_name]
-                            target_key = find_target_key(jumps, target >> 2)
+                            target_key = find_target_key(jumps_displaying, target >> 2)
                             if target_key:
                                 address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if app_config['game_address_mode'] else 0)), 8)
-                                if address not in jumps[target_key]:
-                                    jumps[target_key].append(address)
+                                if address not in jumps_displaying[target_key]:
+                                    jumps_displaying[target_key].append(address)
                                     if jumps_window and function_select == target_key:
                                         jump_list_box.insert(tk.END, address)
 
@@ -574,17 +572,16 @@ def apply_hack_changes(ignore_slot = None):
             if dic:
                 str_target = str(target)
                 unmapped_target, unmapped_address = disasm.unmap(dic, navi, str_target)
-                jumps = app_config['jumps_displaying'][disasm.hack_file_name]
                 if dic is disasm.jumps_to:
-                    target_key = find_target_key(jumps, target)
+                    target_key = find_target_key(jumps_displaying, target)
                     if unmapped_address and target_key:
                         address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if app_config['game_address_mode'] else 0)), 8)
-                        cut_jumps = [i[:8] for i in jumps[target_key]]
+                        cut_jumps = [i[:8] for i in jumps_displaying[target_key]]
                         if address in cut_jumps:
                             place = cut_jumps.index(address)
-                            jumps[target_key].pop(place)
-                            if not len(jumps[target_key]):
-                                del jumps[target_key]
+                            jumps_displaying[target_key].pop(place)
+                            if not len(jumps_displaying[target_key]):
+                                del jumps_displaying[target_key]
                                 if jumps_window:
                                     try:
                                         place = function_list_box.get(0,tk.END).index(target_key)
@@ -603,7 +600,7 @@ def apply_hack_changes(ignore_slot = None):
 def apply_comment_changes():
     current_text = get_text_content(comments_text_box)
     split_text = current_text.split('\n')
-    config = app_config['jumps_displaying'][disasm.hack_file_name].copy()
+    config = jumps_displaying.copy()
     increment = disasm.game_offset if app_config['game_address_mode'] else 0
     for i in range(max_lines):
         navi = navigation + i
@@ -614,9 +611,9 @@ def apply_comment_changes():
                 del disasm.comments[string_key]
             for key in config:
                 if key[:8] == hex_navi:
-                    del app_config['jumps_displaying'][disasm.hack_file_name][key]
+                    del jumps_displaying[key]
                     new_key = key[:19]
-                    app_config['jumps_displaying'][disasm.hack_file_name][new_key] = config[key]
+                    jumps_displaying[new_key] = config[key]
                     save_config()
                     if jumps_window:
                         try:
@@ -629,7 +626,7 @@ def apply_comment_changes():
                 breaking = False
                 for i, address in enumerate(config[key]):
                     if address[:8] == hex_navi:
-                        dictin = app_config['jumps_displaying'][disasm.hack_file_name][key]
+                        dictin = jumps_displaying[key]
                         dictin[i] = address[:8]
                         save_config()
                         if jumps_window:
@@ -651,9 +648,9 @@ def apply_comment_changes():
         disasm.comments[string_key] = split_text[i]
         for key in config:
             if key[:8] == hex_navi:
-                del app_config['jumps_displaying'][disasm.hack_file_name][key]
+                del jumps_displaying[key]
                 new_key = key[:19] + ' ' + disasm.comments[string_key]
-                app_config['jumps_displaying'][disasm.hack_file_name][new_key] = config[key]
+                jumps_displaying[new_key] = config[key]
                 save_config()
                 if jumps_window:
                     try:
@@ -666,7 +663,7 @@ def apply_comment_changes():
             breaking = False
             for i, address in enumerate(config[key]):
                 if address[:8] == hex_navi:
-                    dictin = app_config['jumps_displaying'][disasm.hack_file_name][key]
+                    dictin = jumps_displaying[key]
                     dictin[i] = address[:8] + ' ' + disasm.comments[string_key]
                     save_config()
                     if jumps_window:
@@ -1043,7 +1040,7 @@ def destroy_change_rom_name_button():
 
 
 def navigate_to(index):
-    global navigation, change_rom_name_button, disasm
+    global navigation, change_rom_name_button
     if not disasm:
         return
 
@@ -1156,7 +1153,6 @@ def navigation_prompt():
 
 
 def scroll_callback(event):
-    global navigation, disasm
     if not disasm:
         return
     apply_hack_changes()
@@ -1166,7 +1162,6 @@ def scroll_callback(event):
 
 
 def save_changes_to_file(save_as=False):
-    global max_lines, disasm
     if not disasm:
         return False
 
@@ -1191,9 +1186,17 @@ def save_changes_to_file(save_as=False):
             return False
         new_dir = new_file_path[:new_file_path.rfind('\\') + 1]
         app_config['previous_hack_location'] = new_dir
-        save_config()
         disasm.hack_file_name = new_file_name
         disasm.comments_file = new_file_name + '.comments'
+        disasm.jumps_file = new_file_name + ' jumps.data'
+
+    app_config['jumps_displaying'][disasm.hack_file_name] = jumps_displaying.copy()
+    save_config()
+    with open(disasm.jumps_file, 'wb') as jumps_file:
+        dump((disasm.jumps_to, disasm.branches_to), jumps_file)
+
+    with open(disasm.hack_folder + disasm.hack_file_name, 'wb') as file:
+        file.write(disasm.hack_file)
 
     with open(disasm.comments_file + '(Backup).txt', 'w') as backup_comments_file:
         with open(disasm.comments_file, 'r') as comments_file:
@@ -1205,14 +1208,11 @@ def save_changes_to_file(save_as=False):
         os.remove(disasm.comments_file + '(Backup).txt')
     except Exception as e:
         simpledialog.messagebox._show('Error', 'There was trouble saving your comments file. '
-                                               'A backup of your old comments can be found next to the original comments file.'
+                                               'A backup of your old comments can be found next to the original comments file. '
+                                               'Your rom file was saved without error. '
                                                '\nYou should go there now and rescue the backup before attempting to save again.'
                                                '\nIf you save again, that backup will be over-written.'
                                                '\n\n' + str(e))
-
-    with open(disasm.hack_folder + disasm.hack_file_name, 'wb') as file:
-        file.write(disasm.hack_file)
-
     return True
 
 
@@ -1268,12 +1268,13 @@ def close_window(side = 'right'):
 
 
 def open_files(mode = ''):
-    global disasm
+    global disasm, jumps_displaying
 
     if disasm:
         if not save_changes_to_file():
             return
         disasm = None
+        jumps_displaying = {}
         [text_box.delete('1.0', tk.END) for text_box in ALL_TEXT_BOXES]
     else:
         [text_box.configure(state=tk.NORMAL) for text_box in ALL_TEXT_BOXES]
@@ -1351,6 +1352,7 @@ def open_files(mode = ''):
     hack_file_text_box.insert('1.0', 'Please wait')
 
     def rest_of_function():
+        global jumps_displaying
         disasm.map_jumps()
         base_file_text_box.delete('1.0', tk.END)
         hack_file_text_box.delete('1.0', tk.END)
@@ -1368,6 +1370,7 @@ def open_files(mode = ''):
                                         get_text_content(comments_text_box)))
         if disasm.hack_file_name not in app_config['jumps_displaying']:
             app_config['jumps_displaying'][disasm.hack_file_name] = {}
+        jumps_displaying = app_config['jumps_displaying'][disasm.hack_file_name].copy()
         timer_tick('Disasm init')
 
         # ints = ints_of_4_byte_aligned_region(disasm.hack_file)
@@ -1376,8 +1379,8 @@ def open_files(mode = ''):
         #     instruction = disasm.decode(ints[i], i)
         # timer_tick('Disassembling file')
 
-    # Otherwise text boxes don't get updated to notify user of task
-    window.after(50, rest_of_function)
+    # Otherwise text boxes sometimes don't get updated to notify user of jump mapping
+    window.after(100, rest_of_function)
 
 
 def toggle_address_mode():
@@ -1400,19 +1403,19 @@ def toggle_address_mode():
     hack_file_text_box.mark_set(tk.INSERT, cursor)
     highlight_stuff(skip_moving_cursor=True)
     increment = disasm.game_offset if toggle_to else -disasm.game_offset
-    config_data = app_config['jumps_displaying'][disasm.hack_file_name].copy()
+    config_data = jumps_displaying.copy()
     for key in config_data:
-        del app_config['jumps_displaying'][disasm.hack_file_name][key]
+        del jumps_displaying[key]
         addy_1 = deci(key[:8]) + increment
         addy_2 = deci(key[11:19]) + increment
         comment = key[19:]
         addy_1 = extend_zeroes(hexi(addy_1), 8)
         addy_2 = extend_zeroes(hexi(addy_2), 8)
         new_key = '{} - {}{}'.format(addy_1, addy_2, comment)
-        app_config['jumps_displaying'][disasm.hack_file_name][new_key] = []
+        jumps_displaying[new_key] = []
         for address in config_data[key]:
             new_address = extend_zeroes(hexi(deci(address) + increment), 8)
-            app_config['jumps_displaying'][disasm.hack_file_name][new_key].append(new_address)
+            jumps_displaying[new_key].append(new_address)
     save_config()
     if jumps_window:
         if function_select:
@@ -1425,7 +1428,7 @@ def toggle_address_mode():
         function_list_box.delete(0, tk.END)
         jump_box = jump_list_box.get(0,tk.END)
         jump_list_box.delete(0, tk.END)
-        for key in app_config['jumps_displaying'][disasm.hack_file_name]:
+        for key in jumps_displaying:
             function_list_box.insert(tk.END, key)
         for i in jump_box:
             value = extend_zeroes(hexi(deci(i) + increment), 8)
@@ -1592,10 +1595,9 @@ jumps_window = None
 function_list_box = None
 jump_list_box = None
 function_select = ''
-# jumps_displaying = {}
+jumps_displaying = {}
 def find_jumps(just_window=False):
-    global function_select
-    global jumps_window, function_list_box, jump_list_box
+    global function_select, jumps_window, function_list_box, jump_list_box
     if not disasm:
         return
     if just_window:
@@ -1604,7 +1606,6 @@ def find_jumps(just_window=False):
         cursor, line, column = get_cursor(hack_file_text_box)
     navi = (line - 1) + navigation
     jumps, function_start, function_end = disasm.find_jumps(navi)
-    jumps_displaying = app_config['jumps_displaying'][disasm.hack_file_name]
 
     if not jumps_window:
         jumps_window = tk.Tk()

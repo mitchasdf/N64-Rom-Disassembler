@@ -1235,8 +1235,6 @@ class Disassembler:
                     dict_append(dict=popped[0],
                                 key=popped[1],
                                 value=popped[2])
-        if exists(self.jumps_file):
-            remove(self.jumps_file)
         with open(self.jumps_file, 'wb') as jumps_file:
             dump((self.jumps_to, self.branches_to), jumps_file)
 
