@@ -1,7 +1,7 @@
 
 from function_defs import deci, hexi, ints_of_4_byte_aligned_region, \
     string_to_dict, extend_zeroes, sign_16_bit_value, unsign_16_bit_value, \
-    get_8_bit_ints_from_32_bit_int, int_of_4_byte_aligned_region
+    get_8_bit_ints_from_32_bit_int, int_of_4_byte_aligned_region, key_in_dict
 from pickle import dump, load
 from os.path import exists
 from os import remove
@@ -599,7 +599,7 @@ class Disassembler:
             'Cartridge ID':     [0x003C, 0x003E],
             'Country Code':     [0x003E, 0x0040],
             'Boot Code':        [0x0040, 0x1000],
-            'Game Code (Disassembler began mapping jumps here)': 0x1000
+            'Game Code': 0x1000
         }
 
         self.comments_file = '{} comments.txt'.format(self.hack_folder + self.hack_file_name)
@@ -1279,33 +1279,31 @@ class Disassembler:
             end_of_function += self.game_offset >> 2
         return jumps, start_of_function, end_of_function
 
-    def unmap_branch(self, address, target):
-        if target in self.branches_to:
+    def unmap(self, dict, address, target):
+        unmapped_target = False
+        unmapped_address = False
+        if key_in_dict(dict, target):
             try:
-                place = self.branches_to[target].find(address)
-                self.branches_to = self.branches_to[:place] + self.branches_to[place+1:]
+                place = dict[target].index(address)
+                dict[target].pop(place)
+                unmapped_address = True
+                if not dict[target]:
+                    del dict[target]
+                    unmapped_target = True
             except:
                 ''
+        return unmapped_target, unmapped_address
 
-    def unmap_jump(self, address, target):
-        if target in self.jumps_to:
-            try:
-                place = self.jumps_to[target].find(address)
-                self.jumps_to = self.jumps_to[:place] + self.jumps_to[place+1:]
-            except:
-                ''
-
-    def map_branch(self, address, target):
-        if target not in self.branches_to:
-            self.branches_to[target] = []
-        if address not in self.branches_to[target]:
-            self.branches_to[target].append(address)
-
-    def map_jump(self, address, target):
-        if target not in self.jumps_to:
-            self.jumps_to[target] = []
-        if address not in self.jumps_to[target]:
-            self.jumps_to[target].append(address)
+    def map(self, dict, address, target):
+        mapped_target = False
+        mapped_address = False
+        if not key_in_dict(dict, target):
+            dict[target] = []
+            mapped_target = True
+        if address not in dict[target]:
+            dict[target].append(address)
+            mapped_address = True
+        return mapped_target, mapped_address
 
     def find_vector_instructions(self):
         ints = ints_of_4_byte_aligned_region(self.hack_file[0x1000:])

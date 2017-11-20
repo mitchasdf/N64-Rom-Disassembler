@@ -185,7 +185,7 @@ def hex_space(string):
 def clear_error(key):
     if isinstance(key, int):
         key = '{}'.format(key)
-    if key in user_errors:
+    if key_in_dict(user_errors, key):
         del user_errors[key]
 
 
@@ -468,15 +468,45 @@ def reset_target():
 
 # The hacked text box syntax checker and change applier
 def apply_hack_changes(ignore_slot = None):
+    def find_target_key(jumps, target):
+        targets_lower = [deci(i[:8]) >> 2 for i in jumps]
+        targets_upper = [deci(i[11:19]) >> 2 for i in jumps]
+        if app_config['game_address_mode']:
+            target += disasm.game_offset >> 2
+        i = 0
+        target_key = ''
+        while i < len(jumps) and not target_key:
+            if target == keep_within(target, targets_lower[i], targets_upper[i]):
+                target_key = list(jumps)[i]
+            i += 1
+        return target_key
     current_text = get_text_content(hack_file_text_box).upper()
     split_text = current_text.split('\n')
     for i in range(max_lines):
         navi = navigation + i
+        file_nav = navi << 2
         if i == ignore_slot:
             continue
         is_hex_part = navi < 16
+        int_word = int_of_4_byte_aligned_region(disasm.hack_file[file_nav:file_nav+4])
+        decoded = disasm.decode(int_word, navi)
+        decode_place = decoded.find(' ')
+        if decode_place >= 0:
+            decoded_word = decoded[:decode_place]
+        else:
+            decoded_word = decoded
+        this_place = split_text[i].find(' ')
+        if this_place >= 0:
+            this_word = split_text[i][:this_place]
+        else:
+            this_word = split_text[i]
         string_key = '{}'.format(navi)
-        if is_hex_part or app_config['hex_mode']:
+        unmap = False
+        if not decoded:
+            decoded = 'widdley scuds boi'
+        if decoded == split_text[i]:
+            clear_error(string_key)
+        elif is_hex_part or app_config['hex_mode']:
             without_spaces = split_text[i].replace(' ', '')
             try:
                 if len(without_spaces) != 8:
@@ -487,18 +517,86 @@ def apply_hack_changes(ignore_slot = None):
                 continue
             disasm.split_and_store_bytes(int_of, navi)
             clear_error(string_key)
+            if not is_hex_part:
+                unmap = True
 
         elif not split_text[i]:
             disasm.split_and_store_bytes(0, navi)
             hack_file_text_box.insert(cursor_value(i + 1, 0), 'NOP')
+            clear_error(string_key)
+            unmap = True
 
         elif split_text[i] != 'UNKNOWN/NOT AN INSTRUCTION':
             encoded_int = disasm.encode(split_text[i], navi)
             if encoded_int >= 0:
                 disasm.split_and_store_bytes(encoded_int, navi)
                 clear_error(string_key)
+                unmap = True
+                if this_word in ['J', 'JAL'] + BRANCH_FUNCTIONS:
+                    try:
+                        found = split_text[i].rfind(app_config['immediate_identifier'])
+                        if found < 0:
+                            raise Exception()
+                        target = split_text[i][found + 1:]
+                        target = deci(target)
+                        if app_config['game_address_mode']:
+                            target -= disasm.game_offset
+                        str_target = str(target >> 2)
+                        if this_word in ['J', 'JAL']:
+                            dic = disasm.jumps_to
+                        else:
+                            dic = disasm.branches_to
+                        mapped_target, mapped_address = disasm.map(dic, navi, str_target)
+                        if mapped_address:
+                            jumps = app_config['jumps_displaying'][disasm.hack_file_name]
+                            target_key = find_target_key(jumps, target >> 2)
+                            if target_key:
+                                address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if app_config['game_address_mode'] else 0)), 8)
+                                if address not in jumps[target_key]:
+                                    jumps[target_key].append(address)
+                                    if jumps_window and function_select == target_key:
+                                        jump_list_box.insert(tk.END, address)
+
+                    except Exception as e:
+                        ''
             else:
                 user_errors[string_key] = (encoded_int, split_text[i])
+
+        if unmap:
+            target = 0
+            dic = {}
+            if decoded_word in ['J', 'JAL']:
+                target = (int_word & 0x03FFFFFF) + ((navi + 1) & 0x3C000000)
+                dic = disasm.jumps_to
+            elif decoded_word in BRANCH_FUNCTIONS:
+                target = sign_16_bit_value(int_word & 0xFFFF) + navi + 1
+                dic = disasm.branches_to
+            if dic:
+                str_target = str(target)
+                unmapped_target, unmapped_address = disasm.unmap(dic, navi, str_target)
+                jumps = app_config['jumps_displaying'][disasm.hack_file_name]
+                if dic is disasm.jumps_to:
+                    target_key = find_target_key(jumps, target)
+                    if unmapped_address and target_key:
+                        address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if app_config['game_address_mode'] else 0)), 8)
+                        cut_jumps = [i[:8] for i in jumps[target_key]]
+                        if address in cut_jumps:
+                            place = cut_jumps.index(address)
+                            jumps[target_key].pop(place)
+                            if not len(jumps[target_key]):
+                                del jumps[target_key]
+                                if jumps_window:
+                                    try:
+                                        place = function_list_box.get(0,tk.END).index(target_key)
+                                        function_list_box.delete(place)
+                                    except:
+                                        ''
+                            if jumps_window:
+                                try:
+                                    place = jump_list_box.get(0,tk.END).index(address)
+                                    jump_list_box.delete(place)
+                                except:
+                                    ''
 
 
 # Disassembler.comments accumulator
@@ -851,11 +949,13 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     elif ((is_backspacing and (column == 0 and line > 1)) or (is_deleting and nl_at_cursor and not shift_held)) and not has_selection:
         # if not selection_lines: # was needed to stop something but now is not?
         if is_deleting:
-            apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
+            # apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
+            window.after(0, lambda: apply_function(ignore_slot = (line - 1) if not sel_start_line else None))
         handle.insert(cursor,'\n')
         handle.mark_set(tk.INSERT, cursor)
         if is_backspacing:
-            apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
+            window.after(0, lambda: apply_function(ignore_slot = (line - 1) if not sel_start_line else None))
+            # apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
 
     # Make return send the cursor to the end of the next line and validate code
     elif is_returning:
@@ -904,7 +1004,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         if handle is comments_text_box:
             window.after(0, lambda: (apply_comment_changes(), highlight_stuff(event)))
         else:
-            window.after(0, lambda: highlight_stuff(event))
+            window.after(0, lambda: (highlight_stuff(event)))
 
 
 base_file_text_box.bind('<Key>', lambda event:
@@ -1277,11 +1377,11 @@ def open_files(mode = ''):
         # timer_tick('Disassembling file')
 
     # Otherwise text boxes don't get updated to notify user of task
-    window.after(1, rest_of_function)
+    window.after(50, rest_of_function)
 
 
 def toggle_address_mode():
-    global function_list_box, jump_list_box
+    global function_list_box, jump_list_box, function_select
     apply_hack_changes()
     apply_comment_changes()
     cursor, line, column = get_cursor(hack_file_text_box)
@@ -1315,10 +1415,21 @@ def toggle_address_mode():
             app_config['jumps_displaying'][disasm.hack_file_name][new_key].append(new_address)
     save_config()
     if jumps_window:
+        if function_select:
+            addy_1 = function_select[:8]
+            addy_2 = function_select[11:19]
+            comment = function_select[19:]
+            addy_1 = extend_zeroes(hexi(deci(addy_1) + increment), 8)
+            addy_2 = extend_zeroes(hexi(deci(addy_2) + increment), 8)
+            function_select = '{} - {}{}'.format(addy_1, addy_2, comment)
         function_list_box.delete(0, tk.END)
+        jump_box = jump_list_box.get(0,tk.END)
         jump_list_box.delete(0, tk.END)
         for key in app_config['jumps_displaying'][disasm.hack_file_name]:
             function_list_box.insert(tk.END, key)
+        for i in jump_box:
+            value = extend_zeroes(hexi(deci(i) + increment), 8)
+            jump_list_box.insert(tk.END, value)
 
 
 def toggle_hex_mode():
@@ -1480,8 +1591,10 @@ def is_in_comments(key):
 jumps_window = None
 function_list_box = None
 jump_list_box = None
+function_select = ''
 # jumps_displaying = {}
 def find_jumps(just_window=False):
+    global function_select
     global jumps_window, function_list_box, jump_list_box
     if not disasm:
         return
@@ -1502,10 +1615,12 @@ def find_jumps(just_window=False):
         jump_list_box = tk.Listbox(jumps_window, font=('Courier', 12))
 
         def function_list_callback():
+            global function_select
             curselect = function_list_box.curselection()
             if not curselect:
                 return
             key = function_list_box.get(curselect[0])
+            function_select = key
             increment = 0 if not app_config['game_address_mode'] else -(disasm.game_offset >> 2)
             start_address = deci(key[:8]) >> 2
             half_way = max_lines >> 1
@@ -1551,8 +1666,9 @@ def find_jumps(just_window=False):
         function_list_box.place(x=5,y=27,width=590,height=200)
         jump_list_box.place(x=5,y=255,width=590,height=200)
         def jumps_window_equals_none():
-            global jumps_window
+            global jumps_window, function_select
             jumps_window.destroy()
+            function_select = ''
             jumps_window = None
         jumps_window.protocol('WM_DELETE_WINDOW', jumps_window_equals_none)
         jumps_window.bind('<Escape>', lambda e: jumps_window_equals_none())
@@ -1899,7 +2015,7 @@ def translate_box():
         mem_offset = app_config['mem_edit_offset'][disasm.hack_file_name]
         output_text = extend_zeroes(hexi((int_address - mem_offset) + disasm.game_offset + 0x1000), 8)
         address_output.insert('1.0', output_text)
-        if app_config['auto_copy']:
+        if auto_copy_var.get():
             window.clipboard_clear()
             window.clipboard_append(output_text)
     except:
@@ -2015,7 +2131,7 @@ window.protocol('WM_DELETE_WINDOW', close_window)
 
 change_colours()
 
-open_my_roms_automatically = False
+open_my_roms_automatically = True
 if open_my_roms_automatically:
     window.after(1, lambda: (destroy_change_rom_name_button(), open_files()))
 

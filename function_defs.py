@@ -69,6 +69,14 @@ def dict_to_string(dict):
                       for i in sorted([int(key) for key in dict])])
 
 
+def key_in_dict(dict, key):
+    try:
+        _ = dict[key]
+        return True
+    except KeyError:
+        return False
+
+
 # And to translate the comments from the file back into the comments dict
 def string_to_dict(str):
     str_list = str.split('\n')
