@@ -1563,7 +1563,7 @@ def help_box():
         'Click on any instruction inside the function (within the hack text box) that you wish to find all jumps to '
         'and press Ctrl+G. '
         'This will open your jumps window and from there you can use it to navigate around all jumps to the function. '
-        'If no functions show up when you press Ctrl+G, then there aren\'t any jumps to that function. Be on the lookout '
+        'If no functions show up when you press Ctrl+G, then there aren\'t any hardcoded jumps to that function. Be on the lookout '
         'for the highlighted instructions for "Targets of any Jump" in your colour scheme menu. '
         'The functions in the jump window will be memorised until you delete them. '
         'You can delete functions from memory by selecting it in the jumps window and '
