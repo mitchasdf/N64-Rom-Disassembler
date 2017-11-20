@@ -1193,7 +1193,7 @@ class Disassembler:
         for i in range(4):
             self.hack_file[index + i] = ints[i]
 
-    def map_jumps(self):
+    def map_jumps(self, text_box):
         try:
             if exists(self.jumps_file):
                 with open(self.jumps_file, 'rb') as jumps_file:
@@ -1211,10 +1211,11 @@ class Disassembler:
                 dict[key].append(value)
 
         ints = ints_of_4_byte_aligned_region(self.hack_file)
-        cut = 15
-        collect = 7
-        buffer = []
-        for i in range(len(ints)):
+        percent = len(ints) // 100
+        cut = 19
+        collect = 9
+        buffer = [None] * (cut - 1)
+        for i in range(16, len(ints)):
             decoded = self.decode(ints[i], i)
             if not decoded:
                 del buffer
@@ -1223,7 +1224,8 @@ class Disassembler:
             opcode = (ints[i] & 0xFC000000) >> 26
             if JUMP_INTS[opcode]:
                 address = (ints[i] & 0x03FFFFFF) + ((i + 1) & 0x3C000000)
-                buffer.insert(0, (self.jumps_to, str(address), i))
+                if address > 16:
+                    buffer.insert(0, (self.jumps_to, str(address), i))
             elif BRANCH_INTS[opcode] or decoded[:2] == 'BC':
                 address = sign_16_bit_value(ints[i] & 0xFFFF) + i + 1
                 buffer.insert(0, (self.branches_to, str(address), i))
@@ -1235,6 +1237,10 @@ class Disassembler:
                     dict_append(dict=popped[0],
                                 key=popped[1],
                                 value=popped[2])
+            if not i & percent:
+                text_box.delete('1.0', tkinter.END)
+                text_box.insert('1.0', str(i // percent) + '%')
+                text_box.update()
         with open(self.jumps_file, 'wb') as jumps_file:
             dump((self.jumps_to, self.branches_to), jumps_file)
 

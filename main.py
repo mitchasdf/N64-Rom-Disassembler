@@ -25,6 +25,9 @@ working_dir = os.path.dirname(os.path.realpath(__file__)) + '\\'
 FRESH_APP_CONFIG = {
     'previous_base_location': working_dir,
     'previous_hack_location': working_dir,
+    'previous_base_opened': '',
+    'previous_hack_opened': '',
+    'open_roms_automatically': False,
     'scroll_amount': 8,
     'immediate_identifier': '$',
     'hex_mode': False,
@@ -157,6 +160,7 @@ def change_colours():
     address_translate_button.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg)
     auto_copy_checkbtn.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg, selectcolor=win_bg)
     window.config(bg=win_bg)
+    [label.config(bg=new_tag_config['target']) for label in [target_down_label, target_up_label]]
     if change_rom_name_button:
         change_rom_name_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg, activeforeground=text_fg)
 
@@ -374,7 +378,7 @@ def highlight_stuff(event=None, skip_moving_cursor=False):
                                            cursor_value(line, 0),
                                            cursor_value(line, len(text[i])))
 
-            # Highlight the target of jump or branch functions
+            # Highlight the target of selected jump or branch functions
             if address:
                 if hack_function:
                     if c_line:
@@ -390,10 +394,15 @@ def highlight_stuff(event=None, skip_moving_cursor=False):
                             prev_address_target = address
                             jumps_from[str(navi)] = address
                     if address in range(navigation, navigation + max_lines):
+                        target_none()
                         place = address - navigation
                         hack_file_text_box.tag_add('target',
                                                    cursor_value(place + 1, 0),
                                                    cursor_value(place + 2, 0))
+                    elif address < navigation:
+                        target_up()
+                    elif address > navigation + max_lines:
+                        target_down()
 
             # Highlight instructions in which are a target of any jump or branch
             # Because the disasm.jumps dict is so huge, a try/except works "exceptionally" faster than iterative methods
@@ -463,6 +472,7 @@ def reset_target():
     global prev_reg_target, prev_address_target, prev_cursor_location
     prev_reg_target, prev_address_target = '', 0
     prev_cursor_location = 0
+    target_none()
 
 
 # The hacked text box syntax checker and change applier
@@ -1276,8 +1286,7 @@ def open_files(mode = ''):
         disasm = None
         jumps_displaying = {}
         [text_box.delete('1.0', tk.END) for text_box in ALL_TEXT_BOXES]
-    else:
-        [text_box.configure(state=tk.NORMAL) for text_box in ALL_TEXT_BOXES]
+    [text_box.configure(state=tk.NORMAL) for text_box in ALL_TEXT_BOXES]
     destroy_change_rom_name_button()
 
     # Set data for rest of this function
@@ -1291,8 +1300,8 @@ def open_files(mode = ''):
         hack_dialog_function = filedialog.askopenfilename
 
     # Obtain file locations from user input
-    if open_my_roms_automatically:
-        base_file_path = 'C:\\Users\\Mitchell\\Desktop\\n64split\\base sm64.z64'
+    if app_config['open_roms_automatically'] and app_config['previous_base_opened'] and not mode:
+        base_file_path = app_config['previous_base_opened']
     else:
         base_file_path = filedialog.askopenfilename(initialdir = app_config['previous_base_location'], title = base_title)
     if not base_file_path:
@@ -1301,8 +1310,8 @@ def open_files(mode = ''):
     base_dir = base_file_path[:base_file_path.rfind('\\') + 1]
 
     hack_dir = base_dir if mode == 'new' else app_config['previous_hack_location']
-    if open_my_roms_automatically:
-        hack_file_path = 'C:\\Users\\Mitchell\\Desktop\\n64split\\hack sm64.z64'
+    if app_config['open_roms_automatically'] and app_config['previous_hack_opened'] and not mode:
+        hack_file_path = app_config['previous_hack_opened']
     else:
         hack_file_path = hack_dialog_function(initialdir = hack_dir, title = hack_title)
     if not hack_file_path:
@@ -1332,6 +1341,8 @@ def open_files(mode = ''):
     # Remember dirs for next browse
     app_config['previous_base_location'] = base_dir
     app_config['previous_hack_location'] = hack_dir
+    app_config['previous_base_opened'] = base_file_path
+    app_config['previous_hack_opened'] = hack_file_path
     save_config()
 
     # Initialise disassembler with paths to the 2 files, apply saved settings from app_config
@@ -1344,18 +1355,19 @@ def open_files(mode = ''):
         simpledialog.messagebox._show('Error', e)
         base_file_text_box.delete('1.0', tk.END)
         hack_file_text_box.delete('1.0', tk.END)
-        [text_box.configure(state=tk.DISABLED) for text_box in ALL_TEXT_BOXES]
+        [text_box.config(state=tk.DISABLED) for text_box in ALL_TEXT_BOXES]
         disasm = None
         return
 
-    base_file_text_box.insert('1.0', 'Mapping out jumps...')
-    hack_file_text_box.insert('1.0', 'Please wait')
+    base_file_text_box.insert('1.0', 'Mapping jumps...')
+    hack_file_text_box.insert('1.0', 'Please wait...')
+    comments_text_box.insert('1.0', 'This may take a while with larger roms.\nThis only has to be done once per rom.')
 
     def rest_of_function():
         global jumps_displaying
-        disasm.map_jumps()
-        base_file_text_box.delete('1.0', tk.END)
-        hack_file_text_box.delete('1.0', tk.END)
+        disasm.map_jumps(address_text_box)
+        [text_box.update() for text_box in [base_file_text_box, hack_file_text_box, comments_text_box]]
+        [text_box.delete('1.0',tk.END) for text_box in ALL_TEXT_BOXES]
 
         # Navigate user to first line of code, start the undo buffer with the current data on screen
         navigate_to(0)
@@ -1380,7 +1392,7 @@ def open_files(mode = ''):
         # timer_tick('Disassembling file')
 
     # Otherwise text boxes sometimes don't get updated to notify user of jump mapping
-    window.after(100, rest_of_function)
+    window.after(0, rest_of_function)
 
 
 def toggle_address_mode():
@@ -2029,20 +2041,29 @@ def toggle_auto_copy():
     app_config['auto_copy'] = auto_copy_var.get()
     save_config()
 
+def toggle_auto_open():
+    toggle_to = not app_config['open_roms_automatically']
+    app_config['open_roms_automatically'] = toggle_to
+    save_config()
 
-def test_function():
-    pass
+def target_up():
+    target_down_label.place_forget()
+    target_up_label.place(x=415, y=32, width=312, height=8)
 
 
-def testthing():
-    cursor, line, column = get_cursor(hack_file_text_box)
-    nav = (line + navigation - 1)
-    navi = nav << 2
-    inter = int_of_4_byte_aligned_region(disasm.hack_file[navi:navi+4])
-    disasm.comments[nav] = extend_zeroes(bin(inter)[2:], 32)
+def target_down():
+    target_up_label.place_forget()
+    target_down_label.place(x=415, y=790, width=312, height=8)
+
+
+def target_none():
+    target_up_label.place_forget()
+    target_down_label.place_forget()
 
 
 menu_bar = tk.Menu(window)
+auto_open = tk.BooleanVar()
+auto_open.set(app_config['open_roms_automatically'])
 
 MENU_BACKGROUND = '#FFFFFF'
 MENU_FOREGROUND = '#000000'
@@ -2054,6 +2075,8 @@ file_menu.add_separator()
 file_menu.add_command(label='Save (Ctrl+S)', command=save_changes_to_file)
 file_menu.add_command(label='Save as...', command=lambda: save_changes_to_file(True))
 file_menu.add_separator()
+file_menu.add_checkbutton(label='Auto open previous roms on startup', command=toggle_auto_open,
+                          variable=auto_open)
 file_menu.add_command(label='Exit', command=lambda: close_window('left'))
 menu_bar.add_cascade(label='File', menu=file_menu)
 
@@ -2061,10 +2084,6 @@ nav_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
 nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
 nav_menu.add_command(label='Browse Comments', command=view_comments)
 nav_menu.add_command(label='Browse Jumps', command= lambda: find_jumps(just_window=True))
-# ----------------------------------------------------------------------------------
-# nav_menu.add_separator()
-# nav_menu.add_command(label='Test', command=test_function)
-# ----------------------------------------------------------------------------------
 
 menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 
@@ -2094,9 +2113,6 @@ window.bind('<MouseWheel>', scroll_callback)
 window.bind('<FocusOut>', lambda e: replace_clipboard())
 hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-f>', lambda e: follow_jump())
-# ---------------------------------------------------------------------------
-# hack_file_text_box.bind('<Control-a>', lambda e: testthing())
-# ---------------------------------------------------------------------------
 
 
 def text_box_callback(event):
@@ -2121,19 +2137,21 @@ address_output.place(x=203, y=8, width=85, height=21)
 
 auto_copy_var = tk.IntVar()
 auto_copy_checkbtn = tk.Checkbutton(window, text='Auto copy output to clipboard', var=auto_copy_var, command=lambda:window.after(1,lambda:toggle_auto_copy()))
-auto_copy_checkbtn.place(x=300, y=5)
+auto_copy_checkbtn.place(x=288, y=5)
 auto_copy_var.set(app_config['auto_copy'])
 
 address_text_box.place(x=6, y=35, width=85, height=760)
 base_file_text_box.place(x=95, y=35, width=315, height=760)
 hack_file_text_box.place(x=414, y=35, width=315, height=760)
 comments_text_box.place(x=733, y=35, width=597, height=760)
-window.protocol('WM_DELETE_WINDOW', close_window)
 
+target_up_label = tk.Label(window)
+target_down_label = tk.Label(window)
+
+window.protocol('WM_DELETE_WINDOW', close_window)
 change_colours()
 
-open_my_roms_automatically = True
-if open_my_roms_automatically:
-    window.after(1, lambda: (destroy_change_rom_name_button(), open_files()))
+if app_config['open_roms_automatically'] and app_config['previous_base_opened'] and app_config['previous_hack_opened']:
+    window.after(1, open_files)
 
 window.mainloop()
