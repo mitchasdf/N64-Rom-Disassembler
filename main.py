@@ -288,27 +288,12 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
     [hack_file_text_box.tag_remove(tag, '1.0', tk.END) for tag in app_config['tag_config']]
     [text_box.tag_remove('cursor_line', '1.0', tk.END) for text_box in ALL_TEXT_BOXES]
 
-    # I gave up looking for the 1 case causing attribute error
-    # Attribute error has slowly become a feature
-    try:
-
-        if not widget:
-            the_widget = window.focus_get()
-            if the_widget is hack_file_text_box:
-                cursor, c_line, column = get_cursor(hack_file_text_box)
-                hack_function = True
-            elif the_widget is comments_text_box or the_widget is base_file_text_box or the_widget is address_text_box:
-                cursor, c_line, column = get_cursor(the_widget)
-                hack_function = False
-            else:
-                cursor, c_line, column = '1.0', 0, 0
-                hack_function = False
-        else:
-            cursor, c_line, column = get_cursor(widget)
-            hack_function = True if widget is hack_file_text_box else False
-    except AttributeError:
+    if not widget:
         cursor, c_line, column = get_cursor(hack_file_text_box)
         hack_function = True
+    else:
+        cursor, c_line, column = get_cursor(widget)
+        hack_function = True if widget is hack_file_text_box else False
     text = get_text_content(hack_file_text_box).split('\n')
     targeting = get_word_at(text, c_line, column)
 
@@ -322,11 +307,11 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
         elif prev_cursor_location > navigation + max_lines:
             new_cursor = cursor_value(max_lines, 0)
         if new_cursor:
-            hack_file_text_box.mark_set(tk.INSERT, new_cursor)
-            cursor, c_line, column = get_cursor(hack_file_text_box)
+            this_handle = hack_file_text_box if not widget else widget
+            this_handle.mark_set(tk.INSERT, new_cursor)
+            cursor, c_line, column = get_cursor(this_handle)
 
     jumps_from = {}
-
     [text_box.tag_add('cursor_line',
                       cursor_value(c_line, 0),
                       cursor_value(c_line + 1, 0))
@@ -1170,6 +1155,10 @@ def navigate_to(index, center=False, widget=None):
               [comments_text_box, sample_comments]]
     [update_text_box(param[0], param[1]) for param in params]
 
+    if not widget is hack_file_text_box and not widget is comments_text_box and \
+        not widget is address_text_box and not widget is base_file_text_box:
+        widget = None
+
     if center:
         widgey = widget if widget else hack_file_text_box
         new_cursor = modify_cursor('1.0', max_lines >> 1, 'max', get_text_content(widgey))[0]
@@ -1179,9 +1168,6 @@ def navigate_to(index, center=False, widget=None):
         new_cursor, _, __ = modify_cursor('1.0', line, 'max', get_text_content(hack_file_text_box))
         hack_file_text_box.mark_set(tk.INSERT, new_cursor)
 
-    widgey = None
-    if window.focus_get() is hack_file_text_box:
-        widgey = hack_file_text_box
     highlight_stuff(widget, skip_moving_cursor=center)
 
 
@@ -1209,7 +1195,7 @@ def scroll_callback(event):
     apply_hack_changes()
     apply_comment_changes()
     direction = -app_config['scroll_amount'] if event.delta > 0 else app_config['scroll_amount']
-    navigate_to(navigation + direction)
+    navigate_to(navigation + direction, widget=window.focus_get())
 
 
 def save_changes_to_file(save_as=False):
@@ -2164,7 +2150,10 @@ def text_box_callback(event):
         reset_target()
         apply_hack_changes()
         apply_comment_changes()
-        window.after(1, lambda: (correct_cursor(event), highlight_stuff(event.widget, skip_moving_cursor=True)))
+        def after_delay(event):
+            correct_cursor(event)
+            highlight_stuff(widget=event.widget, skip_moving_cursor=True)
+        window.after(1, lambda: after_delay(event))
 
 [tbox.bind('<Button-1>', text_box_callback) for tbox in ALL_TEXT_BOXES]
 
