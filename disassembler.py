@@ -546,7 +546,7 @@ BRANCH_INTS = [True if i in [1, 4, 5, 6, 7, 20, 21, 22, 23] else False for i in 
 
 
 class Disassembler:
-    def __init__(self, base_file_path='', hacked_file_path='', game_address_mode=False, immediate_identifier='$'):
+    def __init__(self, base_file_path='', hacked_file_path=''):
         def open_rom(self, file_path):
             with open(file_path, 'rb') as file:
                 file_data = bytearray(file.read())
@@ -652,8 +652,8 @@ class Disassembler:
         segment = self.hack_file[self.header_items['Game Offset'][0]: self.header_items['Game Offset'][1]]
         self.game_offset = int.from_bytes(segment, byteorder='big', signed=False) - 0x1000
 
-        self.game_address_mode = game_address_mode
-        self.immediate_identifier = immediate_identifier
+        self.game_address_mode = False
+        self.immediate_identifier = '$'
 
         self.encodes = {}
         self.appearances = {}

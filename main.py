@@ -32,7 +32,7 @@ FRESH_APP_CONFIG = {
     'immediate_identifier': '$',
     'hex_mode': False,
     'hex_space_separation': True,
-    'game_address_mode': False,
+    'game_address_mode': {},
     'auto_copy': 0,
     'mem_edit_offset': {},
     'jumps_displaying': {},
@@ -280,7 +280,7 @@ def correct_cursor(event):
 
 # Is called pretty much after every time the view is changed
 prev_reg_target, prev_address_target, prev_cursor_location = '', 0, 0
-def highlight_stuff(event=None, skip_moving_cursor=False):
+def highlight_stuff(widget=None, skip_moving_cursor=False):
     global prev_reg_target, prev_address_target, prev_cursor_location
     if not disasm:
         return
@@ -291,12 +291,21 @@ def highlight_stuff(event=None, skip_moving_cursor=False):
     # I gave up looking for the 1 case causing attribute error
     # Attribute error has slowly become a feature
     try:
-        if not event:
-            cursor, c_line, column = get_cursor(hack_file_text_box)
-            hack_function = True
+
+        if not widget:
+            the_widget = window.focus_get()
+            if the_widget is hack_file_text_box:
+                cursor, c_line, column = get_cursor(hack_file_text_box)
+                hack_function = True
+            elif the_widget is comments_text_box or the_widget is base_file_text_box or the_widget is address_text_box:
+                cursor, c_line, column = get_cursor(the_widget)
+                hack_function = False
+            else:
+                cursor, c_line, column = '1.0', 0, 0
+                hack_function = False
         else:
-            cursor, c_line, column = get_cursor(event.widget)
-            hack_function = True if event.widget is hack_file_text_box else False
+            cursor, c_line, column = get_cursor(widget)
+            hack_function = True if widget is hack_file_text_box else False
     except AttributeError:
         cursor, c_line, column = get_cursor(hack_file_text_box)
         hack_function = True
@@ -388,7 +397,7 @@ def highlight_stuff(event=None, skip_moving_cursor=False):
                         except:
                             address = -1
                         else:
-                            if app_config['game_address_mode']:
+                            if disasm.game_address_mode:
                                 address -= disasm.game_offset
                             address >>= 2
                             prev_address_target = address
@@ -461,11 +470,11 @@ def highlight_stuff(event=None, skip_moving_cursor=False):
                 begin = column + 1
 
     # These conditions allow user to scroll out of view of the target without losing highlighting
-    if targeting in REGISTERS_ENCODE:
+    if prev_reg_target:
+        highlight_targets(prev_reg_target)
+    elif targeting in REGISTERS_ENCODE:
         prev_reg_target = targeting
         highlight_targets(targeting)
-    elif prev_reg_target:
-        highlight_targets(prev_reg_target)
 
 
 def reset_target():
@@ -480,7 +489,7 @@ def apply_hack_changes(ignore_slot = None):
     def find_target_key(jumps, target):
         targets_lower = [deci(i[:8]) >> 2 for i in jumps]
         targets_upper = [deci(i[11:19]) >> 2 for i in jumps]
-        if app_config['game_address_mode']:
+        if disasm.game_address_mode:
             target += disasm.game_offset >> 2
         i = 0
         target_key = ''
@@ -548,7 +557,7 @@ def apply_hack_changes(ignore_slot = None):
                             raise Exception()
                         target = split_text[i][found + 1:]
                         target = deci(target)
-                        if app_config['game_address_mode']:
+                        if disasm.game_address_mode:
                             target -= disasm.game_offset
                         str_target = str(target >> 2)
                         if this_word in ['J', 'JAL']:
@@ -559,7 +568,7 @@ def apply_hack_changes(ignore_slot = None):
                         if mapped_address:
                             target_key = find_target_key(jumps_displaying, target >> 2)
                             if target_key:
-                                address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if app_config['game_address_mode'] else 0)), 8)
+                                address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if disasm.game_address_mode else 0)), 8)
                                 if address not in jumps_displaying[target_key]:
                                     jumps_displaying[target_key].append(address)
                                     if jumps_window and function_select == target_key:
@@ -585,7 +594,7 @@ def apply_hack_changes(ignore_slot = None):
                 if dic is disasm.jumps_to:
                     target_key = find_target_key(jumps_displaying, target)
                     if unmapped_address and target_key:
-                        address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if app_config['game_address_mode'] else 0)), 8)
+                        address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if disasm.game_address_mode else 0)), 8)
                         cut_jumps = [i[:8] for i in jumps_displaying[target_key]]
                         if address in cut_jumps:
                             place = cut_jumps.index(address)
@@ -611,12 +620,18 @@ def apply_comment_changes():
     current_text = get_text_content(comments_text_box)
     split_text = current_text.split('\n')
     config = jumps_displaying.copy()
-    increment = disasm.game_offset if app_config['game_address_mode'] else 0
+    increment = disasm.game_offset if disasm.game_address_mode else 0
     for i in range(max_lines):
         navi = navigation + i
         string_key = '{}'.format(navi)
         hex_navi = extend_zeroes(hexi((navi << 2) + increment), 8)
         if not split_text[i]:
+            if comments_window:
+                comments_in = comments_list.get(0,tk.END)
+                addresses = [i[:8] for i in comments_in]
+                if hex_navi in addresses:
+                    target = addresses.index(hex_navi)
+                    comments_list.delete(target)
             if is_in_comments(string_key):
                 del disasm.comments[string_key]
             for key in config:
@@ -656,6 +671,23 @@ def apply_comment_changes():
         if split_text[i] == disasm.comments[string_key]:
             continue
         disasm.comments[string_key] = split_text[i]
+        if comments_window:
+            comments_in = comments_list.get(0, tk.END)
+            addresses = [i[:8] for i in comments_in]
+            if hex_navi in addresses:
+                target = addresses.index(hex_navi)
+                comments_list.delete(target)
+                comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
+            else:
+                int_addresses = [deci(i) for i in addresses]
+                this_int_address = deci(hex_navi)
+                target = -1
+                for i in range(len(int_addresses) - 1):
+                    if this_int_address == keep_within(this_int_address, int_addresses[i], int_addresses[i+1]):
+                        target = i + 1
+                        break
+                if target >= 0:
+                    comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
         for key in config:
             if key[:8] == hex_navi:
                 del jumps_displaying[key]
@@ -772,7 +804,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d or is_pasting or is_cutting):
         buffer_frame = (navigation, cursor, joined_text,
                         app_config['immediate_identifier'],
-                        app_config['game_address_mode'],
+                        disasm.game_address_mode,
                         app_config['hex_mode'])\
                         if hack_function else \
                         (navigation, cursor, joined_text)
@@ -785,7 +817,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             if part[0] != navigation or part[2] != joined_text:
                 buffer_frame = (navigation, cursor, joined_text,
                                 app_config['immediate_identifier'],
-                                app_config['game_address_mode'],
+                                disasm.game_address_mode,
                                 app_config['hex_mode']) \
                                 if hack_function else \
                                 (navigation, cursor, joined_text)
@@ -816,8 +848,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                     app_config['immediate_identifier'] = immediate_id
                     save_config()
                     disasm.immediate_identifier = immediate_id
-                if game_address_mode != app_config['game_address_mode']:
-                    app_config['game_address_mode'] = game_address_mode
+                if game_address_mode != disasm.game_address_mode:
+                    disasm.game_address_mode = game_address_mode
                     save_config()
                 if hex_mode != app_config['hex_mode']:
                     app_config['hex_mode'] = hex_mode
@@ -1009,9 +1041,9 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     # The delays are necessary to solve complications for text modified by the key after this function fires
     if not just_function_key:
         if handle is comments_text_box:
-            window.after(0, lambda: (apply_comment_changes(), highlight_stuff(event)))
+            window.after(0, lambda: (apply_comment_changes(), highlight_stuff(event.widget)))
         else:
-            window.after(0, lambda: (highlight_stuff(event)))
+            window.after(0, lambda: (highlight_stuff(event.widget)))
 
 
 base_file_text_box.bind('<Key>', lambda event:
@@ -1049,13 +1081,14 @@ def destroy_change_rom_name_button():
         change_rom_name_button = None
 
 
-def navigate_to(index):
+def navigate_to(index, center=False, widget=None):
     global navigation, change_rom_name_button
     if not disasm:
         return
 
     destroy_change_rom_name_button()
-
+    if center:
+        index -= max_lines >> 1
     shift_amount = navigation
 
     # Correct the navigation if traveling out of bounds, also calculate limits for file samples to display
@@ -1137,21 +1170,29 @@ def navigate_to(index):
               [comments_text_box, sample_comments]]
     [update_text_box(param[0], param[1]) for param in params]
 
-    if prev_cursor_location in range(navigation, limit):
+    if center:
+        widgey = widget if widget else hack_file_text_box
+        new_cursor = modify_cursor('1.0', max_lines >> 1, 'max', get_text_content(widgey))[0]
+        widgey.mark_set(tk.INSERT, new_cursor)
+    elif prev_cursor_location in range(navigation, limit):
         line = prev_cursor_location - navigation
-        temp_cursor, _, __ = modify_cursor('1.0', line, 'max', get_text_content(hack_file_text_box))
-        hack_file_text_box.mark_set(tk.INSERT, temp_cursor)
+        new_cursor, _, __ = modify_cursor('1.0', line, 'max', get_text_content(hack_file_text_box))
+        hack_file_text_box.mark_set(tk.INSERT, new_cursor)
 
-    highlight_stuff()
+    widgey = None
+    if window.focus_get() is hack_file_text_box:
+        widgey = hack_file_text_box
+    highlight_stuff(widget, skip_moving_cursor=center)
 
 
 def navigation_prompt():
     if not disasm:
         return
+    handle = window.focus_get()
     address = simpledialog.askstring('Navigate to address', '')
     try:
         address = deci(address)
-        if app_config['game_address_mode']:
+        if disasm.game_address_mode:
             address -= disasm.game_offset
         address //= 4
     except:
@@ -1159,7 +1200,7 @@ def navigation_prompt():
     apply_hack_changes()
     apply_comment_changes()
     reset_target()
-    navigate_to(address)
+    navigate_to(address, center=True, widget=hack_file_text_box)
 
 
 def scroll_callback(event):
@@ -1182,6 +1223,7 @@ def save_changes_to_file(save_as=False):
     for key in user_errors:
         i = int(key)
         navigate_to(i - (max_lines // 2))
+
         highlight_stuff()
         return False
 
@@ -1201,6 +1243,7 @@ def save_changes_to_file(save_as=False):
         disasm.jumps_file = new_file_name + ' jumps.data'
 
     app_config['jumps_displaying'][disasm.hack_file_name] = jumps_displaying.copy()
+    app_config['game_address_mode'][disasm.hack_file_name] = disasm.game_address_mode
     save_config()
     with open(disasm.jumps_file, 'wb') as jumps_file:
         dump((disasm.jumps_to, disasm.branches_to), jumps_file)
@@ -1348,9 +1391,12 @@ def open_files(mode = ''):
     # Initialise disassembler with paths to the 2 files, apply saved settings from app_config
     try:
         disasm = Disassembler(base_file_path,
-                              hack_file_path,
-                              app_config['game_address_mode'],
-                              app_config['immediate_identifier'])
+                              hack_file_path)
+        if disasm.hack_file_name not in app_config['game_address_mode']:
+            app_config['game_address_mode'][disasm.hack_file_name] = False
+        disasm.game_address_mode = app_config['game_address_mode'][disasm.hack_file_name]
+        disasm.immediate_identifier = app_config['immediate_identifier']
+
     except Exception as e:
         simpledialog.messagebox._show('Error', e)
         base_file_text_box.delete('1.0', tk.END)
@@ -1375,7 +1421,7 @@ def open_files(mode = ''):
                                     cursor_value(1, 0),
                                     get_text_content(hack_file_text_box),
                                     app_config['immediate_identifier'],
-                                    app_config['game_address_mode'],
+                                    disasm.game_address_mode,
                                     app_config['hex_mode']))
         buffer_append(comments_buffer, (navigation,
                                         cursor_value(1, 0),
@@ -1404,10 +1450,10 @@ def toggle_address_mode():
                                 hack_file_text_box.index(tk.INSERT),
                                 get_text_content(hack_file_text_box),
                                 app_config['immediate_identifier'],
-                                app_config['game_address_mode'],
+                                disasm.game_address_mode,
                                 app_config['hex_mode']))
-    toggle_to = not app_config['game_address_mode']
-    app_config['game_address_mode'] = toggle_to
+    toggle_to = not disasm.game_address_mode
+    disasm.game_address_mode = toggle_to
     if disasm:
         disasm.game_address_mode = toggle_to
     save_config()
@@ -1416,6 +1462,12 @@ def toggle_address_mode():
     highlight_stuff(skip_moving_cursor=True)
     increment = disasm.game_offset if toggle_to else -disasm.game_offset
     config_data = jumps_displaying.copy()
+    if comments_window:
+        comments = comments_list.get(0, tk.END)
+        addresses = [extend_zeroes(hexi(deci(i[:8]) + increment), 8) for i in comments]
+        comments_list.delete(0, tk.END)
+        for i, address in enumerate(addresses):
+            comments_list.insert(tk.END, '{}{}'.format(address, comments[i][8:]))
     for key in config_data:
         del jumps_displaying[key]
         addy_1 = deci(key[:8]) + increment
@@ -1455,7 +1507,7 @@ def toggle_hex_mode():
                                 cursor,
                                 get_text_content(hack_file_text_box),
                                 app_config['immediate_identifier'],
-                                app_config['game_address_mode'],
+                                disasm.game_address_mode,
                                 app_config['hex_mode']))
     app_config['hex_mode'] = not app_config['hex_mode']
     save_config()
@@ -1486,7 +1538,7 @@ def change_immediate_id():
                                     hack_file_text_box.index(tk.INSERT),
                                     hack_text,
                                     app_config['immediate_identifier'],
-                                    app_config['game_address_mode'],
+                                    disasm.game_address_mode,
                                     app_config['hex_mode']))
         hack_text.replace(app_config['immediate_identifier'], symbol[:1])
         hack_file_text_box.delete('1.0', tk.END)
@@ -1634,14 +1686,10 @@ def find_jumps(just_window=False):
                 return
             key = function_list_box.get(curselect[0])
             function_select = key
-            increment = 0 if not app_config['game_address_mode'] else -(disasm.game_offset >> 2)
+            increment = 0 if not disasm.game_address_mode else -(disasm.game_offset >> 2)
             start_address = deci(key[:8]) >> 2
-            half_way = max_lines >> 1
-            navigate_to((start_address - half_way) + increment)
-            hack_file_text_box.mark_set(tk.INSERT,
-                                        modify_cursor('1.0', half_way, 'max', get_text_content(hack_file_text_box))[0])
-            highlight_stuff(skip_moving_cursor=True)
-
+            reset_target()
+            navigate_to(start_address + increment, center=True, widget=hack_file_text_box)
             jump_list_box.delete(0, tk.END)
             for address in jumps_displaying[key]:
                 jump_list_box.insert(tk.END, address)
@@ -1661,13 +1709,11 @@ def find_jumps(just_window=False):
             curselect = jump_list_box.curselection()
             if not curselect:
                 return
-            increment = 0 if not app_config['game_address_mode'] else -(disasm.game_offset >> 2)
+            increment = 0 if not disasm.game_address_mode else -(disasm.game_offset >> 2)
             address = jump_list_box.get(curselect[0])[:8]
             navi = (deci(address) >> 2) + increment
-            navigate_to(navi - (max_lines >> 1))
-            hack_file_text_box.mark_set(tk.INSERT,
-                                        modify_cursor('1.0', max_lines >> 1, 'max', get_text_content(hack_file_text_box))[0])
-            highlight_stuff(skip_moving_cursor=True)
+            reset_target()
+            navigate_to(navi, center=True, widget=hack_file_text_box)
 
         function_list_box.bind('<<ListboxSelect>>', lambda _: function_list_callback())
         jump_list_box.bind('<<ListboxSelect>>', lambda _: jump_list_callback())
@@ -1691,7 +1737,7 @@ def find_jumps(just_window=False):
     key = extend_zeroes(hexi(function_start << 2),8) + ' - ' + extend_zeroes(hexi(function_end << 2),8)
     key_not_in_jumps_displaying = True
     config = jumps_displaying.copy()
-    increment = -disasm.game_offset if app_config['game_address_mode'] else 0
+    increment = -disasm.game_offset if disasm.game_address_mode else 0
     try:
         comment_key = str((deci(key[:8]) + increment) >> 2)
     except ValueError:
@@ -1723,8 +1769,9 @@ def find_jumps(just_window=False):
 
 
 comments_window = None
+comments_list = None
 def view_comments():
-    global comments_window
+    global comments_window, comments_list
     if not disasm:
         return
     if comments_window:
@@ -1733,21 +1780,23 @@ def view_comments():
         comments_window = tk.Tk()
         comments_window.title('Comments')
         comments_window.geometry('{}x{}'.format(710,510))
+        comments_window.bind('<F5>', lambda e: toggle_address_mode())
         comments_list = tk.Listbox(comments_window, font=('Courier', 12))
         comments_list.place(x=5,y=5,width=700,height=500)
+        increment = 0
+        if disasm.game_address_mode:
+            increment = disasm.game_offset
         for key in sorted([int(key) for key in disasm.comments]):
-            comments_list.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi(key << 2),8), disasm.comments[str(key)]))
+            comments_list.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi((key << 2) + increment),8), disasm.comments[str(key)]))
         def comments_list_callback(event):
             curselect = comments_list.curselection()
             if not curselect:
                 return
             navi = deci(comments_list.get(curselect[0])[:8]) >> 2
-            navigate_to(navi - (max_lines >> 1))
-            new_cursor, line, column = modify_cursor('1.0', max_lines >> 1, 'max', get_text_content(comments_text_box))
-            hack_file_text_box.mark_set(tk.INSERT, '{}.0'.format(line))
-            # comments_text_box.focus_force()
-            comments_text_box.mark_set(tk.INSERT, new_cursor)
-            highlight_stuff(skip_moving_cursor=True)
+            if disasm.game_address_mode:
+                navi -= disasm.game_offset >> 2
+            reset_target()
+            navigate_to(navi, center=True, widget=comments_text_box)
         comments_list.bind('<<ListboxSelect>>', comments_list_callback)
         def comments_window_equals_none():
             global comments_window
@@ -1779,16 +1828,11 @@ def follow_jump():
         if frame[0] != navigation or frame[1] != cursor or frame[2] != text_box_contents:
             buffer_append(hack_buffer,
                         (navigation, cursor, text_box_contents, app_config['immediate_identifier'],
-                         app_config['game_address_mode'], app_config['hex_mode']))
-        half_way = max_lines >> 1
-        navigate_to(address - half_way)
-        text_box_contents = get_text_content(hack_file_text_box)
-        cursor_loc = modify_cursor(cursor_value(half_way, 0), 1, 'max', text_box_contents)[0]
-        hack_file_text_box.mark_set(tk.INSERT, cursor_loc)
+                         disasm.game_address_mode, app_config['hex_mode']))
+        navigate_to(address, center=True)
         buffer_append(hack_buffer,
-                    (navigation, cursor_loc, text_box_contents,
-                    app_config['immediate_identifier'], app_config['game_address_mode'], app_config['hex_mode']))
-        highlight_stuff(skip_moving_cursor=True)
+                    (navigation, get_cursor(hack_file_text_box)[0], get_text_content(hack_file_text_box),
+                    app_config['immediate_identifier'], disasm.game_address_mode, app_config['hex_mode']))
 
 
 
@@ -2120,7 +2164,7 @@ def text_box_callback(event):
         reset_target()
         apply_hack_changes()
         apply_comment_changes()
-        window.after(1, lambda: (correct_cursor(event), highlight_stuff(event, skip_moving_cursor=True)))
+        window.after(1, lambda: (correct_cursor(event), highlight_stuff(event.widget, skip_moving_cursor=True)))
 
 [tbox.bind('<Button-1>', text_box_callback) for tbox in ALL_TEXT_BOXES]
 
