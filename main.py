@@ -145,11 +145,17 @@ def save_config():
     pickle_data(app_config, CONFIG_FILE)
 
 
+def get_colours_of_hex(hex_code):
+    int_colour = int('0x' + hex_code[1:], 16)
+    r, g, b = (int_colour & 0xFF0000) >> 16, (int_colour & 0xFF00) >> 8, int_colour & 0xFF
+    return r, g, b
+
+
 def change_colours():
     text_bg = app_config['text_bg_colour']
     text_fg = app_config['text_fg_colour']
-    win_bg = app_config['cursor_line_colour']
-    cursor_line_colour = app_config['window_background_colour']
+    win_bg = app_config['window_background_colour']
+    cursor_line_colour = app_config['cursor_line_colour']
     new_tag_config = app_config['tag_config']
     [hack_file_text_box.tag_delete(tag) for tag in app_config['tag_config']]
     [(text_box.tag_delete('cursor_line'),
@@ -163,7 +169,13 @@ def change_colours():
     [label.config(bg=new_tag_config['target']) for label in [target_down_label, target_up_label]]
     if change_rom_name_button:
         change_rom_name_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg, activeforeground=text_fg)
-
+    r, g, b = get_colours_of_hex(text_bg)
+    grey_scale = (r + g + b) / 3
+    if grey_scale < 128:
+        new_insert_colour = '#FFFFFF'
+    else:
+        new_insert_colour = '#000000'
+    [text_box.config(insertbackground=new_insert_colour) for text_box in [address_input, address_output] + ALL_TEXT_BOXES]
     highlight_stuff(skip_moving_cursor=True)
 
     '''
@@ -1843,8 +1855,7 @@ def set_colour_scheme():
                 start_colour = app_config[which]
             new_colour = colorchooser.askcolor(color=start_colour)
         else:
-            int_colour = int('0x' + with_colour[1:], 16)
-            r, g, b = (int_colour & 0xFF0000) >> 16, (int_colour & 0xFF00) >> 8, int_colour & 0xFF
+            r, g, b = get_colours_of_hex(with_colour)
             new_colour = ((r, g, b), with_colour)
         if not new_colour[0]:
             return
