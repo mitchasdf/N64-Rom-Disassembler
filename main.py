@@ -178,10 +178,12 @@ def change_colours():
     [text_box.config(insertbackground=new_insert_colour) for text_box in [address_input, address_output] + ALL_TEXT_BOXES]
     highlight_stuff(skip_moving_cursor=True)
 
-    '''
-    bg=app_config['window_background_colour'], fg=app_config['text_fg_colour'],
-    activeforeground=app_config['text_fg_colour'], activebackground=app_config['window_background_colour'],
-    selectcolor=app_config['window_background_colour'])'''
+
+def check_widget(widget):
+    if not widget is hack_file_text_box and not widget is comments_text_box and \
+        not widget is address_text_box and not widget is base_file_text_box:
+        widget = None
+    return widget
 
 
 def get_text_content(handle):
@@ -1167,9 +1169,6 @@ def navigate_to(index, center=False, widget=None):
               [comments_text_box, sample_comments]]
     [update_text_box(param[0], param[1]) for param in params]
 
-    if not widget is hack_file_text_box and not widget is comments_text_box and \
-        not widget is address_text_box and not widget is base_file_text_box:
-        widget = None
 
     if center:
         widgey = widget if widget else hack_file_text_box
@@ -1186,7 +1185,7 @@ def navigate_to(index, center=False, widget=None):
 def navigation_prompt():
     if not disasm:
         return
-    handle = window.focus_get()
+    widget = check_widget(window.focus_get())
     address = simpledialog.askstring('Navigate to address', '')
     try:
         address = deci(address)
@@ -1198,7 +1197,9 @@ def navigation_prompt():
     apply_hack_changes()
     apply_comment_changes()
     reset_target()
-    navigate_to(address, center=True, widget=hack_file_text_box)
+    navigate_to(address, center=True, widget=widget)
+    if widget:
+        widget.focus_force()
 
 
 def scroll_callback(event):
