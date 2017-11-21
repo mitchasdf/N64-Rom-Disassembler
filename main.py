@@ -1,5 +1,6 @@
 
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import simpledialog, filedialog, colorchooser
 import os
 from function_defs import *
@@ -17,9 +18,6 @@ JUMP_FUNCTIONS = ['J', 'JR', 'JAL', 'JALR']
 disasm = None
 
 window = tk.Tk()
-window.title('ROM Disassembler')
-window.geometry('1335x820+50+50')
-window.iconbitmap('n64_disassembler.ico')
 
 working_dir = os.path.dirname(os.path.realpath(__file__)) + '\\'
 FRESH_APP_CONFIG = {
@@ -28,6 +26,9 @@ FRESH_APP_CONFIG = {
     'previous_base_opened': '',
     'previous_hack_opened': '',
     'open_roms_automatically': False,
+    'window_geometry': '1133x609',
+    'font_size': 10,
+    'max_lines': 40,
     'scroll_amount': 8,
     'immediate_identifier': '$',
     'hex_mode': False,
@@ -54,7 +55,6 @@ FRESH_APP_CONFIG = {
           'liken': '#308A30'
     }
 }
-
 
 # Setup app_config either fresh or from file
 if os.path.exists(CONFIG_FILE):
@@ -86,6 +86,12 @@ if os.path.exists(CONFIG_FILE):
         # raise Exception(e)
 else:
     app_config = FRESH_APP_CONFIG.copy()
+
+app_config['window_geometry'] = FRESH_APP_CONFIG['window_geometry']
+window.title('ROM Disassembler')
+window.geometry('{}+5+5'.format(app_config['window_geometry']))
+window.iconbitmap('n64_disassembler.ico')
+
 
 window.config(bg=app_config['window_background_colour'])
 '''
@@ -120,12 +126,7 @@ ALL_TEXT_BOXES = [address_text_box,
                   base_file_text_box,
                   hack_file_text_box,
                   comments_text_box]
-[text_box.config(font=('Courier',12), state=tk.DISABLED,
-                 bg=app_config['text_bg_colour'], fg=app_config['text_fg_colour'])
- for text_box in ALL_TEXT_BOXES]
-
-[text_box.tag_config('cursor_line', background=app_config['cursor_line_colour']) for text_box in ALL_TEXT_BOXES]
-[hack_file_text_box.tag_config(tag, background=app_config['tag_config'][tag]) for tag in app_config['tag_config']]
+[text_box.config(state=tk.DISABLED) for text_box in ALL_TEXT_BOXES]
 
 # [current_buffer_position, [(navigation, cursor_location, text_box_content
 # , immediate_id, game_address_mode, hex_mode), ...]]
@@ -137,8 +138,14 @@ buffer_max = 20000
 # {'decimal_address': [error_code, text_attempted_to_encode], ...}
 user_errors = {}
 
-max_lines = 42
+max_lines = app_config['max_lines']
+main_font_size = app_config['font_size']
 navigation = 0
+
+
+def font_dimension(size):
+    fonty = tkfont.Font(family='Courier', size=size, weight='normal')
+    return fonty.measure(' '), fonty.metrics('linespace')
 
 
 def save_config():
@@ -485,6 +492,8 @@ def reset_target():
 
 # The hacked text box syntax checker and change applier
 def apply_hack_changes(ignore_slot = None):
+    if not disasm:
+        return
     def find_target_key(jumps, target):
         targets_lower = [deci(i[:8]) >> 2 for i in jumps]
         targets_upper = [deci(i[11:19]) >> 2 for i in jumps]
@@ -616,6 +625,8 @@ def apply_hack_changes(ignore_slot = None):
 
 # Disassembler.comments accumulator
 def apply_comment_changes():
+    if not disasm:
+        return
     current_text = get_text_content(comments_text_box)
     split_text = current_text.split('\n')
     config = jumps_displaying.copy()
@@ -687,6 +698,8 @@ def apply_comment_changes():
                         break
                 if target >= 0:
                     comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
+                else:
+                    comments_list.insert(tk.END, '{}: {}'.format(hex_navi, split_text[i]))
         for key in config:
             if key[:8] == hex_navi:
                 del jumps_displaying[key]
@@ -764,11 +777,23 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     joined_text = get_text_content(handle)
     split_text = joined_text.split('\n')
 
-    cursor, line, column = get_cursor(handle)
+    states = {
+        str(0b100): 'Control',
+        str(0b100000000000000000): 'Alt',
+        str(0b1000000000000000000): 'Combines with right-hand Alt or Control',
+        str(0b1): 'Shift',
+        str(0b1000): 'Num Lock',
+        str(0b10): 'Caps Lock',
+        str(0b100000): 'Scroll Lock',
+    }
 
-    ctrl_held = bool(event.state & 0x0004)
-    ctrl_d = ctrl_held and event.keysym == 'd'
-    bad_bad_hotkey = ctrl_held and event.keysym in ['z', 't']
+    cursor, line, column = get_cursor(handle)
+    ctrl_held = bool(event.state & 0b100)
+    shift_held = bool(event.state & 0b1)
+    alt_held = bool(event.state & 0b100000000000000000)
+    up_keysym = event.keysym.upper()
+    ctrl_d = ctrl_held and up_keysym == 'D'
+    bad_bad_hotkey = ctrl_held and up_keysym in ['Z', 'T']
     if bad_bad_hotkey:
         # Messes with custom behaviour, so wait until after changes are made
         #   by bad hotkey, then restore text box to how it was before the hotkey
@@ -778,16 +803,14 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                                  highlight_stuff()))
         return
 
-    shift_held = bool(event.state & 0x0001)
-    alt_held = bool(event.state & 0x0008) or bool(event.state & 0x0080)
     has_char = bool(event.char) and event.keysym != 'Escape' and not ctrl_held
     just_function_key = event.keysym in ['Alt_L', 'Alt_R', 'Shift_L', 'Shift_R', 'Control_L', 'Control_R']
 
+    is_cutting = ctrl_held and up_keysym == 'X'
+    is_pasting = ctrl_held and up_keysym == 'V'
+    is_copying = ctrl_held and up_keysym == 'C'
     is_undoing = buffer and ctrl_held and event.keysym == 'comma'
     is_redoing = buffer and ctrl_held and event.keysym == 'period'
-    is_cutting = ctrl_held and event.keysym == 'x'
-    is_pasting = ctrl_held and event.keysym == 'v'
-    is_copying = ctrl_held and event.keysym == 'c'
     is_deleting = ctrl_d or event.keysym == 'Delete'
     is_backspacing = event.keysym == 'BackSpace'
     is_returning = event.keysym == 'Return'
@@ -868,7 +891,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         # Select whole columns if selecting multiple lines
         if sel_start_line != sel_end_line:
             # if sel_start_column == len(split_text[sel_start_line - 1]):
-            #     selection_line_mod += 1
+            #     selection_line_mod = True
             #     selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 1, 0, split_text)
             if sel_end_column == 0:
                 selection_line_mod = True
@@ -899,7 +922,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, 0, -1, split_text)
         if is_backspacing:
             selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 0, 1, split_text)
-
 
     if selection_function:
         selection_text = handle.get(selection_start, selection_end)
@@ -955,7 +977,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             handle.mark_set(tk.INSERT, temp_cursor)
         handle.insert(insertion_place, paste_text)
         if not selection_line_mod or is_pasting:
-            window.after(0, lambda: (apply_hack_changes(),
+            window.after(1, lambda: (apply_hack_changes(),
                                      apply_comment_changes(),
                                      move_next(handle),
                                      navigate_to(navigation)))
@@ -1046,13 +1068,13 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
 
 base_file_text_box.bind('<Key>', lambda event:
-    keyboard_events(base_file_text_box, 31, event, buffer=False))
+    keyboard_events(base_file_text_box, 30, event, buffer=False))
 
 hack_file_text_box.bind('<Key>', lambda event:
-    keyboard_events(hack_file_text_box, 31, event, buffer=hack_buffer, hack_function=True))
+    keyboard_events(hack_file_text_box, 30, event, buffer=hack_buffer, hack_function=True))
 
 comments_text_box.bind('<Key>', lambda event:
-    keyboard_events(comments_text_box, 59, event, buffer=comments_buffer))
+    keyboard_events(comments_text_box, 70, event, buffer=comments_buffer))
 
 
 # The button is destroyed and remade every time the user scrolls within it's view
@@ -1084,7 +1106,6 @@ def navigate_to(index, center=False, widget=None):
     global navigation, change_rom_name_button
     if not disasm:
         return
-
     destroy_change_rom_name_button()
     if center:
         index -= max_lines >> 1
@@ -1145,8 +1166,11 @@ def navigate_to(index, center=False, widget=None):
         change_rom_name_button = tk.Button(window, text = 'Change', command = change_rom_name,
                                            bg=bg, fg=fg,
                                            activebackground=bg, activeforeground=fg)
-        y_offset = ((disasm.header_items['Rom Name'][0] // 4) - navigation) * 18
-        change_rom_name_button.place(x = 965, y = 36 + y_offset, height = 21)
+        c_w, c_h, c_x, c_y = geometry(comments_text_box.winfo_geometry())
+        font_w, font_h = font_dimension(main_font_size)
+        x_offset = (font_w * 22) + 5
+        y_offset = ((disasm.header_items['Rom Name'][0] // 4) - navigation) * font_h
+        change_rom_name_button.place(x = c_x + x_offset, y = 36 + y_offset, height = 20)
 
     # Update all 4 text boxes
     def update_text_box(handle, text):
@@ -1187,12 +1211,16 @@ def navigation_prompt():
         return
     widget = check_widget(window.focus_get())
     address = simpledialog.askstring('Navigate to address', '')
+    if not address and widget:
+        widget.focus_force()
     try:
         address = deci(address)
         if disasm.game_address_mode:
             address -= disasm.game_offset
         address //= 4
     except:
+        if widget:
+            widget.focus_force()
         return
     apply_hack_changes()
     apply_comment_changes()
@@ -1208,7 +1236,7 @@ def scroll_callback(event):
     apply_hack_changes()
     apply_comment_changes()
     direction = -app_config['scroll_amount'] if event.delta > 0 else app_config['scroll_amount']
-    navigate_to(navigation + direction, widget=window.focus_get())
+    navigate_to(navigation + direction, widget=check_widget(window.focus_get()))
 
 
 def save_changes_to_file(save_as=False):
@@ -1268,16 +1296,25 @@ def save_changes_to_file(save_as=False):
     return True
 
 
-def close_window(side = 'right'):
-    def destroy_them():
-        if colours_window:
-            colours_window.destroy()
-        if jumps_window:
-            jumps_window.destroy()
-        if comments_window:
-            comments_window.destroy()
+def destroy_them(not_main=False):
+    global colours_window, jumps_window, comments_window, dimension_window
+    if colours_window:
+        colours_window.destroy()
+        colours_window = None
+    if jumps_window:
+        jumps_window.destroy()
+        jumps_window = None
+    if comments_window:
+        comments_window.destroy()
+        comments_window = None
+    if dimension_window:
+        dimension_window.destroy()
+        dimension_window = None
+    if not not_main:
         window.destroy()
 
+
+def close_window(side = 'right'):
     if not disasm:
         destroy_them()
         return
@@ -1330,6 +1367,7 @@ def open_files(mode = ''):
         [text_box.delete('1.0', tk.END) for text_box in ALL_TEXT_BOXES]
     [text_box.configure(state=tk.NORMAL) for text_box in ALL_TEXT_BOXES]
     destroy_change_rom_name_button()
+    destroy_them(not_main=True)
 
     # Set data for rest of this function
     if mode == 'new':
@@ -1410,9 +1448,10 @@ def open_files(mode = ''):
 
     def rest_of_function():
         global jumps_displaying
-        disasm.map_jumps(address_text_box)
         [text_box.update() for text_box in [base_file_text_box, hack_file_text_box, comments_text_box]]
+        disasm.map_jumps(address_text_box)
         [text_box.delete('1.0',tk.END) for text_box in ALL_TEXT_BOXES]
+        [text_box.update() for text_box in [base_file_text_box, hack_file_text_box, comments_text_box, address_text_box]]
 
         # Navigate user to first line of code, start the undo buffer with the current data on screen
         navigate_to(0)
@@ -1437,7 +1476,7 @@ def open_files(mode = ''):
         # timer_tick('Disassembling file')
 
     # Otherwise text boxes sometimes don't get updated to notify user of jump mapping
-    window.after(0, rest_of_function)
+    window.after(50, rest_of_function)
 
 
 def toggle_address_mode():
@@ -1678,6 +1717,12 @@ def find_jumps(just_window=False):
         function_list_box = tk.Listbox(jumps_window, font=('Courier', 12))
         jump_list_box = tk.Listbox(jumps_window, font=('Courier', 12))
 
+        def auto_focus_comments():
+            ''
+
+        def auto_focus_hack():
+            ''
+
         def function_list_callback():
             global function_select
             curselect = function_list_box.curselection()
@@ -1730,9 +1775,12 @@ def find_jumps(just_window=False):
             jumps_window = None
         jumps_window.protocol('WM_DELETE_WINDOW', jumps_window_equals_none)
         jumps_window.bind('<Escape>', lambda e: jumps_window_equals_none())
+        jumps_window.focus_force()
         jumps_window.after(1, lambda: jumps_window.mainloop())
     elif jumps:
         jumps_window.focus_force()
+    if just_window:
+        return
     key = extend_zeroes(hexi(function_start << 2),8) + ' - ' + extend_zeroes(hexi(function_end << 2),8)
     key_not_in_jumps_displaying = True
     config = jumps_displaying.copy()
@@ -1803,6 +1851,7 @@ def view_comments():
             comments_window = None
         comments_window.bind('<Escape>', lambda e: comments_window_equals_none())
         comments_window.protocol('WM_DELETE_WINDOW', comments_window_equals_none)
+        comments_window.focus_force()
         comments_window.mainloop()
 
 
@@ -2057,11 +2106,16 @@ def set_mem_edit_offset():
         simpledialog.messagebox._show('Error', 'Not able to convert input to a number.')
 
 
-def translate_box():
+def translate_box(button=False):
     if not disasm:
         return
     address_output.delete('1.0', tk.END)
     address_to_translate = address_input.get('1.0',tk.END).replace('\n','')
+    if not address_to_translate and button:
+        try:
+            address_to_translate = window.clipboard_get()
+        except:
+            return
     try:
         if disasm.hack_file_name not in app_config['mem_edit_offset']:
             simpledialog.messagebox._show('Warning','You have not set your memory editor offset yet.')
@@ -2090,17 +2144,94 @@ def toggle_auto_open():
 
 def target_up():
     target_down_label.place_forget()
-    target_up_label.place(x=415, y=32, width=312, height=8)
+    target_up_label.place(x=top_label_x, y=top_label_y, width=top_label_w, height=8)
 
 
 def target_down():
     target_up_label.place_forget()
-    target_down_label.place(x=415, y=790, width=312, height=8)
+    target_down_label.place(x=bot_label_x, y=bot_label_y, width=bot_label_w, height=8)
 
 
 def target_none():
     target_up_label.place_forget()
     target_down_label.place_forget()
+
+
+def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
+    global main_font_size, max_lines, top_label_x, top_label_w, bot_label_x, bot_label_w
+    global top_label_y, bot_label_y
+    if disasm:
+        apply_comment_changes()
+        apply_hack_changes()
+    main_font_size = new_size
+    max_lines = new_max_lines
+    font_w, font_h = font_dimension(main_font_size)
+    widget_y = 35
+    widget_h = (max_lines * font_h) + 4
+    win_w, win_h, win_x, win_y = geometry(window.geometry())
+    x_1 = 6
+    w_1 = (font_w * 8) + 6
+    x_2 = x_1 + w_1 + 4
+    w_2 = (font_w * 30) + 6
+    x_3 = x_2 + w_2 + 4
+    x_4 = x_3 + w_2 + 4
+    w_4 = (font_w * 70) + 6
+    win_w = x_4 + w_4 + 5
+    win_h = widget_h + widget_y + 5
+    top_label_x, bot_label_x = [x_3 + 2] * 2
+    top_label_w, bot_label_w = [w_2 - 5] * 2
+    top_label_y = widget_y - 4
+    bot_label_y = (widget_y + widget_h) - 5
+    [text_box.config(font=('Courier', main_font_size)) for text_box in ALL_TEXT_BOXES]
+    address_text_box.place(x=x_1, y=widget_y, width=w_1, height=widget_h)
+    base_file_text_box.place(x=x_2, y=widget_y, width=w_2, height=widget_h)
+    hack_file_text_box.place(x=x_3, y=widget_y, width=w_2, height=widget_h)
+    comments_text_box.place(x=x_4, y=widget_y, width=w_4, height=widget_h)
+    window.geometry('{}x{}+{}+{}'.format(win_w, win_h, win_x, win_y))
+    if disasm:
+        # Or the clumsy change rom name button's placement suffers a race condition and uses previous settings
+        window.after(1, lambda: navigate_to(navigation))
+
+
+dimension_window = None
+def change_win_dimensions():
+    global dimension_window
+    if dimension_window:
+        dimension_window.focus_force()
+        return
+    dimension_window = tk.Tk()
+    dimension_window.title('Change window dimensions')
+    def scale_callback():
+        new_size, new_lines = scale_size.get(), scale_lines.get()
+        set_widget_sizes(new_size, new_lines)
+    scale_size = tk.Scale(dimension_window, from_=4, to=30, command=lambda _: scale_callback())
+    scale_lines = tk.Scale(dimension_window, from_=1, to=80, command=lambda _: scale_callback())
+    [scale.config(orient=tk.HORIZONTAL) for scale in [scale_size, scale_lines]]
+    scale_size.set(app_config['font_size'])
+    scale_lines.set(app_config['max_lines'])
+    def dimension_scroll_callback(event):
+        shift = 1 if event.delta > 0 else -1
+        if event.widget is scale_size:
+            scale_size.set(keep_within(scale_size.get() + shift, 4, 30))
+        elif event.widget is scale_lines:
+            scale_lines.set(keep_within(scale_lines.get() + shift, 1, 80))
+
+    def dimension_window_equals_none():
+        global dimension_window
+        app_config['font_size'] = scale_size.get()
+        app_config['max_lines'] = scale_lines.get()
+        dimension_window.destroy()
+        dimension_window = None
+        save_config()
+    tk.Label(dimension_window, text='Font size').pack(side=tk.LEFT)
+    scale_size.pack(side=tk.LEFT)
+    tk.Label(dimension_window, text='Line amount').pack(side=tk.RIGHT)
+    scale_lines.pack(side=tk.RIGHT)
+    dimension_window.bind('<MouseWheel>', dimension_scroll_callback)
+    dimension_window.bind('<Escape>', lambda e: dimension_window_equals_none())
+    dimension_window.protocol('WM_DELETE_WINDOW', dimension_window_equals_none)
+    dimension_window.focus_force()
+    dimension_window.mainloop()
 
 
 menu_bar = tk.Menu(window)
@@ -2124,13 +2255,14 @@ menu_bar.add_cascade(label='File', menu=file_menu)
 
 nav_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
 nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
-nav_menu.add_command(label='Browse Comments', command=view_comments)
-nav_menu.add_command(label='Browse Jumps', command= lambda: find_jumps(just_window=True))
+nav_menu.add_command(label='Browse Comments (F1)', command=view_comments)
+nav_menu.add_command(label='Browse Jumps (F2)', command= lambda: find_jumps(just_window=True))
 
 menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 
 opts_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
 opts_menu.add_command(label='Change colour scheme', command=set_colour_scheme)
+opts_menu.add_command(label='Change window dimensions', command=change_win_dimensions)
 opts_menu.add_command(label='Toggle "game entry point" mode (F5)', command=toggle_address_mode)
 opts_menu.add_command(label='Toggle hex mode (F6)', command=toggle_hex_mode)
 opts_menu.add_command(label='Toggle hex space separation (F7)', command=toggle_hex_space)
@@ -2146,15 +2278,20 @@ menu_bar.add_cascade(label='Help', menu=help_menu)
 
 window.config(menu=menu_bar)
 
+window.bind('<F1>', lambda e: view_comments())
+window.bind('<F2>', lambda e: find_jumps(just_window=True))
 window.bind('<F4>', lambda e: navigation_prompt())
 window.bind('<F5>', lambda e: toggle_address_mode())
 window.bind('<F6>', lambda e: toggle_hex_mode())
 window.bind('<F7>', lambda e: toggle_hex_space())
 window.bind('<Control-s>', lambda e: save_changes_to_file())
+window.bind('<Control-S>', lambda e: save_changes_to_file())
 window.bind('<MouseWheel>', scroll_callback)
 window.bind('<FocusOut>', lambda e: replace_clipboard())
 hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
+hack_file_text_box.bind('<Control-G>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-f>', lambda e: follow_jump())
+hack_file_text_box.bind('<Control-F>', lambda e: follow_jump())
 
 
 def text_box_callback(event):
@@ -2171,10 +2308,11 @@ def text_box_callback(event):
 
 address_input = tk.Text(window, font='Courier')
 address_output = tk.Text(window, font='Courier')
-address_translate_button = tk.Button(window, text='Translate Address', command=translate_box)
+address_translate_button = tk.Button(window, text='Translate Address', command=lambda:translate_box(button=True))
 
 address_input.bind('<Return>', lambda e: window.after(1, lambda: translate_box()))
 address_input.bind('<Control-v>', lambda e: window.after(1, lambda: translate_box()))
+address_input.bind('<Control-V>', lambda e: window.after(1, lambda: translate_box()))
 
 address_input.place(x=6, y=8, width=85, height=21)
 address_translate_button.place(x=95, y=8, height=21)
@@ -2185,14 +2323,11 @@ auto_copy_checkbtn = tk.Checkbutton(window, text='Auto copy output to clipboard'
 auto_copy_checkbtn.place(x=288, y=5)
 auto_copy_var.set(app_config['auto_copy'])
 
-address_text_box.place(x=6, y=35, width=85, height=760)
-base_file_text_box.place(x=95, y=35, width=315, height=760)
-hack_file_text_box.place(x=414, y=35, width=315, height=760)
-comments_text_box.place(x=733, y=35, width=597, height=760)
-
 target_up_label = tk.Label(window)
 target_down_label = tk.Label(window)
+bot_label_x, bot_label_y, bot_label_w, top_label_x, top_label_y, top_label_w = [0] * 6
 
+window.after(1, set_widget_sizes)
 window.protocol('WM_DELETE_WINDOW', close_window)
 change_colours()
 

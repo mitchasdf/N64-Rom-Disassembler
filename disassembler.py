@@ -164,7 +164,7 @@ REGISTERS = {
         'CONTEXT',
         'PAGEMASK',
         'WIRED',
-        '*RESERVED0*',
+        'RESERVED0',
         'BADVADDR',
         'COUNT',
         'ENTRYHI',
@@ -178,17 +178,17 @@ REGISTERS = {
         'WATCHLO',
         'WATCHHI',
         'XCONTEXT',
-        '*RESERVED1*',
-        '*RESERVED2*',
-        '*RESERVED3*',
-        '*RESERVED4*',
-        '*RESERVED5*',
+        'RESERVED1',
+        'RESERVED2',
+        'RESERVED3',
+        'RESERVED4',
+        'RESERVED5',
         'PERR',
         'CACHEERR',
         'TAGLO',
         'TAGHI',
         'ERROREPC',
-        '*RESERVED6*'
+        'RESERVED6'
     ],
 
     'VECTOR': ['V' + extend_zeroes(str(i), 2) for i in range(32)]
