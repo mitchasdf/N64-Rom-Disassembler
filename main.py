@@ -862,6 +862,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     is_deleting = ctrl_d or event.keysym == 'Delete'
     is_backspacing = event.keysym == 'BackSpace'
     is_returning = event.keysym == 'Return'
+    restore_original = up_keysym == 'R' and ctrl_held and hack_function
     wipe_line = (is_backspacing or is_deleting) and shift_held
 
     selection_removable = has_char or is_pasting or is_cutting or is_deleting
@@ -1045,6 +1046,16 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         has_selection = False
     joined_text = get_text_content(handle)
     split_text = joined_text.split('\n')
+
+    if restore_original:
+        base_text = get_text_content(base_file_text_box).split('\n')
+        start = line if not sel_start_line else sel_start_line
+        end = line if not sel_start_line else sel_end_line
+        curs_1 = cursor_value(start, 0)
+        curs_2 = cursor_value(end, len(base_text[end - 1]))
+        replace_text = '\n'.join([i for i in base_text[start-1:end]])
+        handle.delete(curs_1, curs_2)
+        handle.insert(curs_1, replace_text)
 
     nl_at_cursor = handle.get(cursor) == '\n'
     if has_selection:
@@ -1707,6 +1718,7 @@ def help_box():
         'Ctrl+S: Quick save',
         'Ctrl+F: Follow jump/branch at text insert cursor',
         'Ctrl+G: Find all jumps to function at text insert cursor',
+        'Ctrl+R: Restore selection or line at text insert cursor to original code',
         'F1: Open comments browser',
         'F2: Open jumps currently memorised',
         'F3: Toggle textbox containing original code',
