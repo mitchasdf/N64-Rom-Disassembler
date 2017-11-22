@@ -958,14 +958,18 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     temp_cursor, _, __ = modify_cursor(selection_start, 0, -1, split_text)
     lower_outer_bound_selection_char = handle.get(temp_cursor)
     upper_outer_bound_selection_char = handle.get(selection_end)
+    pasting_newlines = '\n' in clipboard
     paste_text = ''
     lines_diff = 0
-    wipe_line = wipe_line and not has_selection
+
+    if wipe_line or (not has_selection and is_pasting and not pasting_newlines and hack_function):
+        handle.delete(cursor_value(line, 0), cursor_value(line, len(split_text[line-1])))
+        window.after(0, lambda: handle.mark_set(tk.INSERT, cursor_value(line, 0)))
 
     # Because using mark_set() on SEL_FIRST or SEL_LAST seems to corrupt the widgets beyond repair at a windows level,
     # A work around with a custom clipboard is required in order for the code to be able to serve it's intended purpose
     if has_selection and not selection_lines:
-        if is_pasting and '\n' in clipboard:
+        if is_pasting and pasting_newlines:
             selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 0, 'min', split_text)
             selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, 0, 'max', split_text)
         if is_deleting:
@@ -1022,8 +1026,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     if is_pasting or is_cutting:
         def move_next(handle):
-            move_amount = 1 if is_pasting else 0
-            temp_cursor, _, __ = modify_cursor(handle.index(tk.INSERT), move_amount, 'max', get_text_content(handle))
+            temp_cursor, _, __ = modify_cursor(handle.index(tk.INSERT), 0, 'max', get_text_content(handle))
             handle.mark_set(tk.INSERT, temp_cursor)
         handle.insert(insertion_place, paste_text)
         if not selection_line_mod or is_pasting:
@@ -1032,10 +1035,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                                      move_next(handle),
                                      navigate_to(navigation)))
     # Copy/Paste end
-
-    if wipe_line:
-        handle.delete(cursor_value(line, 0), cursor_value(line, len(split_text[line-1])))
-        window.after(0, lambda: handle.mark_set(tk.INSERT, cursor_value(line, 0)))
 
     # Easier than recalculating for each condition in the copy/paste section
     cursor, line, column = get_cursor(handle)
@@ -1079,7 +1078,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         cursor, _, __ = modify_cursor(cursor, move_lines, 'max', split_text)
         handle.mark_set(tk.INSERT, cursor)
         handle.delete(cursor)
-        new_cursor, _, __ = modify_cursor(cursor, 1, 'max', split_text)
+        new_cursor, _, __ = modify_cursor(cursor, 1 if not shift_held else -1, 'max', split_text)
         window.after(0, lambda: (apply_function(), handle.mark_set(tk.INSERT, new_cursor)))
 
     cursor, line, column = get_cursor(handle)
@@ -1685,8 +1684,10 @@ def help_box():
         'The "Translate Address" section is for addresses you find with your memory editor to be translated to the corresponding '
         'memory address for your emulator. In order to use this feature you will have to grab the game entry point address from '
         'your memory editor and paste it into "Window->Set memory editor offset". After this, you may use the text box on the left '
-        'side of the translate button to translate addresses. You may copy an address in to automatically have it translated. '
+        'side of the translate button to translate addresses. You may copy an address in to automatically have it translated, '
+        'or alternatively, you may press the translate button and your clipboard contents will automatically be converted. '
         'When auto copy output to clipboard is on, every time an address is translated your clipboard will be replaced with the output.'
+
     ])
     message_2 = '\n'.join([
         '----Highlighting----',
@@ -1705,9 +1706,11 @@ def help_box():
         'F5: Toggle mode which displays and handles addresses using the game\'s entry point',
         'F6: Toggle hex mode',
         'F7: Toggle byte separation during hex mode',
-        'Shift+Delete or Shift+Backspace: Remove line of text at text insert cursor in current text box',
-        'Ctrl+{Comma} ("<" key): Undo',
-        'Ctrl+{Fullstop} (">" key): Redo',
+        'Shift+Delete or Shift+Backspace: Remove line of text at text insert cursor',
+        'Return: Move to end of next line',
+        'Shift+Return: Move to end of previous line',
+        'Ctrl+Comma: Undo',
+        'Ctrl+Fullstop: Redo',
         '',
         'The hacked rom text box and comments text box have separate undo/redo buffers. '
         'Both buffers can hold up to 20,000  frames each.',
