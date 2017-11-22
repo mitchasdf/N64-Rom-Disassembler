@@ -1912,6 +1912,8 @@ def find_jumps(just_window=False):
         jumps_window.bind('<F3>', lambda e: toggle_base_file())
         jumps_window.bind('<F4>', lambda e: navigation_prompt())
         jumps_window.bind('<F5>', lambda e: toggle_address_mode())
+        jumps_window.bind('<Control-s>', lambda e: save_changes_to_file())
+        jumps_window.bind('<Control-S>', lambda e: save_changes_to_file())
         jumps_window.focus_force()
         jumps_window.after(1, lambda: jumps_window.mainloop())
     elif jumps:
@@ -2036,6 +2038,8 @@ def view_comments():
     comments_window.bind('<F3>', lambda e: toggle_base_file())
     comments_window.bind('<F4>', lambda e: navigation_prompt())
     comments_window.bind('<F5>', lambda e: toggle_address_mode())
+    comments_window.bind('<Control-s>', lambda e: save_changes_to_file())
+    comments_window.bind('<Control-S>', lambda e: save_changes_to_file())
     comments_window.protocol('WM_DELETE_WINDOW', comments_window_equals_none)
     comments_window.focus_force()
     comments_window.mainloop()
