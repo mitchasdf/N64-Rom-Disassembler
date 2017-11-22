@@ -36,6 +36,7 @@ FRESH_APP_CONFIG = {
     'hex_space_separation': True,
     'game_address_mode': {},
     'auto_copy': 0,
+    'status_bar': True,
     'comments_auto_focus_comments': False,
     'comments_auto_focus_hack': False,
     'jumps_auto_focus_comments': False,
@@ -157,10 +158,20 @@ def font_dimension(size):
 def save_config():
     pickle_data(app_config, CONFIG_FILE)
 
+
 def get_colours_of_hex(hex_code):
     int_colour = int('0x' + hex_code[1:], 16)
     r, g, b = (int_colour & 0xFF0000) >> 16, (int_colour & 0xFF00) >> 8, int_colour & 0xFF
     return r, g, b
+
+
+def solve_against_greyscale(r, g, b):
+    grey_scale = (r + g + b) / 3
+    if grey_scale < 128:
+        colour = '#FFFFFF'
+    else:
+        colour = '#000000'
+    return colour
 
 
 def change_colours():
@@ -174,7 +185,7 @@ def change_colours():
       text_box.tag_config('cursor_line', background=cursor_line_colour))
      for text_box in ALL_TEXT_BOXES]
     [hack_file_text_box.tag_config(tag, background=new_tag_config[tag]) for tag in new_tag_config]
-    [text_box.config(bg=text_bg, fg=text_fg) for text_box in ALL_TEXT_BOXES + [address_input, address_output]]
+    [text_box.config(bg=text_bg, fg=text_fg) for text_box in ALL_TEXT_BOXES + [address_input, address_output, status_bar]]
     address_translate_button.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg)
     auto_copy_checkbtn.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg, selectcolor=win_bg)
     window.config(bg=win_bg)
@@ -182,18 +193,14 @@ def change_colours():
     if change_rom_name_button:
         change_rom_name_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg, activeforeground=text_fg)
     r, g, b = get_colours_of_hex(text_bg)
-    grey_scale = (r + g + b) / 3
-    if grey_scale < 128:
-        new_insert_colour = '#FFFFFF'
-    else:
-        new_insert_colour = '#000000'
+    new_insert_colour = solve_against_greyscale(r, g, b)
     [text_box.config(insertbackground=new_insert_colour) for text_box in [address_input, address_output] + ALL_TEXT_BOXES]
     highlight_stuff(skip_moving_cursor=True)
 
 
 def check_widget(widget):
     if not widget is hack_file_text_box and not widget is comments_text_box and \
-        not widget is address_text_box and not widget is base_file_text_box:
+       not widget is address_text_box and not widget is base_file_text_box:
         widget = None
     return widget
 
@@ -310,7 +317,6 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
     global prev_reg_target, prev_address_target, prev_cursor_location
     if not disasm:
         return
-
     [hack_file_text_box.tag_remove(tag, '1.0', tk.END) for tag in app_config['tag_config']]
     [text_box.tag_remove('cursor_line', '1.0', tk.END) for text_box in ALL_TEXT_BOXES]
 
@@ -322,7 +328,6 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
         hack_function = True if widget is hack_file_text_box else False
     text = get_text_content(hack_file_text_box).split('\n')
     targeting = get_word_at(text, c_line, column)
-
 
     if not prev_cursor_location:
         prev_cursor_location = navigation + c_line - 1
@@ -336,6 +341,18 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
             this_handle = hack_file_text_box if not widget else widget
             this_handle.mark_set(tk.INSERT, new_cursor)
             cursor, c_line, column = get_cursor(this_handle)
+
+    new_text = ''
+    if widget is hack_file_text_box or widget is base_file_text_box:
+        file_navi = prev_cursor_location << 2
+        file = disasm.hack_file if widget is hack_file_text_box else disasm.base_file
+        decoded = disasm.decode(int_of_4_byte_aligned_region(file[file_navi:file_navi+4]), prev_cursor_location)
+        cut = decoded.find(' ')
+        if cut:
+            mnemonic = decoded[:cut]
+            if mnemonic in disasm.documentation:
+                new_text = '{}: {}'.format(mnemonic, disasm.documentation[mnemonic])
+    status_text.set(new_text)
 
     jumps_from = {}
     [text_box.tag_add('cursor_line',
@@ -2301,8 +2318,7 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
     global top_label_y, bot_label_y, comments_win_h, comments_x, comments_y, comments_w
     global comments_h, jumps_win_w, jumps_win_h, func_list_w, func_list_y, func_list_x
     global func_list_h, jumps_list_x, jumps_list_y, jumps_list_w, jumps_list_h, jumps_label
-    global jumps_label_y, comments_win_w  #, change_log_win_w, change_log_win_h, change_list_x
-    # global change_list_y, change_list_w, change_list_h
+    global jumps_label_y, comments_win_w
     if disasm:
         apply_comment_changes()
         apply_hack_changes()
@@ -2312,7 +2328,7 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
     widget_y = 35
     widget_h = (max_lines * font_h) + 4
     win_w, win_h, win_x, win_y = geometry(window.geometry())
-    x_1 = 6
+    x_1 = 5
     w_1 = (font_w * 8) + 6
     w_2 = (font_w * 30) + 6
     if app_config['toggle_base_file']:
@@ -2323,13 +2339,19 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
         x_3 = x_1 + w_1 + 4
     x_4 = x_3 + w_2 + 4
     w_4 = (font_w * 70) + 6
+    if app_config['status_bar']:
+        status_bar_size = font_h + 8
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=3)
+    else:
+        status_bar.pack_forget()
+        status_bar_size = 0
     win_w = x_4 + w_4 + 5
-    win_h = widget_h + widget_y + 5
+    win_h = status_bar_size + widget_h + widget_y + 5
     top_label_x = bot_label_x = x_3 + 2
     top_label_w = bot_label_w = w_2 - 5
     top_label_y = widget_y - 4
     bot_label_y = (widget_y + widget_h) - 5
-    [text_box.config(font=('Courier', main_font_size)) for text_box in ALL_TEXT_BOXES]
+    [text_box.config(font=('Courier', main_font_size)) for text_box in ALL_TEXT_BOXES + [status_bar]]
     address_text_box.place(x=x_1, y=widget_y, width=w_1, height=widget_h)
     if x_2:
         base_file_text_box.place(x=x_2, y=widget_y, width=w_2, height=widget_h)
@@ -2367,17 +2389,12 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
         function_list_box.place(x=func_list_x, y=func_list_y, width=func_list_w, height=func_list_h)
         jumps_label.place(x=jumps_list_x, y=jumps_label_y)
         jumps_window.geometry('{}x{}+{}+{}'.format(jumps_win_w, jumps_win_h, jumps_win_x, jumps_win_y))
-    # change_list_x = 6
-    # change_list_y = 6
-    # change_list_w = (font_w * 113) + 6
-    # change_list_h = font_h * 20
-    # change_log_win_w = change_list_x + change_list_w + 5
-    # change_log_win_h = change_list_y + change_list_h + 5
-    # if change_log_win:
-    #     _, __, change_log_win_x, change_log_win_y = geometry(change_log_win.geometry())
-    #     change_log_list.configure(font=('Courier', main_font_size))
-    #     change_log_list.place(x=change_list_x, y=change_list_y, width=change_list_w, height=change_list_h)
-    #     change_log_win.geometry('{}x{}+{}+{}'.format(change_log_win_w, change_log_win_h, change_log_win_x, change_log_win_y))
+
+
+def toggle_status_bar():
+    app_config['status_bar'] = not app_config['status_bar']
+    save_config()
+    set_widget_sizes()
 
 
 dimension_window = None
@@ -2421,46 +2438,6 @@ def change_win_dimensions():
     dimension_window.mainloop()
 
 
-# change_log = {}
-# change_log_win = None
-# change_log_list = None
-# def browse_change_log():
-#     global change_log_win, change_log_list
-#     if not disasm:
-#         return
-#     if change_log_win:
-#         change_log_win.focus_force()
-#         return
-#     change_log_win = tk.Tk()
-#     change_log_win.title('Change log')
-#     change_log_win.geometry('{}x{}'.format(change_log_win_w, change_log_win_h))
-#     change_log_list = tk.Listbox(change_log_win, font=('Courier', main_font_size))
-#     change_log_list.place(x=change_list_x, y=change_list_y, width=change_list_w, height=change_list_h)
-#     increment = disasm.game_offset if disasm.game_address_mode else 0
-#     ordered_addresses = [extend_zeroes(hexi(i), 8) for i in sorted([deci(j) for j in change_log_list])]
-#     fixed_addresses = [extend_zeroes(hexi(deci(i) + increment), 8) for i in ordered_addresses]
-#     [change_log_list.insert(tk.END, fixed_addresses[i] + ' ' + change_log[ordered_addresses[i]]) for i in range(len(ordered_addresses))]
-#     def change_list_callback():
-#         curselect = change_log_list.curselection()
-#         if not curselect:
-#             return
-#         selected = change_log_list.get(curselect[0])
-#         address = deci(selected[:8]) >> 2
-#         if disasm.game_address_mode:
-#             address -= disasm.game_offset >> 2
-#         navigate_to(address, center=True, widget=hack_file_text_box)
-#
-#     change_log_list.config(command=change_list_callback)
-#     def change_log_win_equals_none():
-#         global change_log_win
-#         change_log_win.destroy()
-#         change_log_win = None
-#     change_log_win.bind('<F5>', lambda e: toggle_address_mode())
-#     change_log_win.protocol('WM_WINDOW_DELETE', change_log_win_equals_none)
-#     change_log_win.bind('<Escape>', lambda e: change_log_win_equals_none())
-#     change_log_win.mainloop()
-
-
 menu_bar = tk.Menu(window)
 auto_open = tk.BooleanVar()
 auto_open.set(app_config['open_roms_automatically'])
@@ -2500,6 +2477,7 @@ win_menu = tk.Menu(menu_bar, tearoff=0)
 win_menu.add_command(label='Change colour scheme', command=set_colour_scheme)
 win_menu.add_command(label='Change window dimensions', command=change_win_dimensions)
 win_menu.add_command(label='Toggle Base Textbox (F3)', command=toggle_base_file)
+win_menu.add_command(label='Toggle Status Bar', command=toggle_status_bar)
 menu_bar.add_cascade(label='Window', menu=win_menu)
 
 help_menu = tk.Menu(menu_bar,tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
@@ -2557,6 +2535,10 @@ auto_copy_var.set(app_config['auto_copy'])
 
 target_up_label = tk.Label(window)
 target_down_label = tk.Label(window)
+
+status_text = tk.StringVar()
+status_text.set('Welcome!')
+status_bar = tk.Label(window, relief=tk.SUNKEN, bd=3, textvariable=status_text, anchor=tk.W)
 
 window.after(1, set_widget_sizes)
 window.protocol('WM_DELETE_WINDOW', close_window)
