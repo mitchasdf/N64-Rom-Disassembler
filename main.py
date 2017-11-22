@@ -36,6 +36,10 @@ FRESH_APP_CONFIG = {
     'hex_space_separation': True,
     'game_address_mode': {},
     'auto_copy': 0,
+    'comments_auto_focus_comments': False,
+    'comments_auto_focus_hack': False,
+    'jumps_auto_focus_comments': False,
+    'jumps_auto_focus_hack': False,
     'mem_edit_offset': {},
     'jumps_displaying': {},
     'cursor_line_colour': '#686868',
@@ -92,6 +96,7 @@ app_config['window_geometry'] = FRESH_APP_CONFIG['window_geometry']
 window.title('ROM Disassembler')
 window.geometry('{}+5+5'.format(app_config['window_geometry']))
 window.iconbitmap('n64_disassembler.ico')
+
 
 
 window.config(bg=app_config['window_background_colour'])
@@ -151,7 +156,6 @@ def font_dimension(size):
 
 def save_config():
     pickle_data(app_config, CONFIG_FILE)
-
 
 def get_colours_of_hex(hex_code):
     int_colour = int('0x' + hex_code[1:], 16)
@@ -1751,12 +1755,38 @@ def find_jumps(just_window=False):
         jumps_window.bind('<F5>', lambda e: toggle_address_mode())
         function_list_box = tk.Listbox(jumps_window, font=('Courier', main_font_size))
         jump_list_box = tk.Listbox(jumps_window, font=('Courier', main_font_size))
+        def hack_checkbox_callback():
+            if app_config['jumps_auto_focus_hack']:
+                app_config['jumps_auto_focus_hack'] = False
+                hack_checkbox.deselect()
+            else:
+                app_config['jumps_auto_focus_comments'] = False
+                app_config['jumps_auto_focus_hack'] = True
+                hack_checkbox.select()
+                comment_checkbox.deselect()
+            save_config()
 
-        def auto_focus_comments():
-            ''
+        def comments_checkbox_callback():
+            if app_config['jumps_auto_focus_comments']:
+                app_config['jumps_auto_focus_comments'] = False
+                comment_checkbox.deselect()
+            else:
+                app_config['jumps_auto_focus_hack'] = False
+                app_config['jumps_auto_focus_comments'] = True
+                comment_checkbox.select()
+                hack_checkbox.deselect()
+            save_config()
 
-        def auto_focus_hack():
-            ''
+        hack_checkbox = tk.Checkbutton(jumps_window, text='Auto-focus hack textbox',
+                                       command=lambda: window.after(1, lambda: hack_checkbox_callback()))
+        comment_checkbox = tk.Checkbutton(jumps_window, text='Auto-focus comments textbox',
+                                          command=lambda: window.after(1, lambda: comments_checkbox_callback()))
+        hack_checkbox.place(x=100, y=6)
+        comment_checkbox.place(x=294, y=6)
+        if app_config['comments_auto_focus_comments']:
+            comment_checkbox.select()
+        elif app_config['comments_auto_focus_hack']:
+            hack_checkbox.select()
 
         def function_list_callback():
             global function_select
@@ -1768,10 +1798,17 @@ def find_jumps(just_window=False):
             increment = 0 if not disasm.game_address_mode else -(disasm.game_offset >> 2)
             start_address = deci(key[:8]) >> 2
             reset_target()
-            navigate_to(start_address + increment, center=True, widget=hack_file_text_box)
+            widget = None
+            if app_config['jumps_auto_focus_comments']:
+                widget = comments_text_box
+            elif app_config['jumps_auto_focus_hack']:
+                widget = hack_file_text_box
+            navigate_to(start_address + increment, center=True, widget=widget)
             jump_list_box.delete(0, tk.END)
             for address in jumps_displaying[key]:
                 jump_list_box.insert(tk.END, address)
+            if widget:
+                widget.focus_force()
 
         def function_list_key(event):
             if event.keysym == 'Delete':
@@ -1792,7 +1829,14 @@ def find_jumps(just_window=False):
             address = jump_list_box.get(curselect[0])[:8]
             navi = (deci(address) >> 2) + increment
             reset_target()
-            navigate_to(navi, center=True, widget=hack_file_text_box)
+            widget = None
+            if app_config['jumps_auto_focus_comments']:
+                widget = comments_text_box
+            elif app_config['jumps_auto_focus_hack']:
+                widget = hack_file_text_box
+            navigate_to(navi, center=True, widget=widget)
+            if widget:
+                widget.focus_force()
 
         function_list_box.bind('<<ListboxSelect>>', lambda _: function_list_callback())
         jump_list_box.bind('<<ListboxSelect>>', lambda _: jump_list_callback())
@@ -1859,36 +1903,80 @@ def view_comments():
         return
     if comments_window:
         comments_window.focus_force()
-    else:
-        comments_window = tk.Tk()
-        comments_window.title('Comments')
-        comments_window.geometry('{}x{}'.format(comments_win_w,comments_win_h))
-        comments_window.bind('<F5>', lambda e: toggle_address_mode())
-        comments_list = tk.Listbox(comments_window, font=('Courier', main_font_size))
-        comments_list.place(x=comments_x,y=comments_y,width=comments_w,height=comments_h)
-        increment = 0
+        return
+    comments_window = tk.Tk()
+    comments_window.title('Comments')
+    comments_window.geometry('{}x{}'.format(comments_win_w,comments_win_h))
+    comments_window.bind('<F5>', lambda e: toggle_address_mode())
+    comments_list = tk.Listbox(comments_window, font=('Courier', main_font_size))
+    comments_list.place(x=comments_x,y=comments_y,width=comments_w,height=comments_h)
+
+    def hack_checkbox_callback():
+        if app_config['comments_auto_focus_hack']:
+            app_config['comments_auto_focus_hack'] = False
+            hack_checkbox.deselect()
+        else:
+            app_config['comments_auto_focus_comments'] = False
+            app_config['comments_auto_focus_hack'] = True
+            hack_checkbox.select()
+            comment_checkbox.deselect()
+        save_config()
+
+    def comments_checkbox_callback():
+        if app_config['comments_auto_focus_comments']:
+            app_config['comments_auto_focus_comments'] = False
+            comment_checkbox.deselect()
+        else:
+            app_config['comments_auto_focus_hack'] = False
+            app_config['comments_auto_focus_comments'] = True
+            comment_checkbox.select()
+            hack_checkbox.deselect()
+        save_config()
+
+    hack_checkbox = tk.Checkbutton(comments_window, text='Auto-focus hack textbox',
+                                   command=lambda: window.after(1, lambda: hack_checkbox_callback()))
+    comment_checkbox = tk.Checkbutton(comments_window, text='Auto-focus comments textbox',
+                                      command=lambda: window.after(1, lambda: comments_checkbox_callback()))
+    hack_checkbox.place(x=6, y=6)
+    comment_checkbox.place(x=200, y=6)
+    if app_config['comments_auto_focus_comments']:
+        comment_checkbox.select()
+    elif app_config['comments_auto_focus_hack']:
+        hack_checkbox.select()
+    increment = 0
+    if disasm.game_address_mode:
+        increment = disasm.game_offset
+    for key in sorted([int(key) for key in disasm.comments]):
+        comments_list.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi((key << 2) + increment),8), disasm.comments[str(key)]))
+
+    def comments_list_callback(event):
+        curselect = comments_list.curselection()
+        if not curselect:
+            return
+        navi = deci(comments_list.get(curselect[0])[:8]) >> 2
         if disasm.game_address_mode:
-            increment = disasm.game_offset
-        for key in sorted([int(key) for key in disasm.comments]):
-            comments_list.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi((key << 2) + increment),8), disasm.comments[str(key)]))
-        def comments_list_callback(event):
-            curselect = comments_list.curselection()
-            if not curselect:
-                return
-            navi = deci(comments_list.get(curselect[0])[:8]) >> 2
-            if disasm.game_address_mode:
-                navi -= disasm.game_offset >> 2
-            reset_target()
-            navigate_to(navi, center=True, widget=comments_text_box)
-        comments_list.bind('<<ListboxSelect>>', comments_list_callback)
-        def comments_window_equals_none():
-            global comments_window
-            comments_window.destroy()
-            comments_window = None
-        comments_window.bind('<Escape>', lambda e: comments_window_equals_none())
-        comments_window.protocol('WM_DELETE_WINDOW', comments_window_equals_none)
-        comments_window.focus_force()
-        comments_window.mainloop()
+            navi -= disasm.game_offset >> 2
+        reset_target()
+        widget = None
+        if app_config['comments_auto_focus_comments']:
+            widget = comments_text_box
+        elif app_config['comments_auto_focus_hack']:
+            widget = hack_file_text_box
+        navigate_to(navi, center=True, widget=widget)
+        if widget:
+            widget.focus_force()
+
+    comments_list.bind('<<ListboxSelect>>', comments_list_callback)
+
+    def comments_window_equals_none():
+        global comments_window
+        comments_window.destroy()
+        comments_window = None
+
+    comments_window.bind('<Escape>', lambda e: comments_window_equals_none())
+    comments_window.protocol('WM_DELETE_WINDOW', comments_window_equals_none)
+    comments_window.focus_force()
+    comments_window.mainloop()
 
 
 def follow_jump():
@@ -2453,13 +2541,12 @@ address_translate_button.place(x=95, y=8, height=21)
 address_output.place(x=203, y=8, width=85, height=21)
 
 auto_copy_var = tk.IntVar()
-auto_copy_checkbtn = tk.Checkbutton(window, text='Auto copy output to clipboard', var=auto_copy_var, command=lambda:window.after(1,lambda:toggle_auto_copy()))
+auto_copy_checkbtn = tk.Checkbutton(window, text='Auto-copy output to clipboard', var=auto_copy_var, command=lambda:window.after(1,lambda:toggle_auto_copy()))
 auto_copy_checkbtn.place(x=288, y=5)
 auto_copy_var.set(app_config['auto_copy'])
 
 target_up_label = tk.Label(window)
 target_down_label = tk.Label(window)
-bot_label_x, bot_label_y, bot_label_w, top_label_x, top_label_y, top_label_w = [0] * 6
 
 window.after(1, set_widget_sizes)
 window.protocol('WM_DELETE_WINDOW', close_window)
