@@ -2329,13 +2329,14 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
     if disasm:
         apply_comment_changes()
         apply_hack_changes()
+    window.update_idletasks()
     main_font_size = new_size
     max_lines = new_max_lines
     font_w, font_h = font_dimension(main_font_size)
     widget_y = 35
     widget_h = (max_lines * font_h) + 4
     win_w, win_h, win_x, win_y = geometry(window.geometry())
-    x_1 = 5
+    x_1 = 6
     w_1 = (font_w * 8) + 6
     w_2 = (font_w * 30) + 6
     if app_config['toggle_base_file']:
@@ -2348,9 +2349,7 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
     w_4 = (font_w * 70) + 6
     if app_config['status_bar']:
         status_bar_size = font_h + 8
-        status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=3)
     else:
-        status_bar.pack_forget()
         status_bar_size = 0
     win_w = x_4 + w_4 + 5
     win_h = status_bar_size + widget_h + widget_y + 5
@@ -2401,6 +2400,10 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
 def toggle_status_bar():
     app_config['status_bar'] = not app_config['status_bar']
     save_config()
+    if app_config['status_bar']:
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=3)
+    else:
+        status_bar.pack_forget()
     set_widget_sizes()
 
 
@@ -2547,7 +2550,10 @@ status_text = tk.StringVar()
 status_text.set('Welcome!')
 status_bar = tk.Label(window, relief=tk.SUNKEN, bd=3, textvariable=status_text, anchor=tk.W)
 
-window.after(1, set_widget_sizes)
+if app_config['status_bar']:
+    status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=3)
+
+set_widget_sizes()
 window.protocol('WM_DELETE_WINDOW', close_window)
 change_colours()
 
