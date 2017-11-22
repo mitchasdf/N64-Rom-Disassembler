@@ -438,7 +438,7 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
                                                    cursor_value(place + 2, 0))
                     elif address < navigation:
                         target_up()
-                    elif address > navigation + max_lines:
+                    elif address >= navigation + max_lines:
                         target_down()
 
             # Highlight instructions in which are a target of any jump or branch
