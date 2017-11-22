@@ -1802,9 +1802,9 @@ def find_jumps(just_window=False):
                                           command=lambda: window.after(1, lambda: comments_checkbox_callback()))
         hack_checkbox.place(x=100, y=6)
         comment_checkbox.place(x=294, y=6)
-        if app_config['comments_auto_focus_comments']:
+        if app_config['jumps_auto_focus_comments']:
             comment_checkbox.select()
-        elif app_config['comments_auto_focus_hack']:
+        elif app_config['jumps_auto_focus_hack']:
             hack_checkbox.select()
 
         def function_list_callback():
