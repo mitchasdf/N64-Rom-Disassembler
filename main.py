@@ -862,6 +862,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     is_deleting = ctrl_d or event.keysym == 'Delete'
     is_backspacing = event.keysym == 'BackSpace'
     is_returning = event.keysym == 'Return'
+    wipe_line = (is_backspacing or is_deleting) and shift_held
 
     selection_removable = has_char or is_pasting or is_cutting or is_deleting
 
@@ -871,7 +872,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     apply_function = apply_hack_changes if hack_function else lambda ignore_slot=None: apply_comment_changes()
 
     # Cause each modification of text box to snap-shot data in order to undo/redo
-    if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d or is_pasting or is_cutting):
+    if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d or is_pasting or is_cutting or wipe_line):
         buffer_frame = (navigation, cursor, joined_text,
                         app_config['immediate_identifier'],
                         disasm.game_address_mode,
@@ -959,6 +960,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     upper_outer_bound_selection_char = handle.get(selection_end)
     paste_text = ''
     lines_diff = 0
+    wipe_line = wipe_line and not has_selection
 
     # Because using mark_set() on SEL_FIRST or SEL_LAST seems to corrupt the widgets beyond repair at a windows level,
     # A work around with a custom clipboard is required in order for the code to be able to serve it's intended purpose
@@ -1030,6 +1032,10 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                                      move_next(handle),
                                      navigate_to(navigation)))
     # Copy/Paste end
+
+    if wipe_line:
+        handle.delete(cursor_value(line, 0), cursor_value(line, len(split_text[line-1])))
+        window.after(0, lambda: handle.mark_set(tk.INSERT, cursor_value(line, 0)))
 
     # Easier than recalculating for each condition in the copy/paste section
     cursor, line, column = get_cursor(handle)
@@ -1678,7 +1684,7 @@ def help_box():
         '----Translate Address----',
         'The "Translate Address" section is for addresses you find with your memory editor to be translated to the corresponding '
         'memory address for your emulator. In order to use this feature you will have to grab the game entry point address from '
-        'your memory editor and paste it into "Options->Set memory editor offset". After this, you may use the text box on the left '
+        'your memory editor and paste it into "Window->Set memory editor offset". After this, you may use the text box on the left '
         'side of the translate button to translate addresses. You may copy an address in to automatically have it translated. '
         'When auto copy output to clipboard is on, every time an address is translated your clipboard will be replaced with the output.'
     ])
@@ -1699,6 +1705,7 @@ def help_box():
         'F5: Toggle mode which displays and handles addresses using the game\'s entry point',
         'F6: Toggle hex mode',
         'F7: Toggle byte separation during hex mode',
+        'Shift+Delete or Shift+Backspace: Remove line of text at text insert cursor in current text box',
         'Ctrl+{Comma} ("<" key): Undo',
         'Ctrl+{Fullstop} (">" key): Redo',
         '',
