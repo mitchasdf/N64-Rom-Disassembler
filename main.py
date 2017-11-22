@@ -1842,6 +1842,8 @@ def find_jumps(just_window=False):
             curselect = function_list_box.curselection()
             if not curselect:
                 return
+            apply_hack_changes()
+            apply_comment_changes()
             key = function_list_box.get(curselect[0])
             function_select = key
             increment = 0 if not disasm.game_address_mode else -(disasm.game_offset >> 2)
@@ -1874,6 +1876,8 @@ def find_jumps(just_window=False):
             curselect = jump_list_box.curselection()
             if not curselect:
                 return
+            apply_hack_changes()
+            apply_comment_changes()
             increment = 0 if not disasm.game_address_mode else -(disasm.game_offset >> 2)
             address = jump_list_box.get(curselect[0])[:8]
             navi = (deci(address) >> 2) + increment
@@ -2005,6 +2009,8 @@ def view_comments():
         curselect = comments_list.curselection()
         if not curselect:
             return
+        apply_hack_changes()
+        apply_comment_changes()
         navi = deci(comments_list.get(curselect[0])[:8]) >> 2
         if disasm.game_address_mode:
             navi -= disasm.game_offset >> 2
