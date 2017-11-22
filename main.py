@@ -1317,11 +1317,17 @@ def save_changes_to_file(save_as=False):
         if new_file_path == disasm.base_folder + disasm.base_file_name:
             simpledialog.messagebox._show('Wait a sec', 'You shouldn\'t select the base file')
             return False
+        new_file_name = new_file_path[new_file_path.rfind('\\') + 1:]
+        if '.' not in new_file_name:
+            dot = disasm.hack_file_name.rfind('.')
+            new_file_name += disasm.hack_file_name[dot:]
         new_dir = new_file_path[:new_file_path.rfind('\\') + 1]
+        new_file_path = new_dir + new_file_name
         app_config['previous_hack_location'] = new_dir
+        app_config['previous_hack_opened'] = new_file_path
         disasm.hack_file_name = new_file_name
-        disasm.comments_file = new_file_name + '.comments'
-        disasm.jumps_file = new_file_name + ' jumps.data'
+        disasm.comments_file = new_file_path + '.comments'
+        disasm.jumps_file = new_file_path + ' jumps.data'
 
     app_config['jumps_displaying'][disasm.hack_file_name] = jumps_displaying.copy()
     app_config['game_address_mode'][disasm.hack_file_name] = disasm.game_address_mode
@@ -1332,14 +1338,16 @@ def save_changes_to_file(save_as=False):
     with open(disasm.hack_folder + disasm.hack_file_name, 'wb') as file:
         file.write(disasm.hack_file)
 
-    with open(disasm.comments_file + '(Backup).txt', 'w') as backup_comments_file:
-        with open(disasm.comments_file, 'r') as comments_file:
-            backup_comments_file.write(comments_file.read())
+    if exists(disasm.comments_file):
+        with open(disasm.comments_file + '(Backup).txt', 'w') as backup_comments_file:
+            with open(disasm.comments_file, 'r') as comments_file:
+                backup_comments_file.write(comments_file.read())
 
     try:
         with open(disasm.comments_file, 'w') as file:
             file.write(dict_to_string(disasm.comments))
-        os.remove(disasm.comments_file + '(Backup).txt')
+        if exists(disasm.comments_file + '(Backup).txt'):
+            os.remove(disasm.comments_file + '(Backup).txt')
     except Exception as e:
         simpledialog.messagebox._show('Error', 'There was trouble saving your comments file. '
                                                'A backup of your old comments can be found next to the original comments file. '
