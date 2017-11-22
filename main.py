@@ -1031,6 +1031,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     # Also validate all code except line currently editing
     if standard_key:
         apply_function(ignore_slot = line - 1)
+        if split_text[line - 1] == 'NOP' and hack_function:
+            handle.delete(cursor_value(line, 0), cursor_value(line, 3))
         line_chars = len(split_text[line - 1])
         if line_chars > max_char - 1:
             handle.delete(cursor_value(line, max_char - 1), cursor_value(line, max_char))
