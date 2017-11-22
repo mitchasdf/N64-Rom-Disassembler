@@ -676,25 +676,27 @@ def apply_comment_changes():
                 if breaking:
                     break
             continue
+
+        if is_in_comments(string_key):
+            if split_text[i] == disasm.comments[string_key]:
+                continue
         if not is_in_comments(string_key):
             disasm.comments[string_key] = split_text[i]
-        if split_text[i] == disasm.comments[string_key]:
-            continue
         disasm.comments[string_key] = split_text[i]
         if comments_window:
             comments_in = comments_list.get(0, tk.END)
-            addresses = [i[:8] for i in comments_in]
+            addresses = [j[:8] for j in comments_in]
             if hex_navi in addresses:
                 target = addresses.index(hex_navi)
                 comments_list.delete(target)
                 comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
             else:
-                int_addresses = [deci(i) for i in addresses]
+                int_addresses = [deci(j) for j in addresses]
                 this_int_address = deci(hex_navi)
                 target = -1
-                for i in range(len(int_addresses) - 1):
-                    if this_int_address == keep_within(this_int_address, int_addresses[i], int_addresses[i+1]):
-                        target = i + 1
+                for j in range(len(int_addresses) - 1):
+                    if this_int_address == keep_within(this_int_address, int_addresses[j], int_addresses[j+1]):
+                        target = j + 1
                         break
                 if target >= 0:
                     comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
