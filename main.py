@@ -30,6 +30,7 @@ FRESH_APP_CONFIG = {
     'font_size': 10,
     'max_lines': 40,
     'scroll_amount': 8,
+    'toggle_base_file': True,
     'immediate_identifier': '$',
     'hex_mode': False,
     'hex_space_separation': True,
@@ -494,6 +495,7 @@ def reset_target():
 def apply_hack_changes(ignore_slot = None):
     if not disasm:
         return
+
     def find_target_key(jumps, target):
         targets_lower = [deci(i[:8]) >> 2 for i in jumps]
         targets_upper = [deci(i[11:19]) >> 2 for i in jumps]
@@ -506,6 +508,12 @@ def apply_hack_changes(ignore_slot = None):
                 target_key = list(jumps)[i]
             i += 1
         return target_key
+
+    # def fix_change_log(navi, change):
+    #     if app_config['hex_mode']:
+    #
+    #     else:
+
     current_text = get_text_content(hack_file_text_box).upper()
     split_text = current_text.split('\n')
     for i in range(max_lines):
@@ -527,10 +535,13 @@ def apply_hack_changes(ignore_slot = None):
         else:
             this_word = split_text[i]
         string_key = '{}'.format(navi)
+        # key_4 = extend_zeroes(hexi(navi << 2), 8)
         unmap = False
         if not decoded:
             decoded = 'widdley scuds boi'
         if decoded == split_text[i]:
+            # if key_in_dict(change_log, key_4):
+            #     del change_log[key_4]
             clear_error(string_key)
         elif is_hex_part or app_config['hex_mode']:
             without_spaces = split_text[i].replace(' ', '')
@@ -541,6 +552,7 @@ def apply_hack_changes(ignore_slot = None):
             except:
                 user_errors[string_key] = (-1, split_text[i])
                 continue
+
             disasm.split_and_store_bytes(int_of, navi)
             clear_error(string_key)
             if not is_hex_part:
@@ -683,6 +695,7 @@ def apply_comment_changes():
         if not is_in_comments(string_key):
             disasm.comments[string_key] = split_text[i]
         disasm.comments[string_key] = split_text[i]
+
         if comments_window:
             comments_in = comments_list.get(0, tk.END)
             addresses = [j[:8] for j in comments_in]
@@ -702,6 +715,19 @@ def apply_comment_changes():
                     comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
                 else:
                     comments_list.insert(tk.END, '{}: {}'.format(hex_navi, split_text[i]))
+
+        # if change_log_win:
+        #     list_contents = comments_list.get(0, tk.END)
+        #     addresses = [j[:8] for j in list_contents]
+        #     if hex_navi in addresses:
+        #         target = addresses.index(hex_navi)
+        #         cut = addresses[target].find('|') - 2
+        #         if cut < 0:
+        #             cut = len(addresses[target])
+        #         change = addresses[target][10:cut]
+        #         comments_list.delete(target)
+        #         comments_list.insert(target, '{}: {} | {}'.format(hex_navi, change, split_text[i]))
+
         for key in config:
             if key[:8] == hex_navi:
                 del jumps_displaying[key]
@@ -733,7 +759,6 @@ def apply_comment_changes():
                     break
             if breaking:
                 break
-
 
 
 def buffer_append(buffer, tuple):
@@ -1195,7 +1220,6 @@ def navigate_to(index, center=False, widget=None):
               [comments_text_box, sample_comments]]
     [update_text_box(param[0], param[1]) for param in params]
 
-
     if center:
         widgey = widget if widget else hack_file_text_box
         new_cursor = modify_cursor('1.0', max_lines >> 1, 'max', get_text_content(widgey))[0]
@@ -1299,7 +1323,7 @@ def save_changes_to_file(save_as=False):
 
 
 def destroy_them(not_main=False):
-    global colours_window, jumps_window, comments_window, dimension_window
+    global colours_window, jumps_window, comments_window, dimension_window, change_log_win
     if colours_window:
         colours_window.destroy()
         colours_window = None
@@ -1312,6 +1336,9 @@ def destroy_them(not_main=False):
     if dimension_window:
         dimension_window.destroy()
         dimension_window = None
+    # if change_log_win:
+    #     change_log_win.destroy()
+    #     change_log_win = None
     if not not_main:
         window.destroy()
 
@@ -1471,18 +1498,14 @@ def open_files(mode = ''):
         jumps_displaying = app_config['jumps_displaying'][disasm.hack_file_name].copy()
         timer_tick('Disasm init')
 
-        # ints = ints_of_4_byte_aligned_region(disasm.hack_file)
-        # timer_tick('Creating ints list')
-        # for i in range(len(ints)):
-        #     instruction = disasm.decode(ints[i], i)
-        # timer_tick('Disassembling file')
-
     # Otherwise text boxes sometimes don't get updated to notify user of jump mapping
     window.after(50, rest_of_function)
 
 
 def toggle_address_mode():
     global function_list_box, jump_list_box, function_select
+    if not disasm:
+        return
     apply_hack_changes()
     apply_comment_changes()
     cursor, line, column = get_cursor(hack_file_text_box)
@@ -1502,12 +1525,18 @@ def toggle_address_mode():
     highlight_stuff(skip_moving_cursor=True)
     increment = disasm.game_offset if toggle_to else -disasm.game_offset
     config_data = jumps_displaying.copy()
-    if comments_window:
-        comments = comments_list.get(0, tk.END)
-        addresses = [extend_zeroes(hexi(deci(i[:8]) + increment), 8) for i in comments]
-        comments_list.delete(0, tk.END)
+
+    def fix_list(listbox):
+        list_contents = listbox.get(0, tk.END)
+        addresses = [extend_zeroes(hexi(deci(i[:8]) + increment), 8) for i in list_contents]
+        listbox.delete(0, tk.END)
         for i, address in enumerate(addresses):
-            comments_list.insert(tk.END, '{}{}'.format(address, comments[i][8:]))
+            listbox.insert(tk.END, '{}{}'.format(address, list_contents[i][8:]))
+
+    if comments_window:
+        fix_list(comments_list)
+    # if change_log_win:
+    #     fix_list(change_log_list)
     for key in config_data:
         del jumps_displaying[key]
         addy_1 = deci(key[:8]) + increment
@@ -1567,7 +1596,7 @@ def toggle_hex_space():
 
 
 def change_immediate_id():
-    accepted_symbols = ['<', '>', ':', ';', '\'', '"', '|', '{', '}',
+    accepted_symbols = ['<', '>', ':', ';', '\'', '"', '{', '}',
                         '=', '+', '-', '_', '*', '&', '^', '%', '$', '#',
                         '@', '!', '`', '~', '/', '?', '\\']
     symbol = simpledialog.askstring('Set immediate identifier symbol',
@@ -1640,6 +1669,9 @@ def help_box():
         'Ctrl+S: Quick save',
         'Ctrl+F: Follow jump/branch at text insert cursor',
         'Ctrl+G: Find all jumps to function at text insert cursor',
+        'F1: Open comments browser',
+        'F2: Open jumps currently memorised',
+        'F3: Toggle textbox containing original code',
         'F4: Navigate to address',
         'F5: Toggle mode which displays and handles addresses using the game\'s entry point',
         'F6: Toggle hex mode',
@@ -1698,10 +1730,11 @@ def is_in_comments(key):
 jumps_window = None
 function_list_box = None
 jump_list_box = None
+jumps_label = None
 function_select = ''
 jumps_displaying = {}
 def find_jumps(just_window=False):
-    global function_select, jumps_window, function_list_box, jump_list_box
+    global function_select, jumps_window, function_list_box, jump_list_box, jumps_label
     if not disasm:
         return
     if just_window:
@@ -1714,10 +1747,10 @@ def find_jumps(just_window=False):
     if not jumps_window:
         jumps_window = tk.Tk()
         jumps_window.title('Jumps to Functions')
-        jumps_window.geometry('{}x{}'.format(600,460))
+        jumps_window.geometry('{}x{}'.format(jumps_win_w,jumps_win_h))
         jumps_window.bind('<F5>', lambda e: toggle_address_mode())
-        function_list_box = tk.Listbox(jumps_window, font=('Courier', 12))
-        jump_list_box = tk.Listbox(jumps_window, font=('Courier', 12))
+        function_list_box = tk.Listbox(jumps_window, font=('Courier', main_font_size))
+        jump_list_box = tk.Listbox(jumps_window, font=('Courier', main_font_size))
 
         def auto_focus_comments():
             ''
@@ -1767,9 +1800,10 @@ def find_jumps(just_window=False):
         for key in jumps_displaying:
             function_list_box.insert(tk.END,key)
         tk.Label(jumps_window, text='Functions').place(x=6,y=5)
-        tk.Label(jumps_window, text='Jumps to Function').place(x=6,y=232)
-        function_list_box.place(x=5,y=27,width=590,height=200)
-        jump_list_box.place(x=5,y=255,width=590,height=200)
+        jumps_label = tk.Label(jumps_window, text='Jumps to Function')
+        function_list_box.place(x=func_list_x,y=func_list_y,width=func_list_w,height=func_list_h)
+        jump_list_box.place(x=jumps_list_x,y=jumps_list_y,width=jumps_list_w,height=jumps_list_h)
+        jumps_label.place(x=jumps_list_x,y=jumps_label_y)
         def jumps_window_equals_none():
             global jumps_window, function_select
             jumps_window.destroy()
@@ -1828,10 +1862,10 @@ def view_comments():
     else:
         comments_window = tk.Tk()
         comments_window.title('Comments')
-        comments_window.geometry('{}x{}'.format(710,510))
+        comments_window.geometry('{}x{}'.format(comments_win_w,comments_win_h))
         comments_window.bind('<F5>', lambda e: toggle_address_mode())
-        comments_list = tk.Listbox(comments_window, font=('Courier', 12))
-        comments_list.place(x=5,y=5,width=700,height=500)
+        comments_list = tk.Listbox(comments_window, font=('Courier', main_font_size))
+        comments_list.place(x=comments_x,y=comments_y,width=comments_w,height=comments_h)
         increment = 0
         if disasm.game_address_mode:
             increment = disasm.game_offset
@@ -2159,9 +2193,19 @@ def target_none():
     target_down_label.place_forget()
 
 
+def toggle_base_file():
+    app_config['toggle_base_file'] = not app_config['toggle_base_file']
+    save_config()
+    set_widget_sizes()
+
+
 def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
     global main_font_size, max_lines, top_label_x, top_label_w, bot_label_x, bot_label_w
-    global top_label_y, bot_label_y
+    global top_label_y, bot_label_y, comments_win_h, comments_x, comments_y, comments_w
+    global comments_h, jumps_win_w, jumps_win_h, func_list_w, func_list_y, func_list_x
+    global func_list_h, jumps_list_x, jumps_list_y, jumps_list_w, jumps_list_h, jumps_label
+    global jumps_label_y, comments_win_w  #, change_log_win_w, change_log_win_h, change_list_x
+    # global change_list_y, change_list_w, change_list_h
     if disasm:
         apply_comment_changes()
         apply_hack_changes()
@@ -2173,26 +2217,70 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
     win_w, win_h, win_x, win_y = geometry(window.geometry())
     x_1 = 6
     w_1 = (font_w * 8) + 6
-    x_2 = x_1 + w_1 + 4
     w_2 = (font_w * 30) + 6
-    x_3 = x_2 + w_2 + 4
+    if app_config['toggle_base_file']:
+        x_2 = x_1 + w_1 + 4
+        x_3 = x_2 + w_2 + 4
+    else:
+        x_2 = 0
+        x_3 = x_1 + w_1 + 4
     x_4 = x_3 + w_2 + 4
     w_4 = (font_w * 70) + 6
     win_w = x_4 + w_4 + 5
     win_h = widget_h + widget_y + 5
-    top_label_x, bot_label_x = [x_3 + 2] * 2
-    top_label_w, bot_label_w = [w_2 - 5] * 2
+    top_label_x = bot_label_x = x_3 + 2
+    top_label_w = bot_label_w = w_2 - 5
     top_label_y = widget_y - 4
     bot_label_y = (widget_y + widget_h) - 5
     [text_box.config(font=('Courier', main_font_size)) for text_box in ALL_TEXT_BOXES]
     address_text_box.place(x=x_1, y=widget_y, width=w_1, height=widget_h)
-    base_file_text_box.place(x=x_2, y=widget_y, width=w_2, height=widget_h)
+    if x_2:
+        base_file_text_box.place(x=x_2, y=widget_y, width=w_2, height=widget_h)
+    else:
+        base_file_text_box.place_forget()
     hack_file_text_box.place(x=x_3, y=widget_y, width=w_2, height=widget_h)
     comments_text_box.place(x=x_4, y=widget_y, width=w_4, height=widget_h)
     window.geometry('{}x{}+{}+{}'.format(win_w, win_h, win_x, win_y))
     if disasm:
         # Or the clumsy change rom name button's placement suffers a race condition and uses previous settings
         window.after(1, lambda: navigate_to(navigation))
+    comments_x = 6
+    comments_y = 35
+    comments_w = (font_w * 80) + 6
+    comments_h = font_h * 12
+    comments_win_w = comments_x + comments_w + 5
+    comments_win_h = comments_y + comments_h + 5
+    if comments_window:
+        _, __, comments_win_x, comments_win_y = geometry(comments_window.geometry())
+        comments_list.config(font=('Courier', main_font_size))
+        comments_list.place(x=comments_x, y=comments_y, width=comments_w, heigh=comments_h)
+        comments_window.geometry('{}x{}+{}+{}'.format(comments_win_w, comments_win_h, comments_win_x, comments_win_y))
+    func_list_x = jumps_list_x = 6
+    func_list_w = jumps_list_w = (font_w * 91) + 6
+    func_list_h = jumps_list_h = font_h * 10
+    func_list_y = 35
+    jumps_label_y = func_list_y + func_list_h + 5
+    jumps_list_y = jumps_label_y + 30
+    jumps_win_w = func_list_w + func_list_x + 5
+    jumps_win_h = jumps_list_y + jumps_list_h + 5
+    if jumps_window:
+        _, __, jumps_win_x, jumps_win_y = geometry(jumps_window.geometry())
+        [i.config(font=('Courier', main_font_size)) for i in [jump_list_box, function_list_box]]
+        jump_list_box.place(x=jumps_list_x, y=jumps_list_y, width=jumps_list_w, height=jumps_list_h)
+        function_list_box.place(x=func_list_x, y=func_list_y, width=func_list_w, height=func_list_h)
+        jumps_label.place(x=jumps_list_x, y=jumps_label_y)
+        jumps_window.geometry('{}x{}+{}+{}'.format(jumps_win_w, jumps_win_h, jumps_win_x, jumps_win_y))
+    # change_list_x = 6
+    # change_list_y = 6
+    # change_list_w = (font_w * 113) + 6
+    # change_list_h = font_h * 20
+    # change_log_win_w = change_list_x + change_list_w + 5
+    # change_log_win_h = change_list_y + change_list_h + 5
+    # if change_log_win:
+    #     _, __, change_log_win_x, change_log_win_y = geometry(change_log_win.geometry())
+    #     change_log_list.configure(font=('Courier', main_font_size))
+    #     change_log_list.place(x=change_list_x, y=change_list_y, width=change_list_w, height=change_list_h)
+    #     change_log_win.geometry('{}x{}+{}+{}'.format(change_log_win_w, change_log_win_h, change_log_win_x, change_log_win_y))
 
 
 dimension_window = None
@@ -2236,6 +2324,46 @@ def change_win_dimensions():
     dimension_window.mainloop()
 
 
+# change_log = {}
+# change_log_win = None
+# change_log_list = None
+# def browse_change_log():
+#     global change_log_win, change_log_list
+#     if not disasm:
+#         return
+#     if change_log_win:
+#         change_log_win.focus_force()
+#         return
+#     change_log_win = tk.Tk()
+#     change_log_win.title('Change log')
+#     change_log_win.geometry('{}x{}'.format(change_log_win_w, change_log_win_h))
+#     change_log_list = tk.Listbox(change_log_win, font=('Courier', main_font_size))
+#     change_log_list.place(x=change_list_x, y=change_list_y, width=change_list_w, height=change_list_h)
+#     increment = disasm.game_offset if disasm.game_address_mode else 0
+#     ordered_addresses = [extend_zeroes(hexi(i), 8) for i in sorted([deci(j) for j in change_log_list])]
+#     fixed_addresses = [extend_zeroes(hexi(deci(i) + increment), 8) for i in ordered_addresses]
+#     [change_log_list.insert(tk.END, fixed_addresses[i] + ' ' + change_log[ordered_addresses[i]]) for i in range(len(ordered_addresses))]
+#     def change_list_callback():
+#         curselect = change_log_list.curselection()
+#         if not curselect:
+#             return
+#         selected = change_log_list.get(curselect[0])
+#         address = deci(selected[:8]) >> 2
+#         if disasm.game_address_mode:
+#             address -= disasm.game_offset >> 2
+#         navigate_to(address, center=True, widget=hack_file_text_box)
+#
+#     change_log_list.config(command=change_list_callback)
+#     def change_log_win_equals_none():
+#         global change_log_win
+#         change_log_win.destroy()
+#         change_log_win = None
+#     change_log_win.bind('<F5>', lambda e: toggle_address_mode())
+#     change_log_win.protocol('WM_WINDOW_DELETE', change_log_win_equals_none)
+#     change_log_win.bind('<Escape>', lambda e: change_log_win_equals_none())
+#     change_log_win.mainloop()
+
+
 menu_bar = tk.Menu(window)
 auto_open = tk.BooleanVar()
 auto_open.set(app_config['open_roms_automatically'])
@@ -2256,9 +2384,11 @@ file_menu.add_command(label='Exit', command=lambda: close_window('left'))
 menu_bar.add_cascade(label='File', menu=file_menu)
 
 nav_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
-nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
 nav_menu.add_command(label='Browse Comments (F1)', command=view_comments)
 nav_menu.add_command(label='Browse Jumps (F2)', command= lambda: find_jumps(just_window=True))
+# nav_menu.add_command(label='Browse Changes (F3)', command=browse_change_log)
+nav_menu.add_command(label='Toggle Base Textbox (F3)', command=toggle_base_file)
+nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
 
 menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 
@@ -2282,6 +2412,8 @@ window.config(menu=menu_bar)
 
 window.bind('<F1>', lambda e: view_comments())
 window.bind('<F2>', lambda e: find_jumps(just_window=True))
+# window.bind('<F3>', lambda e: browse_change_log())
+window.bind('<F3>', lambda e: toggle_base_file())
 window.bind('<F4>', lambda e: navigation_prompt())
 window.bind('<F5>', lambda e: toggle_address_mode())
 window.bind('<F6>', lambda e: toggle_hex_mode())
