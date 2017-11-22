@@ -1052,7 +1052,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         start = line if not sel_start_line else sel_start_line
         end = line if not sel_start_line else sel_end_line
         curs_1 = cursor_value(start, 0)
-        curs_2 = cursor_value(end, len(base_text[end - 1]))
+        curs_2 = cursor_value(end, len(split_text[end - 1]))
         replace_text = '\n'.join([i for i in base_text[start-1:end]])
         handle.delete(curs_1, curs_2)
         handle.insert(curs_1, replace_text)
