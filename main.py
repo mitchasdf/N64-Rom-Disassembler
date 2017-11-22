@@ -1857,6 +1857,10 @@ def find_jumps(just_window=False):
             jumps_window = None
         jumps_window.protocol('WM_DELETE_WINDOW', jumps_window_equals_none)
         jumps_window.bind('<Escape>', lambda e: jumps_window_equals_none())
+        jumps_window.bind('<F1>', lambda e: view_comments())
+        jumps_window.bind('<F3>', lambda e: toggle_base_file())
+        jumps_window.bind('<F4>', lambda e: navigation_prompt())
+        jumps_window.bind('<F5>', lambda e: toggle_address_mode())
         jumps_window.focus_force()
         jumps_window.after(1, lambda: jumps_window.mainloop())
     elif jumps:
@@ -1909,7 +1913,6 @@ def view_comments():
     comments_window = tk.Tk()
     comments_window.title('Comments')
     comments_window.geometry('{}x{}'.format(comments_win_w,comments_win_h))
-    comments_window.bind('<F5>', lambda e: toggle_address_mode())
     comments_list = tk.Listbox(comments_window, font=('Courier', main_font_size))
     comments_list.place(x=comments_x,y=comments_y,width=comments_w,height=comments_h)
 
@@ -1976,6 +1979,10 @@ def view_comments():
         comments_window = None
 
     comments_window.bind('<Escape>', lambda e: comments_window_equals_none())
+    comments_window.bind('<F2>', lambda e: find_jumps(just_window=True))
+    comments_window.bind('<F3>', lambda e: toggle_base_file())
+    comments_window.bind('<F4>', lambda e: navigation_prompt())
+    comments_window.bind('<F5>', lambda e: toggle_address_mode())
     comments_window.protocol('WM_DELETE_WINDOW', comments_window_equals_none)
     comments_window.focus_force()
     comments_window.mainloop()
