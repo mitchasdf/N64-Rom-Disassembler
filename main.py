@@ -389,7 +389,7 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
                 elif line == c_line:
                     address = hex_address
                 try:
-                    possibly_value_error = deci(hex_address) >> 2
+                    possibly_value_error = (deci(hex_address) - (disasm.game_offset if disasm.game_address_mode else 0)) >> 2
                     jumps_from[str(navi)] = possibly_value_error
                 except ValueError:
                     ''
@@ -405,7 +405,7 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
                 elif line == c_line and this_word in ['J', 'JAL']:
                     address = hex_address
                 try:
-                    possibly_value_error = deci(hex_address) >> 2
+                    possibly_value_error = (deci(hex_address) - (disasm.game_offset if disasm.game_address_mode else 0)) >> 2
                     jumps_from[str(navi)] = possibly_value_error
                 except ValueError:
                     ''
@@ -2548,12 +2548,17 @@ hack_file_text_box.bind('<Control-F>', lambda e: follow_jump())
 
 
 def text_box_callback(event):
+    global prev_cursor_location
     if disasm:
         reset_target()
         apply_hack_changes()
         apply_comment_changes()
         def after_delay(event):
+            global prev_cursor_location
             correct_cursor(event)
+            if event.widget is hack_file_text_box:
+                line = get_cursor(event.widget)[1]
+                prev_cursor_location = (line - 1) + navigation
             highlight_stuff(widget=event.widget, skip_moving_cursor=True)
         window.after(1, lambda: after_delay(event))
 
