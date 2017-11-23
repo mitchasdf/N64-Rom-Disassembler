@@ -55,7 +55,7 @@ def keep_within(int, min, max):
 
 
 def get_8_bit_ints_from_32_bit_int(int):
-    return (int & 0xff000000) >> 24, (int & 0xff0000) >> 16, (int & 0xff00) >> 8, int & 255
+    return (int & 0xFF000000) >> 24, (int & 0xFF0000) >> 16, (int & 0xFF00) >> 8, int & 0xFF
 
 
 # Align the value to the nearest step

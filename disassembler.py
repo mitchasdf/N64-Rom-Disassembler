@@ -1312,6 +1312,35 @@ class Disassembler:
             mapped_address = True
         return mapped_target, mapped_address
 
+    def calc_checksum(self):
+        check_part = ints_of_4_byte_aligned_region(self.hack_file[0x1000:0x101000])
+        t1 = t2 = t3 = t4 = t5 = t6 = 0xF8CA4DDC
+        buffer_size = 0x8000 >> 2
+        unsigned_long = lambda j: j & 0xFFFFFFFF
+        ROL = lambda j, b: unsigned_long(j << b) | (j >> (32 - b))
+        while len(check_part):
+            this_check = check_part[:buffer_size]
+            check_part = check_part[buffer_size:]
+            for c1 in this_check:
+                k1 = unsigned_long(t6 + c1)
+                if k1 < t6:
+                    t4 = unsigned_long(t4 + 1)
+                t6 = k1
+                t3 ^= c1
+                k2 = c1 & 0x1F
+                k1 = ROL(c1, k2)
+                t5 = unsigned_long(t5 + k1)
+                if c1 < t2:
+                    t2 ^= k1
+                else:
+                    t2 ^= t6 ^ c1
+                t1 = unsigned_long(t1 + (c1 ^ t5))
+        sum1 = t6 ^ t4 ^ t3
+        sum2 = t5 ^ t2 ^ t1
+        self.split_and_store_bytes(sum1, self.header_items['CRC1'][0] >> 2)
+        self.split_and_store_bytes(sum2, self.header_items['CRC2'][0] >> 2)
+        return sum1, sum2
+
     def find_vector_instructions(self):
         ints = ints_of_4_byte_aligned_region(self.hack_file[0x1000:])
         missing_opcodes = [True if i in [18, 19, 28, 29, 30, 31, 50, 51, 54, 58, 59, 62] else False for i in range(64)]

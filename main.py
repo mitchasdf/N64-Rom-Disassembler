@@ -7,6 +7,7 @@ from function_defs import *
 from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS
 import webbrowser
 
+
 CONFIG_FILE = 'rom disassembler.config'
 
 BRANCH_FUNCTIONS = ['BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL', 'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL',
@@ -821,7 +822,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     global clipboard
     if not disasm:
         return
-    reset_target()
     joined_text = get_text_content(handle)
     split_text = joined_text.split('\n')
 
@@ -853,6 +853,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     has_char = bool(event.char) and event.keysym != 'Escape' and not ctrl_held
     just_function_key = event.keysym in ['Alt_L', 'Alt_R', 'Shift_L', 'Shift_R', 'Control_L', 'Control_R']
+    if not just_function_key:
+        reset_target()
 
     is_cutting = ctrl_held and up_keysym == 'X'
     is_pasting = ctrl_held and up_keysym == 'V'
@@ -1169,10 +1171,11 @@ def destroy_change_rom_name_button():
 
 
 def navigate_to(index, center=False, widget=None):
-    global navigation, change_rom_name_button
+    global navigation, change_rom_name_button, prev_cursor_location
     if not disasm:
         return
     destroy_change_rom_name_button()
+    indexed = index
     if center:
         index -= max_lines >> 1
     shift_amount = navigation
@@ -1184,6 +1187,8 @@ def navigate_to(index, center=False, widget=None):
         navigation = 0
     limit = navigation + max_lines if navigation + max_lines < amount_words else amount_words
     lines = limit - navigation
+    if center:
+        prev_cursor_location = indexed
 
     shift_amount -= navigation
 
@@ -1318,7 +1323,12 @@ def save_changes_to_file(save_as=False):
 
         highlight_stuff()
         return False
+    status_text.set('Calculating checksum...')
+    window.update_idletasks()
 
+    sum1, sum2 = disasm.calc_checksum()
+    if navigation <= disasm.header_items['CRC2'][0] >> 2:
+        navigate_to(navigation)
     if save_as:
         new_file_name = filedialog.asksaveasfilename(initialdir = app_config['previous_hack_location'],
                                                      title = 'Save as...')
@@ -1366,6 +1376,12 @@ def save_changes_to_file(save_as=False):
                                                '\nYou should go there now and rescue the backup before attempting to save again.'
                                                '\nIf you save again, that backup will be over-written.'
                                                '\n\n' + str(e))
+
+    window.after(0, lambda: status_text.set(
+        'Rom Saved. Checksum calculated - CRC1: {} | CRC2: {}'.format(
+            extend_zeroes(hexi(sum1), 8),
+            extend_zeroes(hexi(sum2), 8))))
+
     return True
 
 
@@ -2545,6 +2561,7 @@ hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-G>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-f>', lambda e: follow_jump())
 hack_file_text_box.bind('<Control-F>', lambda e: follow_jump())
+# window.bind('<Control-a>', lambda e: disasm.calc_checksum())
 
 
 def text_box_callback(event):
