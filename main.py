@@ -1731,7 +1731,7 @@ def help_box():
     ])
     message_2 = '\n'.join([
         '----Highlighting----',
-        'There are different coloured highlights for jumps/branches and more. See "Options->Change Colour Scheme" '
+        'There are different coloured highlights for jumps/branches and more. See "Window->Change Colour Scheme" '
         'for more details',
         '',
         '',
@@ -1990,6 +1990,7 @@ def view_comments():
     comments_list = tk.Listbox(comments_window, font=('Courier', main_font_size))
     comments_list.place(x=comments_x,y=comments_y,width=comments_w,height=comments_h)
 
+    # If this doesn't want to work the way the auto-copy checkbox does, then it will have to work by force
     def hack_checkbox_callback():
         if app_config['comments_auto_focus_hack']:
             app_config['comments_auto_focus_hack'] = False
@@ -2092,7 +2093,6 @@ def follow_jump():
         buffer_append(hack_buffer,
                     (navigation, get_cursor(hack_file_text_box)[0], get_text_content(hack_file_text_box),
                     app_config['immediate_identifier'], disasm.game_address_mode, app_config['hex_mode']))
-
 
 
 colours_window = None
