@@ -1534,10 +1534,10 @@ def open_files(mode = ''):
         disasm = None
         return
 
-    base_file_text_box.insert('1.0', 'Mapping jumps...')
+    base_file_text_box.insert('1.0', 'Mapping jumps and branches...')
     hack_file_text_box.insert('1.0', 'Please wait...')
     comments_text_box.insert('1.0', 'This may take a while with larger roms.\nThis only has to be done once per rom.')
-
+    window.update_idletasks()
     def rest_of_function():
         global jumps_displaying
         [text_box.update() for text_box in [base_file_text_box, hack_file_text_box, comments_text_box]]
@@ -1562,7 +1562,7 @@ def open_files(mode = ''):
         timer_tick('Disasm init')
 
     # Otherwise text boxes sometimes don't get updated to notify user of jump mapping
-    window.after(50, rest_of_function)
+    window.after(1, rest_of_function)
 
 
 def toggle_address_mode():
@@ -1700,10 +1700,9 @@ def help_box():
         'It is simply there to reflect on if you need to see the original code at any point.',
         '',
         'Once you have decided the FILE name (not inner rom title) for your hacked rom, it is best not '
-        'to ever change it. If you do change the file name, you will lose some app data pertaining to that rom. '
-        'The location of the rom doesn\'t matter to the app data, as long as the name always stays the same. '
-        'If you do end up changing the name by accident, you can change it back to what it was and the app data '
-        'will still remain.',
+        'to ever change it. If you wish to rename the output rom file, you can load your project as '
+        'you normally would and then "save as..." to specify a new name so that all of the app data '
+        'pertaining to that rom will migrate over to the newly named rom.',
         '',
         'In order to save any changes you have made, all errors must be corrected before the save feature will allow it. '
         'Trying to save while an error exists will result in your navigation shifting to the next error instead.',
@@ -2333,6 +2332,7 @@ def translate_box(button=False):
         if auto_copy_var.get():
             window.clipboard_clear()
             window.clipboard_append(output_text)
+            status_text.set('Copied {} to clipboard'.format(output_text))
     except:
         address_output.insert('1.0', 'Error')
     finally:
@@ -2561,7 +2561,6 @@ hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-G>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-f>', lambda e: follow_jump())
 hack_file_text_box.bind('<Control-F>', lambda e: follow_jump())
-# window.bind('<Control-a>', lambda e: disasm.calc_checksum())
 
 
 def text_box_callback(event):
@@ -2573,10 +2572,17 @@ def text_box_callback(event):
         def after_delay(event):
             global prev_cursor_location
             correct_cursor(event)
+            line = get_cursor(event.widget)[1]
             if event.widget is hack_file_text_box:
-                line = get_cursor(event.widget)[1]
                 prev_cursor_location = (line - 1) + navigation
             highlight_stuff(widget=event.widget, skip_moving_cursor=True)
+            if event.widget is address_text_box:
+                window.clipboard_clear()
+                cursor_start = '{}.{}'.format(line, 0)
+                cursor_end = modify_cursor(cursor_start, 0, 'max', get_text_content(address_text_box))
+                new_clip = address_text_box.get(cursor_start, cursor_end[0])
+                window.clipboard_append(new_clip)
+                status_text.set('Copied {} to clipboard'.format(new_clip))
         window.after(1, lambda: after_delay(event))
 
 [tbox.bind('<Button-1>', text_box_callback) for tbox in ALL_TEXT_BOXES]
