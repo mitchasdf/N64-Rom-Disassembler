@@ -546,12 +546,23 @@ DOCUMENTATION = {
 
 
 class Disassembler:
-    def __init__(self, base_file_path='', hacked_file_path=''):
-        def open_rom(self, file_path):
+    def __init__(self, base_file_path, hacked_file_path, window, status_bar):
+        def open_rom(file_path):
+            if self.base_file and not exists(file_path):
+                with open(file_path, 'wb') as hack_file:
+                    hack_file.write(self.base_file)
             with open(file_path, 'rb') as file:
                 file_data = bytearray(file.read())
+            part_at = file_path.rfind('\\') + 1
+            folder = file_path[:part_at]
+            file_name = file_path[part_at:]
             rom_validation = file_data[0:4].hex()
+            rom_type = ''
             if rom_validation == '37804012':
+                rom_type = 'byte-swap'
+                if not self.base_file:
+                    status_bar.set('{} is byte-swapped, swapping now...'.format(file_name))
+                    window.update_idletasks()
                 # Rom is byte-swapped, so swap it to the right order
                 i = 0
                 while i < len(file_data):
@@ -562,6 +573,10 @@ class Disassembler:
                     file_data[i+2] = byte_4
                     i += 4
             elif rom_validation == '40123780':
+                rom_type = 'little-end'
+                if not self.base_file:
+                    status_bar.set('{} is in little-endian, reversing now...'.format(file_name))
+                    window.update_idletasks()
                 # Rom is in little-endian, swap to big
                 i = 0
                 while i < len(file_data):
@@ -577,14 +592,24 @@ class Disassembler:
                 if len(self.base_file) != len(file_data):
                     raise Exception('These roms are different sizes. If you have already had your hacked rom extended, '
                                     'then you can "start a new hacked rom" and pick your extended rom as the base file.')
-            part_at = file_path.rfind('\\') + 1
-            folder = file_path[:part_at]
-            file_name = file_path[part_at:]
-            return folder, file_name, file_data
+            return folder, file_name, file_data, rom_type
 
         self.base_file = bytearray()
-        self.base_folder, self.base_file_name, self.base_file = open_rom(self,base_file_path)
-        self.hack_folder, self.hack_file_name, self.hack_file = open_rom(self,hacked_file_path)
+        self.base_folder, self.base_file_name, self.base_file, base_type = open_rom(base_file_path)
+        self.hack_folder, self.hack_file_name, self.hack_file, hack_type = open_rom(hacked_file_path)
+
+        # Otherwise it takes a long time to re-order bytes every time the roms are loaded
+        if base_type in ['byte-swap', 'little-end']:
+            dot = self.base_file_name.rfind('.')
+            self.base_file_name = self.base_file_name[:dot] + ' (byte-reordered backup)' + \
+                self.base_file_name[dot:]
+            with open(self.base_folder + self.base_file_name, 'wb') as file:
+                file.write(self.base_file)
+            status_bar.set('"{}" has been created next to the original.'.format(self.base_file_name))
+
+        if hack_type in ['byte-swap', 'little-end']:
+            with open(self.hack_folder + self.hack_file_name, 'wb') as file:
+                file.write(self.hack_file)
 
         self.header_items = {
             # Section labeled   [data_start, data_end (not inclusive)]
@@ -1213,25 +1238,26 @@ class Disassembler:
                 dict[key] = []
                 dict[key].append(value)
 
-        ints = ints_of_4_byte_aligned_region(self.hack_file)
-        percent = len(ints) // 100
+        percent = (len(self.hack_file) >> 2) // 100
         cut = 19
         collect = 9
         buffer = [None] * (cut - 1)
-        for i in range(16, len(ints)):
-            decoded = self.decode(ints[i], i)
+        for i in range(0x40, len(self.hack_file), 4):
+            int_word = int_of_4_byte_aligned_region(self.hack_file[i:i+4])
+            j = i >> 2
+            decoded = self.decode(int_word, j)
             if not decoded:
                 del buffer
                 buffer = []
                 continue
-            opcode = (ints[i] & 0xFC000000) >> 26
+            opcode = (int_word & 0xFC000000) >> 26
             if JUMP_INTS[opcode]:
-                address = (ints[i] & 0x03FFFFFF) + ((i + 1) & 0x3C000000)
+                address = (int_word & 0x03FFFFFF) + ((j + 1) & 0x3C000000)
                 if address > 16:
-                    buffer.insert(0, (self.jumps_to, str(address), i))
+                    buffer.insert(0, (self.jumps_to, str(address), j))
             elif BRANCH_INTS[opcode] or decoded[:2] == 'BC':
-                address = sign_16_bit_value(ints[i] & 0xFFFF) + i + 1
-                buffer.insert(0, (self.branches_to, str(address), i))
+                address = sign_16_bit_value(int_word & 0xFFFF) + j + 1
+                buffer.insert(0, (self.branches_to, str(address), j))
             else:
                 buffer.insert(0, None)
             if len(buffer) == cut:
@@ -1240,9 +1266,9 @@ class Disassembler:
                     dict_append(dict=popped[0],
                                 key=popped[1],
                                 value=popped[2])
-            if not i & percent:
+            if not j & percent:
                 text_box.delete('1.0', tkinter.END)
-                text_box.insert('1.0', str(i // percent) + '%')
+                text_box.insert('1.0', str(j // percent) + '%')
                 text_box.update()
         with open(self.jumps_file, 'wb') as jumps_file:
             dump((self.jumps_to, self.branches_to), jumps_file)

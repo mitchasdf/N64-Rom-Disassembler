@@ -1276,11 +1276,11 @@ def navigate_to(index, center=False, widget=None):
     highlight_stuff(widget, skip_moving_cursor=center)
 
 
-def navigation_prompt():
+def navigation_prompt(root=window):
     if not disasm:
         return
     widget = check_widget(window.focus_get())
-    address = simpledialog.askstring('Navigate to address', '')
+    address = simpledialog.askstring('Navigate to address', '', parent=root)
     if not address and widget:
         widget.focus_force()
     try:
@@ -1513,14 +1513,14 @@ def open_files(mode = ''):
     # Remember dirs for next browse
     app_config['previous_base_location'] = base_dir
     app_config['previous_hack_location'] = hack_dir
-    app_config['previous_base_opened'] = base_file_path
-    app_config['previous_hack_opened'] = hack_file_path
     save_config()
 
     # Initialise disassembler with paths to the 2 files, apply saved settings from app_config
     try:
         disasm = Disassembler(base_file_path,
-                              hack_file_path)
+                              hack_file_path,
+                              window,
+                              status_text)
         if disasm.hack_file_name not in app_config['game_address_mode']:
             app_config['game_address_mode'][disasm.hack_file_name] = False
         disasm.game_address_mode = app_config['game_address_mode'][disasm.hack_file_name]
@@ -1534,16 +1534,20 @@ def open_files(mode = ''):
         disasm = None
         return
 
-    base_file_text_box.insert('1.0', 'Mapping jumps and branches...')
-    hack_file_text_box.insert('1.0', 'Please wait...')
-    comments_text_box.insert('1.0', 'This may take a while with larger roms.\nThis only has to be done once per rom.')
+    app_config['previous_base_opened'] = disasm.base_folder + disasm.base_file_name
+    app_config['previous_hack_opened'] = disasm.hack_folder + disasm.hack_file_name
+    save_config()
+    hack_file_text_box.insert('1.0', 'Mapping jumps and branches...\nPlease wait...')
+    comments_text_box.insert('1.0', 'This may take a while with larger roms.\nThis only has to be done once per rom.\n\n'
+                                    'If your window is not responding - don\'t worry.')
     window.update_idletasks()
     def rest_of_function():
         global jumps_displaying
-        [text_box.update() for text_box in [base_file_text_box, hack_file_text_box, comments_text_box]]
+        # [text_box.update() for text_box in [base_file_text_box, hack_file_text_box, comments_text_box]]
         disasm.map_jumps(address_text_box)
         [text_box.delete('1.0',tk.END) for text_box in ALL_TEXT_BOXES]
-        [text_box.update() for text_box in [base_file_text_box, hack_file_text_box, comments_text_box, address_text_box]]
+        # [text_box.update() for text_box in [base_file_text_box, hack_file_text_box, comments_text_box, address_text_box]]
+        window.update_idletasks()
 
         # Navigate user to first line of code, start the undo buffer with the current data on screen
         navigate_to(0)
@@ -1559,7 +1563,9 @@ def open_files(mode = ''):
         if disasm.hack_file_name not in app_config['jumps_displaying']:
             app_config['jumps_displaying'][disasm.hack_file_name] = {}
         jumps_displaying = app_config['jumps_displaying'][disasm.hack_file_name].copy()
-        timer_tick('Disasm init')
+        time_taken = timer_get()
+        if time_taken > 100:
+            simpledialog.messagebox._show('Woah!', 'That took {} seconds. New record!'.format(time_taken))
 
     # Otherwise text boxes sometimes don't get updated to notify user of jump mapping
     window.after(1, rest_of_function)
@@ -1925,7 +1931,7 @@ def find_jumps(just_window=False):
         jumps_window.bind('<Escape>', lambda e: jumps_window_equals_none())
         jumps_window.bind('<F1>', lambda e: view_comments())
         jumps_window.bind('<F3>', lambda e: toggle_base_file())
-        jumps_window.bind('<F4>', lambda e: navigation_prompt())
+        jumps_window.bind('<F4>', lambda e: navigation_prompt(root=jumps_window))
         jumps_window.bind('<F5>', lambda e: toggle_address_mode())
         jumps_window.bind('<Control-s>', lambda e: save_changes_to_file())
         jumps_window.bind('<Control-S>', lambda e: save_changes_to_file())
@@ -2051,7 +2057,7 @@ def view_comments():
     comments_window.bind('<Escape>', lambda e: comments_window_equals_none())
     comments_window.bind('<F2>', lambda e: find_jumps(just_window=True))
     comments_window.bind('<F3>', lambda e: toggle_base_file())
-    comments_window.bind('<F4>', lambda e: navigation_prompt())
+    comments_window.bind('<F4>', lambda e: navigation_prompt(root=comments_window))
     comments_window.bind('<F5>', lambda e: toggle_address_mode())
     comments_window.bind('<Control-s>', lambda e: save_changes_to_file())
     comments_window.bind('<Control-S>', lambda e: save_changes_to_file())

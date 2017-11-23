@@ -107,3 +107,11 @@ def timer_tick(string):
     last_time = time.time()
     str_time = str(this_time)
     print('{} took: {} sec'.format(string, str_time[:str_time.find('.') + 4]))
+
+
+def timer_get():
+    global last_time
+    this_time = time.time() - last_time
+    last_time = time.time()
+    str_time = str(this_time)
+    return float(str_time[:str_time.find('.') + 4])
