@@ -302,7 +302,7 @@ REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of registe
     'CONTEXT': 4,
     'PAGEMASK': 5,
     'WIRED': 6,
-    '*RESERVED0*': 7,
+    'RESERVED0': 7,
     'BADVADDR': 8,
     'COUNT': 9,
     'ENTRYHI': 10,
@@ -316,17 +316,17 @@ REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of registe
     'WATCHLO': 18,
     'WATCHHI': 19,
     'XCONTEXT': 20,
-    '*RESERVED1*': 21,
-    '*RESERVED2*': 22,
-    '*RESERVED3*': 23,
-    '*RESERVED4*': 24,
-    '*RESERVED5*': 25,
+    'RESERVED1': 21,
+    'RESERVED2': 22,
+    'RESERVED3': 23,
+    'RESERVED4': 24,
+    'RESERVED5': 25,
     'PERR': 26,
     'CACHEERR': 27,
     'TAGLO': 28,
     'TAGHI': 29,
     'ERROREPC': 30,
-    '*RESERVED6*': 31
+    'RESERVED6': 31
 }
 
 JUMP_INTS = [True if i in [2, 3] else False for i in range(64)]
@@ -676,6 +676,7 @@ class Disassembler:
         # Save the game offset
         segment = self.hack_file[self.header_items['Game Offset'][0]: self.header_items['Game Offset'][1]]
         self.game_offset = int.from_bytes(segment, byteorder='big', signed=False) - 0x1000
+        self.jumps_offset = self.game_offset & 0xFFFFFF
 
         self.game_address_mode = False
         self.immediate_identifier = '$'
@@ -1118,6 +1119,7 @@ class Disassembler:
                     # Add the current 268mb alignment to the value to properly decode
                     inner_value += index & 0x3C000000
                     inner_value <<= 2
+                    inner_value -= self.jumps_offset
                 if self.game_address_mode and (is_address or is_offset):
                     inner_value += self.game_offset
                 decode_text = self.immediate_identifier + extend_zeroes(hexi(inner_value), HEX_EXTEND[param_name])
@@ -1189,6 +1191,7 @@ class Disassembler:
                     if self.game_address_mode and (is_address or is_offset):
                         param -= self.game_offset
                     if is_address:
+                        param += self.jumps_offset
                         param >>= 2
                         if index // ADDRESS_ALIGNMENT != param // ADDRESS_ALIGNMENT:
                             # Immediate out of bounds error - not within the 268mb aligned region
@@ -1252,7 +1255,7 @@ class Disassembler:
                 continue
             opcode = (int_word & 0xFC000000) >> 26
             if JUMP_INTS[opcode]:
-                address = (int_word & 0x03FFFFFF) + ((j + 1) & 0x3C000000)
+                address = ((int_word & 0x03FFFFFF) + ((j + 1) & 0x3C000000)) - (self.jumps_offset >> 2)
                 if address > 16:
                     buffer.insert(0, (self.jumps_to, str(address), j))
             elif BRANCH_INTS[opcode] or decoded[:2] == 'BC':

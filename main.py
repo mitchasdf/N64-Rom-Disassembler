@@ -562,8 +562,6 @@ def apply_hack_changes(ignore_slot = None):
         if not decoded:
             decoded = 'widdley scuds boi'
         if decoded == split_text[i]:
-            # if key_in_dict(change_log, key_4):
-            #     del change_log[key_4]
             clear_error(string_key)
         elif is_hex_part or app_config['hex_mode']:
             without_spaces = split_text[i].replace(' ', '')
@@ -625,7 +623,7 @@ def apply_hack_changes(ignore_slot = None):
             target = 0
             dic = {}
             if decoded_word in ['J', 'JAL']:
-                target = (int_word & 0x03FFFFFF) + ((navi + 1) & 0x3C000000)
+                target = ((int_word & 0x03FFFFFF) + ((navi + 1) & 0x3C000000)) - (disasm.jumps_offset >> 2)
                 dic = disasm.jumps_to
             elif decoded_word in BRANCH_FUNCTIONS:
                 target = sign_16_bit_value(int_word & 0xFFFF) + navi + 1
@@ -641,7 +639,7 @@ def apply_hack_changes(ignore_slot = None):
                         if address in cut_jumps:
                             place = cut_jumps.index(address)
                             jumps_displaying[target_key].pop(place)
-                            if not len(jumps_displaying[target_key]):
+                            if not jumps_displaying[target_key]:
                                 del jumps_displaying[target_key]
                                 if jumps_window:
                                     try:
@@ -1604,8 +1602,6 @@ def toggle_address_mode():
 
     if comments_window:
         fix_list(comments_list)
-    # if change_log_win:
-    #     fix_list(change_log_list)
     for key in config_data:
         del jumps_displaying[key]
         addy_1 = deci(key[:8]) + increment
@@ -2078,7 +2074,7 @@ def follow_jump():
     navi += 1  # Address calculated based on address of delay slot
     address = 0
     if JUMP_INTS[opcode]:
-        address = (int_word & 0x03FFFFFF) + (navi & 0x3C000000)
+        address = ((int_word & 0x03FFFFFF) + (navi & 0x3C000000)) - (disasm.jumps_offset >> 2)
     elif BRANCH_INTS[opcode]:
         address = sign_16_bit_value(int_word & 0xFFFF) + navi
     if address:
