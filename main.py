@@ -1317,10 +1317,7 @@ def save_changes_to_file(save_as=False):
 
     # Do not save changes if there are errors
     for key in user_errors:
-        i = int(key)
-        navigate_to(i - (max_lines // 2))
-
-        highlight_stuff()
+        navigate_to(int(key), widget=hack_file_text_box, center=True)
         return False
     status_text.set('Calculating checksum...')
     window.update_idletasks()
