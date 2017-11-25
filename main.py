@@ -904,14 +904,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             apply_hack_changes()
             apply_comment_changes()
             place = buffer[0]
-            navigate_to(buffer[1][place][0])
-            cursor = buffer[1][place][1]
-            text_content = buffer[1][place][2]
-
-            handle.delete('1.0', tk.END)
-            handle.insert('1.0', text_content)
-            handle.mark_set(tk.INSERT, cursor)
-
             if hack_function:
                 immediate_id = buffer[1][place][3]
                 game_address_mode = buffer[1][place][4]
@@ -927,6 +919,15 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                     app_config['hex_mode'] = hex_mode
                     save_config()
                     disasm.game_address_mode = game_address_mode
+
+            navigate_to(buffer[1][place][0])
+            cursor = buffer[1][place][1]
+            text_content = buffer[1][place][2]
+
+            handle.delete('1.0', tk.END)
+            handle.insert('1.0', text_content)
+            handle.mark_set(tk.INSERT, cursor)
+
             apply_hack_changes()
             apply_comment_changes()
             reset_target()
