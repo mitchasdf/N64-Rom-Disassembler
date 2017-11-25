@@ -349,10 +349,11 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
         file = disasm.hack_file if widget is hack_file_text_box else disasm.base_file
         decoded = disasm.decode(int_of_4_byte_aligned_region(file[file_navi:file_navi+4]), prev_cursor_location)
         cut = decoded.find(' ')
-        if cut:
-            mnemonic = decoded[:cut]
-            if mnemonic in disasm.documentation:
-                new_text = '{}: {}'.format(mnemonic, disasm.documentation[mnemonic])
+        if cut < 0:
+            cut = len(decoded)
+        mnemonic = decoded[:cut]
+        if mnemonic in disasm.documentation:
+            new_text = '{}: {}'.format(mnemonic, disasm.documentation[mnemonic])
     status_text.set(new_text)
 
     jumps_from = {}
@@ -2504,7 +2505,7 @@ auto_open.set(app_config['open_roms_automatically'])
 MENU_BACKGROUND = '#FFFFFF'
 MENU_FOREGROUND = '#000000'
 
-file_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
+file_menu = tk.Menu(menu_bar, tearoff=0)
 file_menu.add_command(label='Start new', command=lambda: open_files('new'))
 file_menu.add_command(label='Open existing', command=lambda: open_files('existing'))
 file_menu.add_separator()
@@ -2516,14 +2517,14 @@ file_menu.add_checkbutton(label='Auto open previous roms on startup', command=to
 file_menu.add_command(label='Exit', command=lambda: close_window('left'))
 menu_bar.add_cascade(label='File', menu=file_menu)
 
-nav_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
+nav_menu = tk.Menu(menu_bar, tearoff=0)
 nav_menu.add_command(label='Browse Comments (F1)', command=view_comments)
 nav_menu.add_command(label='Browse Jumps (F2)', command= lambda: find_jumps(just_window=True))
 nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
 
 menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 
-opts_menu = tk.Menu(menu_bar, tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
+opts_menu = tk.Menu(menu_bar, tearoff=0)
 opts_menu.add_command(label='Toggle "game entry point" mode (F5)', command=toggle_address_mode)
 opts_menu.add_command(label='Toggle hex mode (F6)', command=toggle_hex_mode)
 opts_menu.add_command(label='Toggle hex space separation (F7)', command=toggle_hex_space)
@@ -2539,7 +2540,7 @@ win_menu.add_command(label='Toggle Base Textbox (F3)', command=toggle_base_file)
 win_menu.add_command(label='Toggle Status Bar', command=toggle_status_bar)
 menu_bar.add_cascade(label='Window', menu=win_menu)
 
-help_menu = tk.Menu(menu_bar,tearoff=0, bg=MENU_BACKGROUND, fg=MENU_FOREGROUND)
+help_menu = tk.Menu(menu_bar,tearoff=0)
 help_menu.add_command(label='Help', command=help_box)
 help_menu.add_command(label='About', command=about_box)
 menu_bar.add_cascade(label='Help', menu=help_menu)
