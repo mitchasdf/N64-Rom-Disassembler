@@ -864,7 +864,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     is_backspacing = event.keysym == 'BackSpace'
     is_returning = event.keysym == 'Return'
     restore_original = up_keysym == 'R' and ctrl_held and hack_function
-    wipe_line = (is_backspacing or is_deleting) and shift_held
+    insert_branch = up_keysym == 'B' and ctrl_held and hack_function
+    wipe_line = ((is_backspacing or is_deleting) and shift_held) or insert_branch
 
     selection_removable = has_char or is_pasting or is_cutting or is_deleting
 
@@ -967,7 +968,13 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     if wipe_line or (not has_selection and is_pasting and not pasting_newlines and hack_function):
         handle.delete(cursor_value(line, 0), cursor_value(line, len(split_text[line-1])))
-        window.after(0, lambda: handle.mark_set(tk.INSERT, cursor_value(line, 0)))
+        new_column = 0
+        if insert_branch:
+            branch_template = 'BEQ R0, R0, $'
+            handle.insert(cursor_value(line, 0), branch_template)
+            new_column = len(branch_template)
+        window.after(0, lambda: handle.mark_set(tk.INSERT, cursor_value(line, new_column)))
+
 
     # Because using mark_set() on SEL_FIRST or SEL_LAST seems to corrupt the widgets beyond repair at a windows level,
     # A work around with a custom clipboard is required in order for the code to be able to serve it's intended purpose
@@ -1712,8 +1719,11 @@ def help_box():
         'The comments file must always be located in the same folder as your hacked rom in order for it to load. '
         'You can also open the comments files with a text editor if required.',
         '',
-        'When setting the scroll amount, use "0x" to specify an amount of addresses (this will be a hex value divided by 4).',
+        'When setting the scroll amount, use "0x" to specify a hex amount which will be divided by 4, '
+        'or leave it out to specify an amount of lines.',
         '',
+        'Clicking the address list on the left side will cause the address you clicked to be copied to your '
+        'clipboard automatically.',
         '',
         '----Translate Address----',
         'The "Translate Address" section is for addresses you find with your memory editor to be translated to the corresponding '
@@ -1730,11 +1740,8 @@ def help_box():
         'for more details',
         '',
         '',
-        '----Keyboard----',
+        '----General Hotkeys----',
         'Ctrl+S: Quick save',
-        'Ctrl+F: Follow jump/branch at text insert cursor',
-        'Ctrl+G: Find all jumps to function at text insert cursor',
-        'Ctrl+R: Restore selection or line at text insert cursor to original code',
         'F1: Open comments browser',
         'F2: Open jumps currently memorised',
         'F3: Toggle textbox containing original code',
@@ -1742,14 +1749,6 @@ def help_box():
         'F5: Toggle mode which displays and handles addresses using the game\'s entry point',
         'F6: Toggle hex mode',
         'F7: Toggle byte separation during hex mode',
-        'Shift+Delete or Shift+Backspace: Remove line of text at text insert cursor',
-        'Return: Move to end of next line',
-        'Shift+Return: Move to end of previous line',
-        'Ctrl+Comma: Undo',
-        'Ctrl+Fullstop: Redo',
-        '',
-        'The hacked rom text box and comments text box have separate undo/redo buffers. '
-        'Both buffers can hold up to 20,000  frames each.',
         '',
         '',
         '----Jumps window----',
@@ -1763,11 +1762,42 @@ def help_box():
         'pressing the delete key. '
         'Adding a comment to the very top of the function (or the jump to the function) using the comments text box will '
         'cause it to become labeled as such within the jumps window. '
-        'The mapped jumps are only mapped by a "distance from UNKNOWN/NOT AN INSTRUCTION" algorithm, so there may be some '
-        'miss-decoded jumps from sections that aren\'t instructions.'
+        'The mapped jumps are only mapped by a basic "distance from UNKNOWN/NOT AN INSTRUCTION" algorithm, so there may be some '
+        'miss-decoded jumps from sections that aren\'t instructions, and very few unmapped actual jumps.'
+    ])
+    message_3 = '\n'.join([
+        '----Hack Textbox Hotkeys/Info----',
+        'Ctrl+F: Follow jump/branch at text insert cursor',
+        'Ctrl+G: Find all jumps to function enveloping text insert cursor',
+        'Ctrl+R: Restore multi-line selection or line at text insert cursor to original code',
+        'Ctrl+B: Replace current line with "BEQ R0, R0, $"',
+        'Shift+Delete or Shift+Backspace: Remove line of text at text insert cursor',
+        'Return: Move to end of next line',
+        'Shift+Return: Move to end of previous line',
+        'Ctrl+Comma: Undo',
+        'Ctrl+Fullstop: Redo',
+        '',
+        'For the sake of a 100% accurate decoding process, no pseudo-instructions were able to be '
+        'implemented.',
+        '',
+        'When making a multi-line selection, you don\'t need to worry about highlighting '
+        'the entirety of the start and end column, that will be done automatically when you attempt '
+        'to action your selection.',
+        '',
+        'Any blank line will be replaced with NOP. Sometimes it may not happen straight away, but this '
+        'is not a problem.',
+        '',
+        'Any NOP instruction will automatically be typed over if you attempt to type on that line.',
+        '',
+        'Shift+Delete/Shift+Backspace, Return, Shift+Return, Undo and Redo can be used on the comments '
+        'textbox as well as the hack textbox.',
+        '',
+        'The hacked rom text box and comments text box have separate undo/redo buffers. '
+        'Both buffers can hold up to 20,000  frames each.',
     ])
     simpledialog.messagebox._show('Help', message)
     simpledialog.messagebox._show('Help (continued)', message_2)
+    simpledialog.messagebox._show('Help (final)', message_3)
 
 
 def about_box():

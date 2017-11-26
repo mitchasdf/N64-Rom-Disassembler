@@ -1256,18 +1256,17 @@ class Disassembler:
             opcode = (int_word & 0xFC000000) >> 26
             if JUMP_INTS[opcode]:
                 address = ((int_word & 0x03FFFFFF) + ((j + 1) & 0x3C000000)) - (self.jumps_offset >> 2)
-                if address > 16:
-                    buffer.insert(0, (self.jumps_to, str(address), j))
+                buffer.insert(0, (self.jumps_to, address, j))
             elif BRANCH_INTS[opcode] or decoded[:2] == 'BC':
                 address = sign_16_bit_value(int_word & 0xFFFF) + j + 1
-                buffer.insert(0, (self.branches_to, str(address), j))
+                buffer.insert(0, (self.branches_to, address, j))
             else:
                 buffer.insert(0, None)
             if len(buffer) == cut:
                 popped = buffer.pop(collect)
                 if isinstance(popped, tuple):
                     dict_append(dict=popped[0],
-                                key=popped[1],
+                                key=str(popped[1]),
                                 value=popped[2])
             if not j & percent:
                 text_box.delete('1.0', tkinter.END)
