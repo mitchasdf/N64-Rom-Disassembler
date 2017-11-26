@@ -1692,7 +1692,8 @@ def change_immediate_id():
 
 
 def set_scroll_amount():
-    amount = simpledialog.askstring('Set scroll amount', 'Current: {}'.format(app_config['scroll_amount']))
+    amount = simpledialog.askstring('Set scroll amount', 'Current: {} lines'.format(app_config['scroll_amount']) +
+                                                         '\nUse 0x to specify an amount of bytes')
     try:
         amount = deci(amount) >> 2  if amount[:2] == '0x' else int(amount)
     except:
@@ -1718,9 +1719,6 @@ def help_box():
         'The comments file will be output to where your hacked rom is located. '
         'The comments file must always be located in the same folder as your hacked rom in order for it to load. '
         'You can also open the comments files with a text editor if required.',
-        '',
-        'When setting the scroll amount, use "0x" to specify a hex amount which will be divided by 4, '
-        'or leave it out to specify an amount of lines.',
         '',
         'Clicking the address list on the left side will cause the address you clicked to be copied to your '
         'clipboard automatically.',
@@ -1784,7 +1782,10 @@ def help_box():
         'the entirety of the start and end column, that will be done automatically when you attempt '
         'to action your selection.',
         '',
-        'Any blank line will be replaced with NOP. Sometimes it may not happen straight away, but this '
+        'When pasting in multiple lines of code, it will fit it to the correct lines in the text box. '
+        'If the amount of code you paste extends beyond the bottom of the text box, it will be cut to fit it.',
+        '',
+        'Any blank line will be replaced with NOP. Sometimes it may not happen immediately, but this '
         'is not a problem.',
         '',
         'Any NOP instruction will automatically be typed over if you attempt to type on that line.',
@@ -1794,6 +1795,10 @@ def help_box():
         '',
         'The hacked rom text box and comments text box have separate undo/redo buffers. '
         'Both buffers can hold up to 20,000  frames each.',
+        '',
+        'The selection highlighting may seem buggy at times, but it causes no harm. I had to write a '
+        'work-around to override the default highlighting software because the default methods it '
+        'provides programmers to modify the text selection were just plain not working.'
     ])
     simpledialog.messagebox._show('Help', message)
     simpledialog.messagebox._show('Help (continued)', message_2)
@@ -2571,7 +2576,7 @@ win_menu.add_command(label='Toggle Status Bar', command=toggle_status_bar)
 menu_bar.add_cascade(label='Window', menu=win_menu)
 
 help_menu = tk.Menu(menu_bar,tearoff=0)
-help_menu.add_command(label='Help', command=help_box)
+help_menu.add_command(label='Usage Info', command=help_box)
 help_menu.add_command(label='About', command=about_box)
 menu_bar.add_cascade(label='Help', menu=help_menu)
 
