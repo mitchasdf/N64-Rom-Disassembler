@@ -77,6 +77,15 @@ def key_in_dict(dict, key):
         return False
 
 
+def split_at_points(string, *points):
+    splitting = []
+    prev = 0
+    for i in points:
+        splitting.append(string[prev:i])
+        prev = i
+    splitting.append(string[prev:])
+    return ' '.join(splitting)
+
 # And to translate the comments from the file back into the comments dict
 def string_to_dict(str):
     str_list = str.split('\n')
