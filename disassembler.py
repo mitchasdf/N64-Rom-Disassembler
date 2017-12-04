@@ -1,10 +1,7 @@
 
-from function_defs import deci, hexi, ints_of_4_byte_aligned_region, \
-    string_to_dict, extend_zeroes, sign_16_bit_value, unsign_16_bit_value, \
-    get_8_bit_ints_from_32_bit_int, int_of_4_byte_aligned_region, key_in_dict
+from function_defs import *
 from pickle import dump, load
 from os.path import exists
-from os import remove
 from tkinter.simpledialog import messagebox
 import tkinter
 
@@ -33,10 +30,10 @@ CO = 'CO'  # For identifying instruction?
 ES = 'ES'  # For identifying instruction
 CODE_10 = 'CODE_10'  # Code (10bit)  -- Numerical Parameter
 CODE_20 = 'CODE_20'  # Code (20bit)  -- Numerical Parameter
-VS = 'VS'
-VD = 'VD'
-VT = 'VT'
-MOD = 'MOD'
+VS = 'VS'  # RSP Register
+VD = 'VD'  # RSP Register
+VT = 'VT'  # RSP Register
+MOD = 'MOD'  # Extra RSP numerical parameter
 
 ADDRESS_ALIGNMENT = 0x04000000
 ADDRESS_ALIGNMENT_4 = 0x10000000
@@ -73,7 +70,7 @@ CODE_TYPES = {  # For Disassembler.decode(): The instances in which the paramete
     'CODE_10': 'HEX',
     'VOFFSET': 'HEX',
     'OP': 'HEX',
-    'SA': 'HEX',
+    'SA': 'DEC',
     'MOD': 'VHEX',
     'BASE': 'MAIN',
     'RT': 'MAIN',
@@ -197,6 +194,9 @@ REGISTERS = {
 CODES_USING_ADDRESSES = ['BC1F', 'BC1FL', 'BC1T', 'BC1TL', 'BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL',
                          'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL', 'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL',
                          'BNEZ', 'BNEL', 'BNE', 'J', 'JAL']
+
+SHWIFTY_INSTRUCTIONS = {'DSLL':None, 'DSLL32':None, 'DSRA':None, 'DSRA32':None, 'DSRL':None,
+                        'DSRL32':None, 'SLL':None, 'SRA':None, 'SRL':None}
 
 REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of register names in order to encode
     'R0': 0,
@@ -357,7 +357,7 @@ DOCUMENTATION = {
     'SW': 'Store Word',
     'SWL': 'Store Word Left',
     'SWR': 'Store Word Right',
-    'SYNC': 'Synchronize Shade Memory',
+    'SYNC': 'Synchronize Shared Memory',
     'ADD': 'Add Word',
     'ADDI': 'Add Immediate Word',
     'ADDIU': 'Add Immediate Unsigned Word',
@@ -375,13 +375,13 @@ DOCUMENTATION = {
     'DMULT': 'Multiply Double',
     'DMULTU': 'Multiply Double Unsigned',
     'DSLL': 'Double Shift Left Logical',
-    'DSLL32': 'Double Shift Left Logical (+32)',
+    'DSLL32': 'Double Shift Left Logical (shift_amount+=32)',
     'DSLLV': 'Double Shift Left Logical Variable',
     'DSRA': 'Double Shift Right Arithmetic',
-    'DSRA32': 'Double Shift right Arithmetic (+32)',
+    'DSRA32': 'Double Shift right Arithmetic (shift_amount+=32)',
     'DSRAV': 'Double Shift Right Arithmetic Variable',
     'DSRL': 'Double Shift Right Logical',
-    'DSRL32': 'Double Shift Right Logical (+32)',
+    'DSRL32': 'Double Shift Right Logical (shift_amount+=32)',
     'DSRLV': 'Double Shift Right Logical Variable',
     'DSUB': 'Double Subtract',
     'DSUBU': 'Double Subtract Unsigned',
@@ -544,6 +544,14 @@ DOCUMENTATION = {
     'TRUNC.W.D': 'Float Truncate Double to Word Fixed',
 }
 
+CIC = {
+    '6101': 0x00000000, # nope
+    '6102': 0xF8CA4DDC,
+    '6103': 0xA3886759,
+    '6105': 0xDF26F436,
+    '6106': 0x1FEA617A
+}
+
 
 class Disassembler:
     def __init__(self, base_file_path, hacked_file_path, window, status_bar):
@@ -557,35 +565,21 @@ class Disassembler:
             folder = file_path[:part_at]
             file_name = file_path[part_at:]
             rom_validation = file_data[0:4].hex()
-            rom_type = ''
+            rom_type = 'big-end'
             if rom_validation == '37804012':
                 rom_type = 'byte-swap'
                 if not self.base_file:
                     status_bar.set('{} is byte-swapped, swapping now...'.format(file_name))
-                    window.update_idletasks()
+                    window.update()
                 # Rom is byte-swapped, so swap it to the right order
-                i = 0
-                while i < len(file_data):
-                    byte_2, byte_4 = file_data[i+1], file_data[i+3]
-                    file_data[i+1] = file_data[i]
-                    file_data[i] = byte_2
-                    file_data[i+3] = file_data[i+2]
-                    file_data[i+2] = byte_4
-                    i += 4
+                file_data = self.byte_swap(file_data)
             elif rom_validation == '40123780':
                 rom_type = 'little-end'
                 if not self.base_file:
                     status_bar.set('{} is in little-endian, reversing now...'.format(file_name))
-                    window.update_idletasks()
+                    window.update()
                 # Rom is in little-endian, swap to big
-                i = 0
-                while i < len(file_data):
-                    byte_1, byte_2 = file_data[i], file_data[i+1]
-                    file_data[i] = file_data[i+3]
-                    file_data[i+1] = file_data[i+2]
-                    file_data[i+2] = byte_2
-                    file_data[i+3] = byte_1
-                    i += 4
+                file_data = self.byte_reverse(file_data)
             elif rom_validation != '80371240':
                 raise Exception('"{}" Not a rom file'.format(file_path))
             elif self.base_file:
@@ -594,6 +588,7 @@ class Disassembler:
                                     'then you can "start a new hacked rom" and pick your extended rom as the base file.')
             return folder, file_name, file_data, rom_type
 
+        # Because of NoneType error when checking this var
         self.base_file = bytearray()
         self.base_folder, self.base_file_name, self.base_file, base_type = open_rom(base_file_path)
         self.hack_folder, self.hack_file_name, self.hack_file, hack_type = open_rom(hacked_file_path)
@@ -676,11 +671,17 @@ class Disassembler:
         # Save the game offset
         segment = self.hack_file[self.header_items['Game Offset'][0]: self.header_items['Game Offset'][1]]
         self.game_offset = int.from_bytes(segment, byteorder='big', signed=False) - 0x1000
-        self.jumps_offset = self.game_offset & 0xFFFFFF
+        self.game_offset_unadjusted = self.game_offset + 0x1000
+
+        self.jumps_offset = (self.game_offset_unadjusted & 0xFFFFFF) - 0x1000
+        self.jumps_offset_div_4 = self.jumps_offset >> 2
 
         self.game_address_mode = False
         self.immediate_identifier = '$'
 
+        self.cic = None
+        self.branches = 0
+        self.i_mnemonics = []
         self.encodes = {}
         self.appearances = {}
         self.identifying_bits = {}
@@ -689,6 +690,7 @@ class Disassembler:
         self.branches_to = {}
         self.jumps_file = '{}{} jumps.data'.format(self.hack_folder, self.hack_file_name)
         self.documentation = {}
+        self.loaded = False
 
         ''' Format: fit(mnemonic, encoding, appearance)
             mnemonic: String
@@ -956,48 +958,49 @@ class Disassembler:
 
         # Vector Load/Store
         # Opcode 50 and 51 may or may not need swapping
-        self.fit('LBV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('LSV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('LLV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('LDV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('LQV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('LRV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('LPV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('LUV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('LHV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('LFV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('LWV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('LTV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('SBV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('SSV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('SLV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('SDV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('SQV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('SRV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('SPV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('SUV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('SHV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('SFV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('SWV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        self.fit('STV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LBV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LSV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LLV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LDV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LQV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LRV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LPV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LUV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LHV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LFV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LWV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('LTV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('SBV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('SSV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('SLV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('SDV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('SQV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('SRV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('SPV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('SUV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('SHV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('SFV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('SWV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+        # self.fit('STV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
 
         # Vector Math
-        self.fit('VMULF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 0]], [VD, VT, VS, MOD])
-        self.fit('VMULU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 1]], [VD, VT, VS, MOD])
-        self.fit('VRNDP', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 2]], [VD, VT, VS, MOD])
-        self.fit('VMULQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 3]], [VD, VT, VS, MOD])
-        self.fit('VMUDL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 4]], [VD, VT, VS, MOD])
-        self.fit('VMUDM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 5]], [VD, VT, VS, MOD])
-        self.fit('VMUDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 6]], [VD, VT, VS, MOD])
-        self.fit('VMUDH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 7]], [VD, VT, VS, MOD])
-        self.fit('VMACF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 8]], [VD, VT, VS, MOD])
-        self.fit('VMACU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 9]], [VD, VT, VS, MOD])
-        self.fit('VRNDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 10]], [VD, VT, VS, MOD])
-        self.fit('VMACQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 11]], [VD, VT, VS, MOD])
-        self.fit('VMADL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 12]], [VD, VT, VS, MOD])
-        self.fit('VMADM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 13]], [VD, VT, VS, MOD])
-        self.fit('VMADN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 14]], [VD, VT, VS, MOD])
-        self.fit('VMADH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 15]], [VD, VT, VS, MOD])
+        # self.fit('VMULF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 0]], [VD, VT, VS, MOD])
+        # self.fit('VMULU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 1]], [VD, VT, VS, MOD])
+        # self.fit('VRNDP', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 2]], [VD, VT, VS, MOD])
+        # self.fit('VMULQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 3]], [VD, VT, VS, MOD])
+        # self.fit('VMUDL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 4]], [VD, VT, VS, MOD])
+        # self.fit('VMUDM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 5]], [VD, VT, VS, MOD])
+        # self.fit('VMUDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 6]], [VD, VT, VS, MOD])
+        # self.fit('VMUDH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 7]], [VD, VT, VS, MOD])
+        # self.fit('VMACF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 8]], [VD, VT, VS, MOD])
+        # self.fit('VMACU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 9]], [VD, VT, VS, MOD])
+        # self.fit('VRNDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 10]], [VD, VT, VS, MOD])
+        # self.fit('VMACQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 11]], [VD, VT, VS, MOD])
+        # self.fit('VMADL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 12]], [VD, VT, VS, MOD])
+        # self.fit('VMADM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 13]], [VD, VT, VS, MOD])
+        # self.fit('VMADN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 14]], [VD, VT, VS, MOD])
+        # self.fit('VMADH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 15]], [VD, VT, VS, MOD])
+        # print(self.branches)
         # Unfinished
 
     def fit(self, mnemonic, encoding, appearance):
@@ -1006,7 +1009,7 @@ class Disassembler:
         bits_addressed = 0
         identifying_bits = '0b'
         new_encoding_segments = [[], [], []]
-        # Makes sure EX_OPCODE is placed after all other named bit segments while processing and removing parameters
+        # Makes sure EX_OPCODE is placed after all other named bit segments while processing and separating parameters
         for i in encoding:
             if isinstance(i, str):
                 length = LENGTHS[i]
@@ -1019,19 +1022,35 @@ class Disassembler:
             elif isinstance(i, int):
                 length = i
                 identifying_bits += '0' * i
-                new_encoding_segments[2].append((0, length, bits_addressed))
+                new_encoding_segments[2].append([0, length, bits_addressed])
             else:
                 value = i[1]
                 name = i[0]
                 length = LENGTHS[name]
                 identifying_bits += extend_zeroes(bin(i[1])[2:], length)
                 if name == EX_OPCODE:
-                    new_encoding_segments[1].append((value, length, bits_addressed))
+                    new_encoding_segments[1].append([value, length, bits_addressed])
                 else:
-                    new_encoding_segments[0].append((value, length, bits_addressed))
+                    new_encoding_segments[0].append([value, length, bits_addressed])
             bits_addressed += length
 
+        # Some zero bit fields are big, and an array is created with a size equal to the capacity of the bit field,
+        #  so better shorten them, because the array size in the module is hard coded to 64
+        i = 0
+        while i < len(new_encoding_segments[2]):
+            zero, length, bits_addressed = new_encoding_segments[2][i]
+            if length > 6:
+                new_encoding_segments[2][i][0] = 0
+                new_encoding_segments[2][i][1] = 6
+                amount_over = length - 6
+                new_encoding_segments[2].insert(i+1, [0, amount_over, bits_addressed + 6])
+            i += 1
+
         reordered_encoding = new_encoding_segments[0] + new_encoding_segments[1] + new_encoding_segments[2]
+        # if mnemonic in ['DADDU','TRUNC.L.S','TRUNC.L.D','VMULF','VMULU','VRNDP']:
+        #     print(mnemonic)
+        #     [print(i) for i in reordered_encoding]
+        #     print('')
 
         # Fit the opcode matrix
         for j, i in enumerate(reordered_encoding):
@@ -1053,19 +1072,28 @@ class Disassembler:
                 matrix_branch[target].append([None] * (2 ** length))
                 matrix_branch[target].append(bitwise_and)
                 matrix_branch[target].append(shift_amount)
+                self.branches += 1
             if j < len(reordered_encoding) - 1:
                 if matrix_branch[target][0][value] is None:
                     matrix_branch[target][0][value] = []
                 matrix_branch = matrix_branch[target][0][value]
             else:
                 matrix_branch[target][0][value] = mnemonic
-
         appearance = [[i, appearance_bit_correspondence[i]] for i in appearance]
         if mnemonic in DOCUMENTATION:
             self.documentation[mnemonic] = DOCUMENTATION[mnemonic]
+        self.i_mnemonics.append(mnemonic)
         self.encodes[mnemonic] = encoding
         self.appearances[mnemonic] = appearance
         self.identifying_bits[mnemonic] = int(identifying_bits, 2)
+
+    def solve_address(self, index, address):
+        if index >= 0x400:
+            address -= self.jumps_offset_div_4
+        else:
+            address -= 0x1000000
+        address += index & 0x3F000000
+        return address << 2
 
     def decode(self, int_word, index):
         if int_word == 0:
@@ -1076,7 +1104,8 @@ class Disassembler:
         while iterating:
             length = len(target_branch)
             for sub_branch in range(length):
-                value = target_branch[sub_branch][0][(int_word & target_branch[sub_branch][1]) >> target_branch[sub_branch][2]]
+                value = target_branch[sub_branch][0][(int_word & target_branch[sub_branch][1]) >>
+                                                     target_branch[sub_branch][2]]
                 if value is None:
                     if sub_branch == length - 1:
                         iterating = False
@@ -1092,7 +1121,7 @@ class Disassembler:
         if mnemonic is None:
             return ''
         parameters = ''
-        index += 1  # Jump/branch to offsets/addresses are calculated based on the address of the delay slot (following word)
+        index += 1  # Jump/branch to offsets/addresses are calculated based on the address of the delay slot
         for i in self.appearances[mnemonic]:
             param_name = i[0]
             param_type = CODE_TYPES[param_name]
@@ -1116,13 +1145,12 @@ class Disassembler:
                         return ''
                     inner_value <<= 2
                 if is_address:
-                    # Add the current 268mb alignment to the value to properly decode
-                    inner_value += index & 0x3C000000
-                    inner_value <<= 2
-                    inner_value -= self.jumps_offset
+                    inner_value = self.solve_address(index, inner_value)
                 if self.game_address_mode and (is_address or is_offset):
                     inner_value += self.game_offset
                 decode_text = self.immediate_identifier + extend_zeroes(hexi(inner_value), HEX_EXTEND[param_name])
+            elif param_type == 'DEC':
+                decode_text = self.immediate_identifier + str(inner_value)
             elif param_type == 'VHEX':
                 decode_text = '[' + extend_zeroes(hexi(inner_value), HEX_EXTEND[param_name]) + ']'
             else: # Will be a register
@@ -1142,18 +1170,18 @@ class Disassembler:
         return mnemonic + parameters
 
     def encode(self, string, index):
-        if string in ['', 'NOP']:
+        if string in ['', 'N', 'NO'] or string[:3] == 'NOP':
             return 0
         punc = string.find(' ')
         if punc < 0:
             punc = len(string)
         opcode = string[:punc]
         string = string[punc + 1:]
-        if opcode not in self.encodes:
+        if not key_in_dict(self.encodes, opcode):
             # Syntax error - no such mnemonic
             return -1
         str_parameters = []
-        index += 1  # Jump/branch to offsets/addresses are calculated based on the address of the delay slot (following word)
+        index += 1  # Jump/branch to offsets/addresses are calculated based on the address of the delay slot
         try:
             while len(string):
                 punc = string.find(', ')
@@ -1185,13 +1213,19 @@ class Disassembler:
             for i in range(len(self.appearances[opcode])):
                 param = str_parameters[i]
                 if param[0] == self.immediate_identifier or self.appearances[opcode][i][0] == 'MOD':
-                    param = deci(param[1:])
+                    if key_in_dict(SHWIFTY_INSTRUCTIONS, opcode):
+                        param = int(param[1:])
+                    else:
+                        param = deci(param[1:])
                     is_address = self.appearances[opcode][i][0] == 'ADDRESS'
                     is_offset = self.appearances[opcode][i][0] == 'OFFSET'
                     if self.game_address_mode and (is_address or is_offset):
                         param -= self.game_offset
                     if is_address:
-                        param += self.jumps_offset
+                        if index >= 0x1000:
+                            param += self.jumps_offset
+                        else:
+                            index += 0x4000000
                         param >>= 2
                         if index // ADDRESS_ALIGNMENT != param // ADDRESS_ALIGNMENT:
                             # Immediate out of bounds error - not within the 268mb aligned region
@@ -1246,17 +1280,25 @@ class Disassembler:
         collect = 9
         buffer = [None] * (cut - 1)
         for i in range(0x40, len(self.hack_file), 4):
-            int_word = int_of_4_byte_aligned_region(self.hack_file[i:i+4])
             j = i >> 2
+            int_word = int_of_4_byte_aligned_region(self.hack_file[i:i+4])
             decoded = self.decode(int_word, j)
+            if not j & percent:
+                text_box.delete('1.0', tkinter.END)
+                text_box.insert('1.0', str(j // percent) + '%')
+                text_box.update()
             if not decoded:
-                del buffer
-                buffer = []
+                buffer[:] = []
                 continue
             opcode = (int_word & 0xFC000000) >> 26
             if JUMP_INTS[opcode]:
-                address = ((int_word & 0x03FFFFFF) + ((j + 1) & 0x3C000000)) - (self.jumps_offset >> 2)
-                buffer.insert(0, (self.jumps_to, address, j))
+                if i < 0x1000:
+                    subtract = 0x1000000
+                else:
+                    subtract = self.jumps_offset_div_4
+                address = ((int_word & 0x03FFFFFF) + ((j + 1) & 0x3C000000)) - subtract
+                if address > 0:
+                    buffer.insert(0, (self.jumps_to, address, j))
             elif BRANCH_INTS[opcode] or decoded[:2] == 'BC':
                 address = sign_16_bit_value(int_word & 0xFFFF) + j + 1
                 buffer.insert(0, (self.branches_to, address, j))
@@ -1268,10 +1310,6 @@ class Disassembler:
                     dict_append(dict=popped[0],
                                 key=str(popped[1]),
                                 value=popped[2])
-            if not j & percent:
-                text_box.delete('1.0', tkinter.END)
-                text_box.insert('1.0', str(j // percent) + '%')
-                text_box.update()
         with open(self.jumps_file, 'wb') as jumps_file:
             dump((self.jumps_to, self.branches_to), jumps_file)
 
@@ -1340,35 +1378,102 @@ class Disassembler:
             mapped_address = True
         return mapped_target, mapped_address
 
+    def byte_swap(self, bytes):
+        new_bytes = bytearray(bytes)
+        for i in range(0, len(bytes), 4):
+            new_bytes[i + 1] = bytes[i]
+            new_bytes[i] = bytes[i + 1]
+            new_bytes[i + 3] = bytes[i + 2]
+            new_bytes[i + 2] = bytes[i + 3]
+        return new_bytes
+
+    def byte_reverse(self, bytes):
+        new_bytes = bytearray(bytes)
+        for i in range(0, len(bytes), 4):
+            new_bytes[i] = bytes[i+3]
+            new_bytes[i+1] = bytes[i+2]
+            new_bytes[i+2] = bytes[i+1]
+            new_bytes[i+3] = bytes[i]
+        return new_bytes
+
+    # data from http://n64dev.org/n64crc.html
     def calc_checksum(self):
-        check_part = ints_of_4_byte_aligned_region(self.hack_file[0x1000:0x101000])
-        t1 = t2 = t3 = t4 = t5 = t6 = 0xF8CA4DDC
+        if not self.cic:
+            return 0, 0
+        check_part = self.hack_file[0x1000:0x101000]
+        t1 = t2 = t3 = t4 = t5 = t6 = self.cic
         unsigned_long = lambda j: j & 0xFFFFFFFF
-        ROL = lambda j, b: unsigned_long(j << b) | (j >> (32 - b))
-        for c1 in check_part:
-            k1 = unsigned_long(t6 + c1)
-            if k1 < t6:
+        #                                                 where 32 - b would equal 32, wrap to 0
+        ROL = lambda j, b: unsigned_long(j << b) | (j >> (-b & 0x1F))
+        for i in range(0, len(check_part), 4):
+            d = int_of_4_byte_aligned_region(check_part[i:i+4])
+            t6d = unsigned_long(t6 + d)
+            if t6d < t6:
                 t4 = unsigned_long(t4 + 1)
-            t6 = k1
-            t3 ^= c1
-            k2 = c1 & 0x1F
-            k1 = ROL(c1, k2)
-            t5 = unsigned_long(t5 + k1)
-            if c1 < t2:
-                t2 ^= k1
+            t6 = t6d
+            t3 ^= d
+            r = ROL(d, d & 0x1F)
+            t5 = unsigned_long(t5 + r)
+            if t2 > d:
+                t2 ^= r
             else:
-                t2 ^= t6 ^ c1
-            t1 = unsigned_long(t1 + (c1 ^ t5))
-        sum1 = t6 ^ t4 ^ t3
-        sum2 = t5 ^ t2 ^ t1
+                t2 ^= t6 ^ d
+            if self.cic == CIC['6105']:
+                byte_place = self.header_items['Boot Code'][0] + 0x0710 + (i & 0xFF)
+                t1 = unsigned_long(
+                    t1 +
+                    (int_of_4_byte_aligned_region(self.hack_file[byte_place:byte_place+4]) ^ d)
+                )
+            else:
+                t1 = unsigned_long(t1 + (t5 ^ d))
+
+        if self.cic == CIC['6103']:
+            sum1 = unsigned_long((t6 ^ t4) + t3)
+            sum2 = unsigned_long((t5 ^ t2) + t1)
+        elif self.cic == CIC['6106']:
+            sum1 = unsigned_long((t6 * t4) + t3)
+            sum2 = unsigned_long((t5 * t2) + t1)
+        else:
+            sum1 = t6 ^ t4 ^ t3
+            sum2 = t5 ^ t2 ^ t1
         self.split_and_store_bytes(sum1, self.header_items['CRC1'][0] >> 2)
         self.split_and_store_bytes(sum2, self.header_items['CRC2'][0] >> 2)
         return sum1, sum2
 
+    def set_cic(self, cic):
+        self.cic = cic
+        if cic == CIC['6103']:
+            self.game_offset -= 0x100000
+            self.jumps_offset -= 0x100000
+            self.jumps_offset_div_4 -= 0x040000
+        elif cic == CIC['6106']:
+            self.game_offset -= 0x200000
+            self.jumps_offset -= 0x200000
+            self.jumps_offset_div_4 -= 0x080000
+
+    def find_checksum_loop(self):
+        bne_1 = 'BNE A3, T0'
+        bne_2 = 'BNE S0, T0'
+        j_1 = j_3 = instr = instr_3 = 0
+        for i in range(self.header_items['Boot Code'][0], self.header_items['Boot Code'][1], 4):
+            int_word = int_of_4_byte_aligned_region(self.hack_file[i:i + 4])
+            j = i >> 2
+            decoded = self.decode(int_word, j)
+            if decoded[:10] == bne_1 and i + 0x10 < self.header_items['Boot Code'][1]:
+                next_int_word = int_of_4_byte_aligned_region(self.hack_file[i + 0xC:i + 0x10])
+                next_decoded = self.decode(next_int_word, j + 3)
+                if next_decoded[:10] == bne_2:
+                    j_1 = j
+                    j_3 = j+3
+                    instr = decoded
+                    instr_3 = next_decoded
+                    break
+        return j_1, j_3, instr, instr_3
+
     def find_vector_instructions(self):
-        ints = ints_of_4_byte_aligned_region(self.hack_file[0x1000:])
-        missing_opcodes = [True if i in [18, 19, 28, 29, 30, 31, 50, 51, 54, 58, 59, 62] else False for i in range(64)]
-        # missing_opcodes = [True if i in [18] else False for i in range(64)]
+        ints = ints_of_4_byte_aligned_region(self.hack_file[0xE5CD8:])
+        # missing_opcodes = [True if i in [18, 19, 28, 29, 30, 31, 50, 51, 54, 58, 59, 62] else False for i in range(64)]
+        missing_opcodes = [True if i in [50, 51] else False for i in range(64)]
         # return_dict = {
         #     '18': [],
         #     '19': [],
@@ -1386,10 +1491,11 @@ class Disassembler:
         # in testing stage
         for i, instruction in enumerate(ints):
             decoded = self.decode(instruction, i + 0x400)
-            if decoded == 'UNKNOWN/NOT AN INSTRUCTION':
+            if not decoded:
                 opcode = (instruction & 0xFC000000) >> 26
                 if missing_opcodes[opcode]:
-                    self.comments[str(i + 0x400)] = extend_zeroes(bin(instruction)[2:], 32)
+                    text = extend_zeroes(bin(instruction)[2:], 32)
+                    self.comments[str(i + 0x400)] = split_at_points(text, 6, 11, 16, 21, 26)
                     # return_dict[str(opcode)].append((extend_zeroes(hexi(i << 2),8), instruction))
         # return return_dict
 
