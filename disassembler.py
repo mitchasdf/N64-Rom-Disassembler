@@ -1441,6 +1441,14 @@ class Disassembler:
         return sum1, sum2
 
     def set_cic(self, cic):
+        if self.cic == CIC['6103']:
+            self.game_offset += 0x100000
+            self.jumps_offset += 0x100000
+            self.jumps_offset_div_4 += 0x040000
+        elif self.cic == CIC['6106']:
+            self.game_offset += 0x200000
+            self.jumps_offset += 0x200000
+            self.jumps_offset_div_4 += 0x080000
         self.cic = cic
         if cic == CIC['6103']:
             self.game_offset -= 0x100000

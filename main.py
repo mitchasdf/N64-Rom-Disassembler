@@ -4,7 +4,7 @@ import tkinter.font as tkfont
 from tkinter import simpledialog, filedialog, colorchooser
 import os
 from function_defs import *
-from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS
+from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS, CIC
 import webbrowser
 
 
@@ -28,6 +28,7 @@ FRESH_APP_CONFIG = {
     'previous_hack_opened': '',
     'open_roms_automatically': False,
     'window_geometry': '1133x609',
+    'hack_of_base': {},
     'font_size': 10,
     'max_lines': 40,
     'scroll_amount': 8,
@@ -36,6 +37,8 @@ FRESH_APP_CONFIG = {
     'hex_mode': False,
     'hex_space_separation': True,
     'game_address_mode': {},
+    'CIC': {},
+    'calc_crc': {},
     'auto_copy': 0,
     'status_bar': True,
     'comments_auto_focus_comments': False,
@@ -191,12 +194,20 @@ def change_colours():
     auto_copy_checkbtn.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg, selectcolor=win_bg)
     window.config(bg=win_bg)
     [label.config(bg=new_tag_config['target']) for label in [target_down_label, target_up_label]]
+    [label.config(bg=new_tag_config['jump_from']) for label in [target_of_down_label, target_of_up_label]]
     if change_rom_name_button:
         change_rom_name_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg, activeforeground=text_fg)
     r, g, b = get_colours_of_hex(text_bg)
     new_insert_colour = solve_against_greyscale(r, g, b)
     [text_box.config(insertbackground=new_insert_colour) for text_box in [address_input, address_output] + ALL_TEXT_BOXES]
     highlight_stuff(skip_moving_cursor=True)
+
+
+def disassembler_loaded():
+    if disasm:
+        if disasm.loaded:
+            return True
+    return False
 
 
 def check_widget(widget):
@@ -315,8 +326,8 @@ def correct_cursor(event):
 # Is called pretty much after every time the view is changed
 prev_reg_target, prev_address_target, prev_cursor_location = '', 0, 0
 def highlight_stuff(widget=None, skip_moving_cursor=False):
-    global prev_reg_target, prev_address_target, prev_cursor_location
-    if not disasm:
+    global prev_reg_target, prev_address_target, prev_cursor_location, targ_direction
+    if not disassembler_loaded():
         return
     [hack_file_text_box.tag_remove(tag, '1.0', tk.END) for tag in app_config['tag_config']]
     [text_box.tag_remove('cursor_line', '1.0', tk.END) for text_box in ALL_TEXT_BOXES]
@@ -333,18 +344,21 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
     if not prev_cursor_location:
         prev_cursor_location = navigation + c_line - 1
     elif not skip_moving_cursor:
-        new_cursor = False
-        if prev_cursor_location < navigation:
+        this_handle = hack_file_text_box if not widget else widget
+        new_cursor = None
+        if prev_cursor_location <= navigation:
             new_cursor = '1.0'
         elif prev_cursor_location > navigation + max_lines:
             new_cursor = cursor_value(max_lines, 0)
+        elif prev_cursor_location in range(navigation, navigation + max_lines):
+            new_cursor = cursor_value(prev_cursor_location - navigation, 0)
+            new_cursor = modify_cursor(new_cursor, 1, 'max', get_text_content(this_handle))[0]
         if new_cursor:
-            this_handle = hack_file_text_box if not widget else widget
             this_handle.mark_set(tk.INSERT, new_cursor)
             cursor, c_line, column = get_cursor(this_handle)
 
     new_text = ''
-    if widget is hack_file_text_box or widget is base_file_text_box:
+    if (widget is hack_file_text_box or widget is base_file_text_box) and prev_cursor_location >= 0x10:
         file_navi = prev_cursor_location << 2
         file = disasm.hack_file if widget is hack_file_text_box else disasm.base_file
         decoded = disasm.decode(int_of_4_byte_aligned_region(file[file_navi:file_navi+4]), prev_cursor_location)
@@ -354,17 +368,21 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
         mnemonic = decoded[:cut]
         if mnemonic in disasm.documentation:
             new_text = '{}: {}'.format(mnemonic, disasm.documentation[mnemonic])
-    status_text.set(new_text)
+    if new_text:
+        status_text.set(new_text)
 
     jumps_from = {}
-    [text_box.tag_add('cursor_line',
-                      cursor_value(c_line, 0),
-                      cursor_value(c_line + 1, 0))
-     for text_box in ALL_TEXT_BOXES]
+
+    if prev_cursor_location in range(navigation, navigation + max_lines):
+        [text_box.tag_add('cursor_line',
+                          cursor_value(c_line, 0),
+                          cursor_value(c_line + 1, 0))
+         for text_box in ALL_TEXT_BOXES]
 
     if prev_address_target or not column:
         c_line = 0
 
+    address = None if c_line else prev_address_target
     for i in range(len(text)):
         navi = navigation + i
         if not app_config['hex_mode']:
@@ -372,7 +390,6 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
             line_text = text[i]
             this_word = line_text[:line_text.find(' ')]
             imm_id = text[i].find(app_config['immediate_identifier'])
-            address = None
 
             # Highlight the end of each function
             if text[i] == 'JR RA':
@@ -386,9 +403,7 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
                                            cursor_value(line, 0),
                                            cursor_value(line, len(text[i])))
                 hex_address = line_text[imm_id + 1:]
-                if not c_line:
-                    address = prev_address_target
-                elif line == c_line:
+                if line == c_line:
                     address = hex_address
                 try:
                     possibly_value_error = (deci(hex_address) - (disasm.game_offset if disasm.game_address_mode else 0)) >> 2
@@ -402,46 +417,18 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
                                            cursor_value(line, 0),
                                            cursor_value(line, len(text[i])))
                 hex_address = line_text[imm_id + 1:]
-                if not c_line:
-                    address = prev_address_target
-                elif line == c_line and this_word in ['J', 'JAL']:
+                if line == c_line and this_word in ['J', 'JAL']:
                     address = hex_address
                 try:
                     possibly_value_error = (deci(hex_address) - (disasm.game_offset if disasm.game_address_mode else 0)) >> 2
                     jumps_from[str(navi)] = possibly_value_error
-                except ValueError:
+                except ValueError as e:
                     ''
 
             elif line_text == 'NOP':
                 hack_file_text_box.tag_add('nop',
                                            cursor_value(line, 0),
                                            cursor_value(line, len(text[i])))
-
-            # Highlight the target of selected jump or branch functions
-            if address:
-                if hack_function:
-                    if c_line:
-                        try:
-                            # Raises error if user types non-numeric characters where an address/offset is
-                            address = deci(address)
-                        except:
-                            address = -1
-                        else:
-                            if disasm.game_address_mode:
-                                address -= disasm.game_offset
-                            address >>= 2
-                            prev_address_target = address
-                            jumps_from[str(navi)] = address
-                    if address in range(navigation, navigation + max_lines):
-                        target_none()
-                        place = address - navigation
-                        hack_file_text_box.tag_add('target',
-                                                   cursor_value(place + 1, 0),
-                                                   cursor_value(place + 2, 0))
-                    elif address < navigation:
-                        target_up()
-                    elif address >= navigation + max_lines:
-                        target_down()
 
             # Highlight instructions in which are a target of any jump or branch
             # Because the disasm.jumps dict is so huge, a try/except works "exceptionally" faster than iterative methods
@@ -463,24 +450,67 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
 
         # Highlight errors
         key = str(navi)
-        if key in user_errors:
+        if key_in_dict(user_errors, key):
             err_code = user_errors[key][0]
             hack_file_text_box.tag_add('bad' if err_code > -3 else 'out_of_range',
                                        cursor_value(i + 1, 0),
                                        cursor_value(i + 2, 0))
 
-    if not app_config['hex_mode'] and hack_function:
-        for i in range(len(text)):
-            navi = navigation + i
-            try:
-                address = jumps_from[str(navi)]
-            except:
-                continue
-            if address == prev_cursor_location:
-                # Highlight instructions in which jump to the cursors location
-                hack_file_text_box.tag_add('jump_from',
-                                           cursor_value(i + 1, 0),
-                                           cursor_value(i + 2, 0))
+    # Highlight jumps/branches to target instruction
+    if hack_function:
+        this_key = str(prev_cursor_location)
+        dictie = None
+        if key_in_dict(disasm.branches_to, this_key):
+            dictie = disasm.branches_to
+        elif key_in_dict(disasm.jumps_to, this_key):
+            dictie = disasm.jumps_to
+        if dictie:
+            had_ups = False
+            had_downs = False
+            for i in dictie[this_key]:
+                place = i - navigation
+                if place in range(max_lines):
+                    hack_file_text_box.tag_add('jump_from',
+                                               cursor_value(place + 1, 0),
+                                               cursor_value(place + 2, 0))
+                elif place >= max_lines:
+                    had_downs = True
+                    target_of_down()
+                else:
+                    had_ups = True
+                    target_of_up()
+            if not had_ups:
+                target_of_up_label.place_forget()
+            if not had_downs:
+                target_of_down_label.place_forget()
+        else:
+            target_of_down_label.place_forget()
+            target_of_up_label.place_forget()
+
+    if address:
+        if hack_function:
+            if c_line:
+                try:
+                    # Raises error if user types non-numeric characters where an address/offset is
+                    address = deci(address)
+                except:
+                    address = -1
+                else:
+                    if disasm.game_address_mode:
+                        address -= disasm.game_offset
+                    address >>= 2
+                    prev_address_target = address
+                    jumps_from[str((c_line + navigation) - 1)] = address
+            if address in range(navigation, navigation + max_lines):
+                target_none()
+                place = address - navigation
+                hack_file_text_box.tag_add('target',
+                                           cursor_value(place + 1, 0),
+                                           cursor_value(place + 2, 0))
+            elif address < navigation:
+                target_up()
+            elif address >= navigation + max_lines:
+                target_down()
 
     # Highlight all of the same registers on screen if cursor is targeting one
     def highlight_targets(target):
@@ -516,26 +546,57 @@ def reset_target():
 
 # The hacked text box syntax checker and change applier
 def apply_hack_changes(ignore_slot = None):
-    if not disasm:
+    if not disassembler_loaded():
         return
 
-    def find_target_key(jumps, target):
-        targets_lower = [deci(i[:8]) >> 2 for i in jumps]
-        targets_upper = [deci(i[11:19]) >> 2 for i in jumps]
+    targets_lower = [deci(i[:8]) >> 2 for i in jumps_displaying]
+    targets_upper = [deci(i[11:19]) >> 2 for i in jumps_displaying]
+    def find_target_key(target):
         if disasm.game_address_mode:
             target += disasm.game_offset >> 2
         i = 0
         target_key = ''
-        while i < len(jumps) and not target_key:
-            if target == keep_within(target, targets_lower[i], targets_upper[i]):
-                target_key = list(jumps)[i]
+        while i < len(jumps_displaying):
+            if target in range(targets_lower[i], targets_upper[i]):
+                target_key = list(jumps_displaying)[i]
+                break
             i += 1
         return target_key
 
-    # def fix_change_log(navi, change):
-    #     if app_config['hex_mode']:
-    #
-    #     else:
+    def unmap(decoded_word, navi):
+        target = 0
+        dic = {}
+        if decoded_word in ['J', 'JAL']:
+            target = disasm.solve_address(navi + 1, int_word & 0x03FFFFFF) >> 2
+            dic = disasm.jumps_to
+        elif decoded_word in BRANCH_FUNCTIONS:
+            target = sign_16_bit_value(int_word & 0xFFFF) + navi + 1
+            dic = disasm.branches_to
+        if dic:
+            str_target = str(target)
+            unmapped_target, unmapped_address = disasm.unmap(dic, navi, str_target)
+            if dic is disasm.jumps_to:
+                target_key = find_target_key(target)
+                if unmapped_address and target_key:
+                    address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if disasm.game_address_mode else 0)), 8)
+                    cut_jumps = [i[:8] for i in jumps_displaying[target_key]]
+                    if address in cut_jumps:
+                        place = cut_jumps.index(address)
+                        jumps_displaying[target_key].pop(place)
+                        if not jumps_displaying[target_key]:
+                            del jumps_displaying[target_key]
+                            if jumps_window:
+                                try:
+                                    place = function_list_box.get(0, tk.END).index(target_key)
+                                    function_list_box.delete(place)
+                                except:
+                                    ''
+                        if jumps_window:
+                            try:
+                                place = jump_list_box.get(0, tk.END).index(address)
+                                jump_list_box.delete(place)
+                            except:
+                                ''
 
     current_text = get_text_content(hack_file_text_box).upper()
     split_text = current_text.split('\n')
@@ -559,7 +620,6 @@ def apply_hack_changes(ignore_slot = None):
             this_word = split_text[i]
         string_key = '{}'.format(navi)
         # key_4 = extend_zeroes(hexi(navi << 2), 8)
-        unmap = False
         if not decoded:
             decoded = 'widdley scuds boi'
         if decoded == split_text[i]:
@@ -577,20 +637,20 @@ def apply_hack_changes(ignore_slot = None):
             disasm.split_and_store_bytes(int_of, navi)
             clear_error(string_key)
             if not is_hex_part:
-                unmap = True
+                unmap(decoded_word, navi)
 
         elif not split_text[i]:
             disasm.split_and_store_bytes(0, navi)
             hack_file_text_box.insert(cursor_value(i + 1, 0), 'NOP')
             clear_error(string_key)
-            unmap = True
+            unmap(decoded_word, navi)
 
         elif split_text[i] != 'UNKNOWN/NOT AN INSTRUCTION':
             encoded_int = disasm.encode(split_text[i], navi)
             if encoded_int >= 0:
                 disasm.split_and_store_bytes(encoded_int, navi)
                 clear_error(string_key)
-                unmap = True
+                unmap(decoded_word, navi)
                 if this_word in ['J', 'JAL'] + BRANCH_FUNCTIONS:
                     try:
                         found = split_text[i].rfind(app_config['immediate_identifier'])
@@ -607,7 +667,7 @@ def apply_hack_changes(ignore_slot = None):
                             dic = disasm.branches_to
                         mapped_target, mapped_address = disasm.map(dic, navi, str_target)
                         if mapped_address:
-                            target_key = find_target_key(jumps_displaying, target >> 2)
+                            target_key = find_target_key(target >> 2)
                             if target_key:
                                 address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if disasm.game_address_mode else 0)), 8)
                                 if address not in jumps_displaying[target_key]:
@@ -620,88 +680,57 @@ def apply_hack_changes(ignore_slot = None):
             else:
                 user_errors[string_key] = (encoded_int, split_text[i])
 
-        if unmap:
-            target = 0
-            dic = {}
-            if decoded_word in ['J', 'JAL']:
-                target = ((int_word & 0x03FFFFFF) + ((navi + 1) & 0x3C000000)) - (disasm.jumps_offset >> 2)
-                dic = disasm.jumps_to
-            elif decoded_word in BRANCH_FUNCTIONS:
-                target = sign_16_bit_value(int_word & 0xFFFF) + navi + 1
-                dic = disasm.branches_to
-            if dic:
-                str_target = str(target)
-                unmapped_target, unmapped_address = disasm.unmap(dic, navi, str_target)
-                if dic is disasm.jumps_to:
-                    target_key = find_target_key(jumps_displaying, target)
-                    if unmapped_address and target_key:
-                        address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if disasm.game_address_mode else 0)), 8)
-                        cut_jumps = [i[:8] for i in jumps_displaying[target_key]]
-                        if address in cut_jumps:
-                            place = cut_jumps.index(address)
-                            jumps_displaying[target_key].pop(place)
-                            if not jumps_displaying[target_key]:
-                                del jumps_displaying[target_key]
-                                if jumps_window:
-                                    try:
-                                        place = function_list_box.get(0,tk.END).index(target_key)
-                                        function_list_box.delete(place)
-                                    except:
-                                        ''
-                            if jumps_window:
-                                try:
-                                    place = jump_list_box.get(0,tk.END).index(address)
-                                    jump_list_box.delete(place)
-                                except:
-                                    ''
-
 
 # Disassembler.comments accumulator
 def apply_comment_changes():
-    if not disasm:
+    if not disassembler_loaded():
         return
     current_text = get_text_content(comments_text_box)
     split_text = current_text.split('\n')
     config = jumps_displaying.copy()
     increment = disasm.game_offset if disasm.game_address_mode else 0
+    if comments_window:
+        comments_in = comments_list.get(0, tk.END)
+        addresses = [j[:8] for j in comments_in]
+        addresses_dict = {}
+        for j, i in enumerate(addresses):
+            addresses_dict[i] = j
+        int_addresses = [deci(j) for j in addresses]
+    orig_keys = {}
+    for i, key in enumerate(config):
+        orig_keys[key[:8]] = i
     for i in range(max_lines):
         navi = navigation + i
         string_key = '{}'.format(navi)
         hex_navi = extend_zeroes(hexi((navi << 2) + increment), 8)
         if not split_text[i]:
             if comments_window:
-                comments_in = comments_list.get(0,tk.END)
-                addresses = [i[:8] for i in comments_in]
-                if hex_navi in addresses:
-                    target = addresses.index(hex_navi)
-                    comments_list.delete(target)
+                if key_in_dict(addresses_dict, hex_navi):
+                    comments_list.delete(addresses_dict[hex_navi])
             if is_in_comments(string_key):
                 del disasm.comments[string_key]
+            if key_in_dict(orig_keys, hex_navi):
+                del jumps_displaying[orig_keys[hex_navi]]
+                new_key = orig_keys[hex_navi][:19]
+                jumps_displaying[new_key] = config[orig_keys[hex_navi]]
+                if jumps_window:
+                    try:
+                        index = function_list_box.get(0, tk.END).index(orig_keys[hex_navi])
+                        function_list_box.delete(index)
+                        function_list_box.insert(index, new_key)
+                    except ValueError:
+                        ''
+            breaking = False
             for key in config:
-                if key[:8] == hex_navi:
-                    del jumps_displaying[key]
-                    new_key = key[:19]
-                    jumps_displaying[new_key] = config[key]
-                    save_config()
-                    if jumps_window:
-                        try:
-                            index = function_list_box.get(0, tk.END).index(key)
-                            function_list_box.delete(index)
-                            function_list_box.insert(index, new_key)
-                        except ValueError:
-                            ''
-                    break
-                breaking = False
-                for i, address in enumerate(config[key]):
+                for l, address in enumerate(config[key]):
                     if address[:8] == hex_navi:
-                        dictin = jumps_displaying[key]
-                        dictin[i] = address[:8]
-                        save_config()
+                        dictin = jumps_displaying[orig_keys[hex_navi]]
+                        dictin[l] = address[:8]
                         if jumps_window:
                             try:
                                 index = jump_list_box.get(0, tk.END).index(address)
                                 jump_list_box.delete(index)
-                                jump_list_box.insert(index, dictin[i])
+                                jump_list_box.insert(index, dictin[l])
                             except ValueError:
                                 ''
                         breaking = True
@@ -713,23 +742,17 @@ def apply_comment_changes():
         if is_in_comments(string_key):
             if split_text[i] == disasm.comments[string_key]:
                 continue
-        if not is_in_comments(string_key):
-            disasm.comments[string_key] = split_text[i]
         disasm.comments[string_key] = split_text[i]
 
         if comments_window:
-            comments_in = comments_list.get(0, tk.END)
-            addresses = [j[:8] for j in comments_in]
-            if hex_navi in addresses:
-                target = addresses.index(hex_navi)
-                comments_list.delete(target)
-                comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
+            if key_in_dict(addresses_dict, hex_navi):
+                comments_list.delete(addresses_dict[hex_navi])
+                comments_list.insert(addresses_dict[hex_navi], '{}: {}'.format(hex_navi, split_text[i]))
             else:
-                int_addresses = [deci(j) for j in addresses]
-                this_int_address = deci(hex_navi)
+                this_int_address = navi << 2
                 target = -1
                 for j in range(len(int_addresses) - 1):
-                    if this_int_address == keep_within(this_int_address, int_addresses[j], int_addresses[j+1]):
+                    if this_int_address in range(int_addresses[j], int_addresses[j+1]):
                         target = j + 1
                         break
                 if target >= 0:
@@ -737,49 +760,35 @@ def apply_comment_changes():
                 else:
                     comments_list.insert(tk.END, '{}: {}'.format(hex_navi, split_text[i]))
 
-        # if change_log_win:
-        #     list_contents = comments_list.get(0, tk.END)
-        #     addresses = [j[:8] for j in list_contents]
-        #     if hex_navi in addresses:
-        #         target = addresses.index(hex_navi)
-        #         cut = addresses[target].find('|') - 2
-        #         if cut < 0:
-        #             cut = len(addresses[target])
-        #         change = addresses[target][10:cut]
-        #         comments_list.delete(target)
-        #         comments_list.insert(target, '{}: {} | {}'.format(hex_navi, change, split_text[i]))
-
+        if key_in_dict(orig_keys, hex_navi):
+            del jumps_displaying[orig_keys[hex_navi]]
+            new_key = orig_keys[hex_navi][:19] + ' ' + disasm.comments[string_key]
+            jumps_displaying[new_key] = config[orig_keys[hex_navi]]
+            if jumps_window:
+                try:
+                    index = function_list_box.get(0, tk.END).index(orig_keys[hex_navi])
+                    function_list_box.delete(index)
+                    function_list_box.insert(index, new_key)
+                except ValueError:
+                    ''
+        breaking = False
         for key in config:
-            if key[:8] == hex_navi:
-                del jumps_displaying[key]
-                new_key = key[:19] + ' ' + disasm.comments[string_key]
-                jumps_displaying[new_key] = config[key]
-                save_config()
-                if jumps_window:
-                    try:
-                        index = function_list_box.get(0, tk.END).index(key)
-                        function_list_box.delete(index)
-                        function_list_box.insert(index, new_key)
-                    except ValueError:
-                        ''
-                break
-            breaking = False
-            for i, address in enumerate(config[key]):
+            for l, address in enumerate(config[key]):
                 if address[:8] == hex_navi:
-                    dictin = jumps_displaying[key]
-                    dictin[i] = address[:8] + ' ' + disasm.comments[string_key]
-                    save_config()
+                    dictin = jumps_displaying[orig_keys[hex_navi]]
+                    dictin[l] = address[:8] + ' ' + disasm.comments[string_key]
                     if jumps_window:
                         try:
                             index = jump_list_box.get(0, tk.END).index(address)
                             jump_list_box.delete(index)
-                            jump_list_box.insert(index, dictin[i])
+                            jump_list_box.insert(index, dictin[l])
                         except ValueError:
                             ''
                     breaking = True
                     break
             if breaking:
                 break
+    save_config()
 
 
 def buffer_append(buffer, tuple):
@@ -819,7 +828,7 @@ def replace_clipboard():
 clipboard = ''
 def keyboard_events(handle, max_char, event, buffer = None, hack_function = False):
     global clipboard
-    if not disasm:
+    if not disassembler_loaded():
         return
     joined_text = get_text_content(handle)
     split_text = joined_text.split('\n')
@@ -875,7 +884,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     apply_function = apply_hack_changes if hack_function else lambda ignore_slot=None: apply_comment_changes()
 
     # Cause each modification of text box to snap-shot data in order to undo/redo
-    if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d or is_pasting or is_cutting or wipe_line):
+    if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d or is_pasting or is_cutting or wipe_line
+                   or insert_branch or restore_original):
         buffer_frame = (navigation, cursor, joined_text,
                         app_config['immediate_identifier'],
                         disasm.game_address_mode,
@@ -1056,15 +1066,29 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     joined_text = get_text_content(handle)
     split_text = joined_text.split('\n')
 
+    # The strange way I have gone about this is so that jumps and branches are automatically mapped or unmapped by
+    #   apply_hack_changes(), and also to account for both hex and assembly mode.
     if restore_original:
         base_text = get_text_content(base_file_text_box).split('\n')
         start = line if not sel_start_line else sel_start_line
         end = line if not sel_start_line else sel_end_line
         curs_1 = cursor_value(start, 0)
         curs_2 = cursor_value(end, len(split_text[end - 1]))
-        replace_text = '\n'.join([i for i in base_text[start-1:end]])
+        replace_text = base_text[start-1:end]
+        to_fix = []
+        for i in range(len(replace_text)):
+            if replace_text[i] == 'UNKNOWN/NOT AN INSTRUCTION':
+                to_fix.append((start - 1) + i + navigation)
+                replace_text[i] = 'NOP'
         handle.delete(curs_1, curs_2)
-        handle.insert(curs_1, replace_text)
+        handle.insert(curs_1, '\n'.join(replace_text))
+        apply_hack_changes()
+        # print(get_text_content(hack_file_text_box))
+        for i in to_fix:
+            navi = i << 2
+            disasm.split_and_store_bytes(int_of_4_byte_aligned_region(disasm.base_file[navi:navi+4]), i)
+        navigate_to(navigation)
+        return
 
     nl_at_cursor = handle.get(cursor) == '\n'
     if has_selection:
@@ -1155,7 +1179,7 @@ comments_text_box.bind('<Key>', lambda event:
 # The button is destroyed and remade every time the user scrolls within it's view
 change_rom_name_button = tk.Button()
 def change_rom_name():
-    if not disasm:
+    if not disassembler_loaded():
         return
     new_name = simpledialog.askstring('Change rom name', '20 Characters maximum')
     if new_name:
@@ -1179,7 +1203,7 @@ def destroy_change_rom_name_button():
 
 def navigate_to(index, center=False, widget=None):
     global navigation, change_rom_name_button, prev_cursor_location
-    if not disasm:
+    if not disassembler_loaded():
         return
     destroy_change_rom_name_button()
     indexed = index
@@ -1284,7 +1308,7 @@ def navigate_to(index, center=False, widget=None):
 
 
 def navigation_prompt(root=window):
-    if not disasm:
+    if not disassembler_loaded():
         return
     widget = check_widget(window.focus_get())
     address = simpledialog.askstring('Navigate to address', '', parent=root)
@@ -1308,7 +1332,7 @@ def navigation_prompt(root=window):
 
 
 def scroll_callback(event):
-    if not disasm:
+    if not disassembler_loaded():
         return
     apply_hack_changes()
     apply_comment_changes()
@@ -1317,7 +1341,7 @@ def scroll_callback(event):
 
 
 def save_changes_to_file(save_as=False):
-    if not disasm:
+    if not disassembler_loaded():
         return False
 
     apply_hack_changes()
@@ -1329,9 +1353,11 @@ def save_changes_to_file(save_as=False):
         return False
     status_text.set('Calculating checksum...')
     window.update_idletasks()
-
-    sum1, sum2 = disasm.calc_checksum()
-    if navigation <= disasm.header_items['CRC2'][0] >> 2:
+    if app_config['calc_crc'][disasm.hack_file_name]:
+        sum1, sum2 = disasm.calc_checksum()
+    else:
+        sum1 = sum2 = 0
+    if app_config['calc_crc'][disasm.hack_file_name] and navigation <= disasm.header_items['CRC2'][0] >> 2:
         navigate_to(navigation)
     if save_as:
         new_file_name = filedialog.asksaveasfilename(initialdir = app_config['previous_hack_location'],
@@ -1343,17 +1369,21 @@ def save_changes_to_file(save_as=False):
             simpledialog.messagebox._show('Wait a sec', 'You shouldn\'t select the base file')
             return False
         new_file_name = new_file_path[new_file_path.rfind('\\') + 1:]
-        if '.' not in new_file_name:
+        if not '.' in new_file_name:
             dot = disasm.hack_file_name.rfind('.')
             new_file_name += disasm.hack_file_name[dot:]
         new_dir = new_file_path[:new_file_path.rfind('\\') + 1]
         new_file_path = new_dir + new_file_name
         app_config['previous_hack_location'] = new_dir
         app_config['previous_hack_opened'] = new_file_path
+        app_config['hack_of_base'][new_file_name] = app_config['hack_of_base'][disasm.hack_file_name]
+        app_config['calc_crc'][new_file_name] = app_config['calc_crc'][disasm.hack_file_name]
         disasm.hack_file_name = new_file_name
         disasm.comments_file = new_file_path + '.comments'
         disasm.jumps_file = new_file_path + ' jumps.data'
+        window.title('ROM Disassembler - ' + disasm.hack_file_name)
 
+    app_config['CIC'][disasm.hack_file_name] = disasm.cic
     app_config['jumps_displaying'][disasm.hack_file_name] = jumps_displaying.copy()
     app_config['game_address_mode'][disasm.hack_file_name] = disasm.game_address_mode
     save_config()
@@ -1380,17 +1410,19 @@ def save_changes_to_file(save_as=False):
                                                '\nYou should go there now and rescue the backup before attempting to save again.'
                                                '\nIf you save again, that backup will be over-written.'
                                                '\n\n' + str(e))
-
-    window.after(0, lambda: status_text.set(
-        'Rom Saved. Checksum calculated - CRC1: {} | CRC2: {}'.format(
+    checksum_text = ' Checksum calculated - CRC1: {} | CRC2: {}'.format(
             extend_zeroes(hexi(sum1), 8),
-            extend_zeroes(hexi(sum2), 8))))
-
+            extend_zeroes(hexi(sum2), 8))
+    message = 'Rom Saved.'
+    if app_config['calc_crc'][disasm.hack_file_name]:
+        message += checksum_text
+    status_text.set(message)
+    window.update()
     return True
 
 
 def destroy_them(not_main=False):
-    global colours_window, jumps_window, comments_window, dimension_window, change_log_win
+    global colours_window, jumps_window, comments_window, dimension_window, change_log_win, manual_cic_win
     if colours_window:
         colours_window.destroy()
         colours_window = None
@@ -1403,15 +1435,15 @@ def destroy_them(not_main=False):
     if dimension_window:
         dimension_window.destroy()
         dimension_window = None
-    # if change_log_win:
-    #     change_log_win.destroy()
-    #     change_log_win = None
+    if manual_cic_win:
+        manual_cic_win.destroy()
+        manual_cic_win = None
     if not not_main:
         window.destroy()
 
 
 def close_window(side = 'right'):
-    if not disasm:
+    if not disassembler_loaded():
         destroy_them()
         return
 
@@ -1455,12 +1487,16 @@ def close_window(side = 'right'):
 def open_files(mode = ''):
     global disasm, jumps_displaying
 
-    if disasm:
+    if disassembler_loaded():
         if not save_changes_to_file():
             return
         disasm = None
         jumps_displaying = {}
+        reset_target()
+        target_down_label.place_forget()
+        target_up_label.place_forget()
         [text_box.delete('1.0', tk.END) for text_box in ALL_TEXT_BOXES]
+        window.title('ROM Disassembler')
     [text_box.configure(state=tk.NORMAL) for text_box in ALL_TEXT_BOXES]
     destroy_change_rom_name_button()
     destroy_them(not_main=True)
@@ -1475,15 +1511,17 @@ def open_files(mode = ''):
         hack_title = 'Select the hacked rom'
         hack_dialog_function = filedialog.askopenfilename
 
+    base_dir = ''
+    base_file_path = ''
     # Obtain file locations from user input
     if app_config['open_roms_automatically'] and app_config['previous_base_opened'] and not mode:
         base_file_path = app_config['previous_base_opened']
-    else:
+    if mode == 'new':
         base_file_path = filedialog.askopenfilename(initialdir = app_config['previous_base_location'], title = base_title)
-    if not base_file_path:
-        return
-    base_file_path = os.path.realpath(base_file_path)
-    base_dir = base_file_path[:base_file_path.rfind('\\') + 1]
+        if not base_file_path:
+            return
+        base_file_path = os.path.realpath(base_file_path)
+        base_dir = base_file_path[:base_file_path.rfind('\\') + 1]
 
     hack_dir = base_dir if mode == 'new' else app_config['previous_hack_location']
     if app_config['open_roms_automatically'] and app_config['previous_hack_opened'] and not mode:
@@ -1492,16 +1530,25 @@ def open_files(mode = ''):
         hack_file_path = hack_dialog_function(initialdir = hack_dir, title = hack_title)
     if not hack_file_path:
         return
-    base_dot = base_file_path.rfind('.')
-    file_extension = base_file_path[base_dot + 1:]
-    if '.' not in hack_file_path:
-        hack_file_path += '.' + file_extension
-    else:
-        hack_dot = hack_file_path.rfind('.')
-        if hack_dot == len(hack_file_path) - 1:
-            hack_file_path += file_extension
     hack_file_path = os.path.realpath(hack_file_path)
     hack_dir = hack_file_path[:hack_file_path.rfind('\\') + 1]
+    if mode == 'existing':
+        hack_name = hack_file_path[hack_file_path.rfind('\\') + 1:]
+        if hack_name not in app_config['hack_of_base']:
+            app_config['hack_of_base'][hack_name] = ''
+        if not exists(app_config['hack_of_base'][hack_name]):
+            base_file_path = filedialog.askopenfilename(initialdir=hack_dir, title=
+                                                        'There is no associated base rom. Select it now.')
+            if not base_file_path:
+                return
+            base_file_path = os.path.realpath(base_file_path)
+        else:
+            base_file_path = app_config['hack_of_base'][hack_name]
+        base_dir = base_file_path[:base_file_path.rfind('\\') + 1]
+    base_dot = base_file_path.rfind('.')
+    file_extension = base_file_path[base_dot + 1:]
+    if not '.' in hack_file_path[hack_file_path.rfind('\\'):]:
+        hack_file_path += '.' + file_extension
 
     if mode == 'new':
         if os.path.exists(hack_file_path):
@@ -1538,20 +1585,68 @@ def open_files(mode = ''):
         disasm = None
         return
 
-    app_config['previous_base_opened'] = disasm.base_folder + disasm.base_file_name
+    app_config['hack_of_base'][disasm.hack_file_name] = \
+        app_config['previous_base_opened'] = disasm.base_folder + disasm.base_file_name
     app_config['previous_hack_opened'] = disasm.hack_folder + disasm.hack_file_name
+
     save_config()
+    if disasm.hack_file_name not in app_config['CIC']:
+        bne_1 = 'BNE A3, T0'
+        bne_2 = 'BNE S0, T0'
+        places = [0x670, 0x66C, 0x63C, 0x77C]
+        cics = ['6101', '6102', '6103', '6105']
+        new_cic = '6105'
+        for i in range(4):
+            navi_1, navi_2 = places[i], places[i] + 12
+            place_1 = navi_1 >> 2
+            place_2 = navi_2 >> 2
+            inst_1 = disasm.decode(int_of_4_byte_aligned_region(disasm.base_file[navi_1:navi_1+4]), place_1)
+            inst_2 = disasm.decode(int_of_4_byte_aligned_region(disasm.base_file[navi_2:navi_2+4]), place_2)
+            if bne_1 == inst_1[:10] and bne_2 == inst_2[:10]:
+                if cics[i] == '6101':
+                    simpledialog.messagebox._show('Ahh..', 'I\'ve been waiting for you, starfox.\n\n For this game, '
+                                                           'you may or may not need to bypass the CRC (in the tools menu).')
+                else:
+                    new_cic = cics[i]
+                break
+            if i == 3:
+                load_instruction = lambda i: disasm.decode(int_of_4_byte_aligned_region(disasm.hack_file[i:i+4]), i >> 2)
+                targ_instructions = {
+                    '40': 'MTC0 R0, CAUSE',
+                    '180': 'SW V0, $0000 (SP)',
+                    '8F4': 'MFLO K0',
+                    'A8C': 'BNE A1, K1, $00000A9C'
+                }
+                is_6106 = True
+                for i in targ_instructions:
+                    navi = deci(i)
+                    inst = load_instruction(navi)
+                    if inst != targ_instructions[i]:
+                        is_6106 = False
+                if is_6106:
+                    new_cic = '6106'
+                else:
+                    simpledialog.messagebox._show('Warning', 'Could not determine CIC chip. '
+                                                             'Defaulting to most common chip.\n'
+                                                             'Rom may get stuck in infinite loop '
+                                                             'while booting. If the rom won\'t boot, '
+                                                             'try bypassing the CRC with "Tools->'
+                                                             'Bypass CRC".')
+        app_config['CIC'][disasm.hack_file_name] = CIC[new_cic]
+        app_config['calc_crc'][disasm.hack_file_name] = True
+    calc_crc.set(app_config['calc_crc'][disasm.hack_file_name])
+    disasm.set_cic(app_config['CIC'][disasm.hack_file_name])
     hack_file_text_box.insert('1.0', 'Mapping jumps and branches...\nPlease wait...')
     comments_text_box.insert('1.0', 'This may take a while with larger roms.\nThis only has to be done once per rom.\n\n'
                                     'If your window is not responding - don\'t worry.')
     window.update_idletasks()
     def rest_of_function():
         global jumps_displaying
-        # [text_box.update() for text_box in [base_file_text_box, hack_file_text_box, comments_text_box]]
+        window.title('ROM Disassembler - ' + disasm.hack_file_name)
         disasm.map_jumps(address_text_box)
         [text_box.delete('1.0',tk.END) for text_box in ALL_TEXT_BOXES]
-        # [text_box.update() for text_box in [base_file_text_box, hack_file_text_box, comments_text_box, address_text_box]]
         window.update_idletasks()
+        disasm.loaded = True
 
         # Navigate user to first line of code, start the undo buffer with the current data on screen
         navigate_to(0)
@@ -1569,7 +1664,7 @@ def open_files(mode = ''):
         jumps_displaying = app_config['jumps_displaying'][disasm.hack_file_name].copy()
         time_taken = timer_get()
         if time_taken > 100:
-            simpledialog.messagebox._show('Woah!', 'That took {} seconds. New record!'.format(time_taken))
+            simpledialog.messagebox._show('Woah!', 'That took {} seconds.'.format(time_taken))
 
     # Otherwise text boxes sometimes don't get updated to notify user of jump mapping
     window.after(1, rest_of_function)
@@ -1577,7 +1672,7 @@ def open_files(mode = ''):
 
 def toggle_address_mode():
     global function_list_box, jump_list_box, function_select
-    if not disasm:
+    if not disassembler_loaded():
         return
     apply_hack_changes()
     apply_comment_changes()
@@ -1590,7 +1685,7 @@ def toggle_address_mode():
                                 app_config['hex_mode']))
     toggle_to = not disasm.game_address_mode
     disasm.game_address_mode = toggle_to
-    if disasm:
+    if disassembler_loaded():
         disasm.game_address_mode = toggle_to
     save_config()
     navigate_to(navigation)
@@ -1686,7 +1781,7 @@ def change_immediate_id():
         for key in user_errors.keys():
             user_errors[key] = user_errors[key].replace(app_config['immediate_identifier'], symbol[:1])
         app_config['immediate_identifier'] = symbol[:1]
-        if disasm:
+        if disassembler_loaded():
             disasm.immediate_identifier = symbol[:1]
         save_config()
 
@@ -1839,14 +1934,17 @@ function_select = ''
 jumps_displaying = {}
 def find_jumps(just_window=False):
     global function_select, jumps_window, function_list_box, jump_list_box, jumps_label
-    if not disasm:
+    if not disassembler_loaded():
         return
     if just_window:
         cursor, line, column = '1.0', 1, 0
     else:
         cursor, line, column = get_cursor(hack_file_text_box)
     navi = (line - 1) + navigation
-    jumps, function_start, function_end = disasm.find_jumps(navi)
+    if not just_window:
+        jumps, function_start, function_end = disasm.find_jumps(navi)
+    else:
+        jumps, function_start, function_end = 0,0,0
 
     if not jumps_window:
         jumps_window = tk.Tk()
@@ -1967,7 +2065,7 @@ def find_jumps(just_window=False):
         jumps_window.bind('<Control-S>', lambda e: save_changes_to_file())
         jumps_window.focus_force()
         jumps_window.after(1, lambda: jumps_window.mainloop())
-    elif jumps:
+    elif jumps or just_window:
         jumps_window.focus_force()
     if just_window:
         return
@@ -2009,7 +2107,7 @@ comments_window = None
 comments_list = None
 def view_comments():
     global comments_window, comments_list
-    if not disasm:
+    if not disassembler_loaded():
         return
     if comments_window:
         comments_window.focus_force()
@@ -2048,7 +2146,7 @@ def view_comments():
     comment_checkbox = tk.Checkbutton(comments_window, text='Auto-focus comments textbox',
                                       command=lambda: window.after(1, lambda: comments_checkbox_callback()))
     hack_checkbox.place(x=6, y=6)
-    comment_checkbox.place(x=200, y=6)
+    comment_checkbox.place(x=175, y=6)
     if app_config['comments_auto_focus_comments']:
         comment_checkbox.select()
     elif app_config['comments_auto_focus_hack']:
@@ -2098,7 +2196,7 @@ def view_comments():
 
 
 def follow_jump():
-    if not disasm:
+    if not disassembler_loaded():
         return
     cursor, line, column = get_cursor(hack_file_text_box)
     navi = (line - 1) + navigation
@@ -2108,7 +2206,7 @@ def follow_jump():
     navi += 1  # Address calculated based on address of delay slot
     address = 0
     if JUMP_INTS[opcode]:
-        address = ((int_word & 0x03FFFFFF) + (navi & 0x3C000000)) - (disasm.jumps_offset >> 2)
+        address = disasm.solve_address(navi, int_word & 0x03FFFFFF) >> 2
     elif BRANCH_INTS[opcode]:
         address = sign_16_bit_value(int_word & 0xFFFF) + navi
     if address:
@@ -2131,7 +2229,7 @@ def set_colour_scheme():
     global colours_window
     if colours_window:
         return
-    if not disasm:
+    if not disassembler_loaded():
         simpledialog.messagebox._show('Please note', 'You will need to open rom files in order to see your text '
                                                      'colour changes.')
     colours_window = tk.Tk()
@@ -2334,7 +2432,7 @@ def set_colour_scheme():
 
 
 def set_mem_edit_offset():
-    if not disasm:
+    if not disassembler_loaded():
         return
     user_input = simpledialog.askstring('','Set game offset for memory editor')
     if not user_input:
@@ -2348,7 +2446,7 @@ def set_mem_edit_offset():
 
 
 def translate_box(button=False):
-    if not disasm:
+    if not disassembler_loaded():
         return
     address_output.delete('1.0', tk.END)
     address_to_translate = address_input.get('1.0',tk.END).replace('\n','')
@@ -2399,6 +2497,21 @@ def target_none():
     target_down_label.place_forget()
 
 
+targ_direction = 0
+def target_of_up():
+    global targ_direction
+    targ_direction = (targ_direction & 0b10) + 0b01
+    target_of_up_label.place(x=targ_top_label_x, y=targ_top_label_y,
+                             width=targ_top_label_w, height=8)
+
+
+def target_of_down():
+    global targ_direction
+    targ_direction = (targ_direction & 0b01) + 0b10
+    target_of_down_label.place(x=targ_bot_label_x, y=targ_bot_label_y,
+                             width=targ_bot_label_w, height=8)
+
+
 def toggle_base_file():
     app_config['toggle_base_file'] = not app_config['toggle_base_file']
     save_config()
@@ -2410,8 +2523,9 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
     global top_label_y, bot_label_y, comments_win_h, comments_x, comments_y, comments_w
     global comments_h, jumps_win_w, jumps_win_h, func_list_w, func_list_y, func_list_x
     global func_list_h, jumps_list_x, jumps_list_y, jumps_list_w, jumps_list_h, jumps_label
-    global jumps_label_y, comments_win_w
-    if disasm:
+    global jumps_label_y, comments_win_w, targ_top_label_x, targ_top_label_y, targ_top_label_w
+    global targ_bot_label_x, targ_bot_label_y, targ_bot_label_w
+    if disassembler_loaded():
         apply_comment_changes()
         apply_hack_changes()
     window.update_idletasks()
@@ -2440,8 +2554,10 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
     win_h = status_bar_size + widget_h + widget_y + 5
     top_label_x = bot_label_x = x_3 + 2
     top_label_w = bot_label_w = w_2 - 5
-    top_label_y = widget_y - 4
-    bot_label_y = (widget_y + widget_h) - 5
+    targ_top_label_y = top_label_y = widget_y - 4
+    targ_bot_label_y = bot_label_y = (widget_y + widget_h) - 5
+    targ_bot_label_x = targ_top_label_x = top_label_x + 50
+    targ_bot_label_w = targ_top_label_w = top_label_w - 100
     [text_box.config(font=('Courier', main_font_size)) for text_box in ALL_TEXT_BOXES + [status_bar]]
     address_text_box.place(x=x_1, y=widget_y, width=w_1, height=widget_h)
     if x_2:
@@ -2451,13 +2567,13 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
     hack_file_text_box.place(x=x_3, y=widget_y, width=w_2, height=widget_h)
     comments_text_box.place(x=x_4, y=widget_y, width=w_4, height=widget_h)
     window.geometry('{}x{}+{}+{}'.format(win_w, win_h, win_x, win_y))
-    if disasm:
+    if disassembler_loaded():
         # Or the clumsy change rom name button's placement suffers a race condition and uses previous settings
         window.after(1, lambda: navigate_to(navigation))
     comments_x = 6
     comments_y = 35
     comments_w = (font_w * 80) + 6
-    comments_h = font_h * 12
+    comments_h = font_h * 25
     comments_win_w = comments_x + comments_w + 5
     comments_win_h = comments_y + comments_h + 5
     if comments_window:
@@ -2533,12 +2649,107 @@ def change_win_dimensions():
     dimension_window.mainloop()
 
 
+def bypass_crc():
+    if not disassembler_loaded():
+        return
+    if disasm.cic == CIC['6106']:
+        simpledialog.messagebox._show('Sorry', 'The developer does not know how to bypass this particular CRC')
+        return
+    j, j3, decode, decode3 = disasm.find_checksum_loop()
+    if j:
+        disasm.split_and_store_bytes(0, j)
+        disasm.split_and_store_bytes(0, j + 3)
+        app_config['calc_crc'][disasm.hack_file_name] = False
+        calc_crc.set(False)
+        save_config()
+        disasm.comments[str(j)] = 'Removed ' + decode
+        disasm.comments[str(j + 3)] = 'Removed ' + decode3
+        navigate_to(j, center=True, widget=hack_file_text_box)
+        status_text.set('Found and removed endless loop at {} and {}'.format(
+            '0x' + extend_zeroes(hexi(j << 2), 8),
+            '0x' + extend_zeroes(hexi((j << 2) + 0xC), 8)
+        ))
+
+
+def manual_cic():
+    global manual_cic_win
+    if not disassembler_loaded():
+        return
+    manual_cic_win = tk.Tk()
+    texts = {
+        str(0b00001): '6101',
+        str(0b00010): '6102/7101',
+        str(0b00100): '6103/7103',
+        str(0b01000): '6105/7105',
+        str(0b10000): '6106/7106'
+    }
+
+
+    def set_cic(num):
+        for i in texts:
+            if int(i) != num:
+                buttons[i].deselect()
+            else:
+                buttons[i].select()
+        if num == 1:
+            num = 0b01000
+        disasm.set_cic(CIC[texts[str(num)][:4]])
+        app_config['CIC'][disasm.hack_file_name] = disasm.cic
+        save_config()
+
+
+    buttons = {}
+    buttons[str(0b00001)] = tk.Checkbutton(manual_cic_win, text=texts[str(0b00001)], command=lambda: set_cic(0b00001))
+    buttons[str(0b00010)] = tk.Checkbutton(manual_cic_win, text=texts[str(0b00010)], command=lambda: set_cic(0b00010))
+    buttons[str(0b00100)] = tk.Checkbutton(manual_cic_win, text=texts[str(0b00100)], command=lambda: set_cic(0b00100))
+    buttons[str(0b01000)] = tk.Checkbutton(manual_cic_win, text=texts[str(0b01000)], command=lambda: set_cic(0b01000))
+    buttons[str(0b10000)] = tk.Checkbutton(manual_cic_win, text=texts[str(0b10000)], command=lambda: set_cic(0b10000))
+
+    for i in CIC:
+        if CIC[i] == disasm.cic:
+            for j in buttons:
+                if i == texts[j][:4]:
+                    buttons[j].select()
+
+    def manual_cic_win_equals_none():
+        global manual_cic_win
+        manual_cic_win.destroy()
+        manual_cic_win = None
+
+    [buttons[b].pack(anchor=tk.W) for b in buttons]
+
+    manual_cic_win.protocol('WM_DELETE_WINDOW', manual_cic_win_equals_none)
+    manual_cic_win.bind('<Escape>', lambda _: manual_cic_win_equals_none())
+    manual_cic_win.bind('<FocusOut>', lambda _: manual_cic_win_equals_none())
+    manual_cic_win.mainloop()
+
+
+def toggle_calc_crc():
+    if not disassembler_loaded():
+        return
+    app_config['calc_crc'][disasm.hack_file_name] = not app_config['calc_crc'][disasm.hack_file_name]
+    save_config()
+
+
+def tst():
+    phrase = simpledialog.askstring('Find what','')
+    if not phrase:
+        return
+    print('\n'*2)
+    checking = disasm.hack_file[disasm.header_items['Boot Code'][0]:disasm.header_items['Boot Code'][1]]
+    ints = ints_of_4_byte_aligned_region(checking)
+    for j, i in enumerate(ints):
+        j += 0x400
+        decoded = disasm.decode(i, j)
+        if phrase in decoded:
+            print(hexi(j << 2) + ': ' + decoded)
+
+
+
 menu_bar = tk.Menu(window)
 auto_open = tk.BooleanVar()
+calc_crc = tk.BooleanVar()
 auto_open.set(app_config['open_roms_automatically'])
-
-MENU_BACKGROUND = '#FFFFFF'
-MENU_FOREGROUND = '#000000'
 
 file_menu = tk.Menu(menu_bar, tearoff=0)
 file_menu.add_command(label='Start new', command=lambda: open_files('new'))
@@ -2556,8 +2767,15 @@ nav_menu = tk.Menu(menu_bar, tearoff=0)
 nav_menu.add_command(label='Browse Comments (F1)', command=view_comments)
 nav_menu.add_command(label='Browse Jumps (F2)', command= lambda: find_jumps(just_window=True))
 nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
-
 menu_bar.add_cascade(label='Navigation', menu=nav_menu)
+
+tools_menu = tk.Menu(menu_bar, tearoff=0)
+tools_menu.add_command(label='Bypass CRC', command=bypass_crc)
+tools_menu.add_command(label='Manually set CIC chip', command=manual_cic)
+tools_menu.add_checkbutton(label='Calculate checksum when saving', command=toggle_calc_crc,
+                           variable=calc_crc)
+# tools_menu.add_command(label='Test', command=tst)
+menu_bar.add_cascade(label='Tools', menu=tools_menu)
 
 opts_menu = tk.Menu(menu_bar, tearoff=0)
 opts_menu.add_command(label='Toggle "game entry point" mode (F5)', command=toggle_address_mode)
@@ -2601,7 +2819,7 @@ hack_file_text_box.bind('<Control-F>', lambda e: follow_jump())
 
 def text_box_callback(event):
     global prev_cursor_location
-    if disasm:
+    if disassembler_loaded():
         reset_target()
         apply_hack_changes()
         apply_comment_changes()
@@ -2642,6 +2860,8 @@ auto_copy_var.set(app_config['auto_copy'])
 
 target_up_label = tk.Label(window)
 target_down_label = tk.Label(window)
+target_of_up_label = tk.Label(window)
+target_of_down_label = tk.Label(window)
 
 status_text = tk.StringVar()
 status_text.set('Welcome!')
@@ -2655,6 +2875,7 @@ window.protocol('WM_DELETE_WINDOW', close_window)
 change_colours()
 
 if app_config['open_roms_automatically'] and app_config['previous_base_opened'] and app_config['previous_hack_opened']:
-    window.after(1, open_files)
+    if exists(app_config['previous_base_opened']) and exists(app_config['previous_hack_opened']):
+        window.after(1, open_files)
 
 window.mainloop()
