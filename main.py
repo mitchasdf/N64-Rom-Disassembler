@@ -790,7 +790,18 @@ def apply_comment_changes():
     save_config()
 
 
-def buffer_append(buffer, tuple):
+def buffer_append(buffer):
+    if buffer is hack_buffer:
+        tuple = (navigation,
+                 get_cursor(hack_file_text_box)[0],
+                 get_text_content(hack_file_text_box),
+                 max_lines,
+                 app_config['immediate_identifier'],
+                 disasm.game_address_mode,
+                 app_config['hex_mode'])
+    else:
+        tuple = (navigation, get_cursor(comments_text_box)[0], get_text_content(comments_text_box), max_lines)
+
     # buffer[0] is the current buffer frame being displayed
     # buffer[1] is an array containing the buffer frames
     buffer_length = len(buffer[1])
@@ -885,26 +896,14 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     # Cause each modification of text box to snap-shot data in order to undo/redo
     if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d or is_pasting or is_cutting or wipe_line
                    or insert_branch or restore_original):
-        buffer_frame = (navigation, cursor, joined_text,
-                        app_config['immediate_identifier'],
-                        disasm.game_address_mode,
-                        app_config['hex_mode'])\
-                        if hack_function else \
-                        (navigation, cursor, joined_text)
-        buffer_append(buffer, buffer_frame)
+        buffer_append(buffer)
 
     # Undoing and Redoing code
     if is_undoing or is_redoing:
         if buffer[0] == len(buffer[1]) - 1 and is_undoing:
             part = buffer[1][buffer[0]]
             if part[0] != navigation or part[2] != joined_text:
-                buffer_frame = (navigation, cursor, joined_text,
-                                app_config['immediate_identifier'],
-                                disasm.game_address_mode,
-                                app_config['hex_mode']) \
-                                if hack_function else \
-                                (navigation, cursor, joined_text)
-                buffer_append(buffer, buffer_frame)
+                buffer_append(buffer)
 
         buffer[0] += 1 if is_redoing else -1
         if buffer[0] < 0:
@@ -916,9 +915,9 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             apply_comment_changes()
             place = buffer[0]
             if hack_function:
-                immediate_id = buffer[1][place][3]
-                game_address_mode = buffer[1][place][4]
-                hex_mode = buffer[1][place][5]
+                immediate_id = buffer[1][place][4]
+                game_address_mode = buffer[1][place][5]
+                hex_mode = buffer[1][place][6]
                 if immediate_id != app_config['immediate_identifier']:
                     app_config['immediate_identifier'] = immediate_id
                     save_config()
@@ -930,6 +929,10 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                     app_config['hex_mode'] = hex_mode
                     save_config()
                     disasm.game_address_mode = game_address_mode
+            if max_lines != buffer[1][place][3]:
+                set_widget_sizes(new_max_lines=buffer[1][place][3])
+                app_config['max_lines'] = max_lines
+                save_config()
 
             navigate_to(buffer[1][place][0])
             cursor = buffer[1][place][1]
@@ -1649,15 +1652,8 @@ def open_files(mode = ''):
 
         # Navigate user to first line of code, start the undo buffer with the current data on screen
         navigate_to(0)
-        buffer_append(hack_buffer, (navigation,
-                                    cursor_value(1, 0),
-                                    get_text_content(hack_file_text_box),
-                                    app_config['immediate_identifier'],
-                                    disasm.game_address_mode,
-                                    app_config['hex_mode']))
-        buffer_append(comments_buffer, (navigation,
-                                        cursor_value(1, 0),
-                                        get_text_content(comments_text_box)))
+        buffer_append(hack_buffer)
+        buffer_append(comments_buffer)
         if disasm.hack_file_name not in app_config['jumps_displaying']:
             app_config['jumps_displaying'][disasm.hack_file_name] = {}
         jumps_displaying = app_config['jumps_displaying'][disasm.hack_file_name].copy()
@@ -1676,12 +1672,7 @@ def toggle_address_mode():
     apply_hack_changes()
     apply_comment_changes()
     cursor, line, column = get_cursor(hack_file_text_box)
-    buffer_append(hack_buffer, (navigation,
-                                hack_file_text_box.index(tk.INSERT),
-                                get_text_content(hack_file_text_box),
-                                app_config['immediate_identifier'],
-                                disasm.game_address_mode,
-                                app_config['hex_mode']))
+    buffer_append(hack_buffer)
     toggle_to = not disasm.game_address_mode
     disasm.game_address_mode = toggle_to
     if disassembler_loaded():
@@ -1737,12 +1728,7 @@ def toggle_hex_mode():
     apply_hack_changes()
     apply_comment_changes()
     cursor, line, column = get_cursor(hack_file_text_box)
-    buffer_append(hack_buffer, (navigation,
-                                cursor,
-                                get_text_content(hack_file_text_box),
-                                app_config['immediate_identifier'],
-                                disasm.game_address_mode,
-                                app_config['hex_mode']))
+    buffer_append(hack_buffer)
     app_config['hex_mode'] = not app_config['hex_mode']
     save_config()
     navigate_to(navigation)
@@ -1768,12 +1754,7 @@ def change_immediate_id():
                                     'Must be one of {}'.format(' '.join(accepted_symbols)))
     if symbol and symbol[:1] in accepted_symbols:
         hack_text = get_text_content(hack_file_text_box)
-        buffer_append(hack_buffer, (navigation,
-                                    hack_file_text_box.index(tk.INSERT),
-                                    hack_text,
-                                    app_config['immediate_identifier'],
-                                    disasm.game_address_mode,
-                                    app_config['hex_mode']))
+        buffer_append(hack_buffer)
         hack_text.replace(app_config['immediate_identifier'], symbol[:1])
         hack_file_text_box.delete('1.0', tk.END)
         hack_file_text_box.insert('1.0', hack_text)
@@ -2213,13 +2194,9 @@ def follow_jump():
         # (navigation, cursor_location, text_box_content, immediate_id, game_address_mode)
         frame = hack_buffer[1][hack_buffer[0]]
         if frame[0] != navigation or frame[1] != cursor or frame[2] != text_box_contents:
-            buffer_append(hack_buffer,
-                        (navigation, cursor, text_box_contents, app_config['immediate_identifier'],
-                         disasm.game_address_mode, app_config['hex_mode']))
+            buffer_append(hack_buffer)
         navigate_to(address, center=True)
-        buffer_append(hack_buffer,
-                    (navigation, get_cursor(hack_file_text_box)[0], get_text_content(hack_file_text_box),
-                    app_config['immediate_identifier'], disasm.game_address_mode, app_config['hex_mode']))
+        buffer_append(hack_buffer)
 
 
 colours_window = None
