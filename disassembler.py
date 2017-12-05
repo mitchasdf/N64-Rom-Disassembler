@@ -1222,14 +1222,14 @@ class Disassembler:
                     if self.game_address_mode and (is_address or is_offset):
                         param -= self.game_offset
                     if is_address:
-                        if index >= 0x1000:
-                            param += self.jumps_offset
-                        else:
-                            index += 0x4000000
                         param >>= 2
                         if index // ADDRESS_ALIGNMENT != param // ADDRESS_ALIGNMENT:
                             # Immediate out of bounds error - not within the 268mb aligned region
                             return -3
+                        if index >= 0x0400:
+                            param += self.jumps_offset_div_4
+                        else:
+                            param += 0x1000000
                         param %= ADDRESS_ALIGNMENT
                     elif is_offset:
                         param >>= 2
