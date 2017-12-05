@@ -101,10 +101,9 @@ app_config['window_geometry'] = FRESH_APP_CONFIG['window_geometry']
 window.title('ROM Disassembler')
 window.geometry('{}+5+5'.format(app_config['window_geometry']))
 window.iconbitmap('n64_disassembler.ico')
-
-
-
 window.config(bg=app_config['window_background_colour'])
+
+
 '''
     A GUI with custom behaviour is required for user-friendliness.
     
@@ -114,7 +113,7 @@ window.config(bg=app_config['window_background_colour'])
     This can be done by maintain max_lines amount of lines at all times.
     
     Deviating from max_lines causes the list containing the data for the syntax checker
-      to have a "shift". The syntax checker can't assume where, or whether or not, a shift
+      to have a "line shift". The syntax checker can't assume where, or whether or not, a shift
       has happened, so it needs the data to be processed before the checker receives it.
     
     The only times the amount of lines will change is when:
@@ -2671,6 +2670,7 @@ def bypass_crc():
         ))
 
 
+manual_cic_win = None
 def manual_cic():
     global manual_cic_win
     if not disassembler_loaded():
