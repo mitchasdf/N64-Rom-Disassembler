@@ -2696,6 +2696,7 @@ def manual_cic():
         disasm.set_cic(CIC[texts[str(num)][:4]])
         app_config['CIC'][disasm.hack_file_name] = disasm.cic
         save_config()
+        navigate_to(navigation)
 
 
     buttons = {}
