@@ -696,7 +696,7 @@ def apply_comment_changes():
             addresses_dict[i] = j
         int_addresses = [deci(j) for j in addresses]
     orig_keys = {}
-    for i, key in enumerate(config):
+    for key in config:
         orig_keys[key[:8]] = key
     for i in range(max_lines):
         navi = navigation + i
@@ -749,10 +749,12 @@ def apply_comment_changes():
                 comments_list.insert(addresses_dict[hex_navi], '{}: {}'.format(hex_navi, split_text[i]))
             else:
                 this_int_address = navi << 2
+                if disasm.game_address_mode:
+                    this_int_address += disasm.game_offset
                 target = -1
-                for j in range(len(int_addresses) - 1):
-                    if this_int_address in range(int_addresses[j], int_addresses[j+1]):
-                        target = j + 1
+                for j in range(len(int_addresses)):
+                    if this_int_address < int_addresses[j]:
+                        target = j
                         break
                 if target >= 0:
                     comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
@@ -1684,15 +1686,12 @@ def toggle_address_mode():
     increment = disasm.game_offset if toggle_to else -disasm.game_offset
     config_data = jumps_displaying.copy()
 
-    def fix_list(listbox):
-        list_contents = listbox.get(0, tk.END)
-        addresses = [extend_zeroes(hexi(deci(i[:8]) + increment), 8) for i in list_contents]
-        listbox.delete(0, tk.END)
-        for i, address in enumerate(addresses):
-            listbox.insert(tk.END, '{}{}'.format(address, list_contents[i][8:]))
-
     if comments_window:
-        fix_list(comments_list)
+        list_contents = comments_list.get(0, tk.END)
+        addresses = [extend_zeroes(hexi(deci(i[:8]) + increment), 8) for i in list_contents]
+        comments_list.delete(0, tk.END)
+        for i, address in enumerate(addresses):
+            comments_list.insert(tk.END, '{}{}'.format(address, list_contents[i][8:]))
     for key in config_data:
         del jumps_displaying[key]
         addy_1 = deci(key[:8]) + increment
