@@ -697,7 +697,7 @@ def apply_comment_changes():
         int_addresses = [deci(j) for j in addresses]
     orig_keys = {}
     for i, key in enumerate(config):
-        orig_keys[key[:8]] = i
+        orig_keys[key[:8]] = key
     for i in range(max_lines):
         navi = navigation + i
         string_key = '{}'.format(navi)
@@ -723,7 +723,7 @@ def apply_comment_changes():
             for key in config:
                 for l, address in enumerate(config[key]):
                     if address[:8] == hex_navi:
-                        dictin = jumps_displaying[orig_keys[hex_navi]]
+                        dictin = config[key]
                         dictin[l] = address[:8]
                         if jumps_window:
                             try:
@@ -774,7 +774,7 @@ def apply_comment_changes():
         for key in config:
             for l, address in enumerate(config[key]):
                 if address[:8] == hex_navi:
-                    dictin = jumps_displaying[orig_keys[hex_navi]]
+                    dictin = config[key]
                     dictin[l] = address[:8] + ' ' + disasm.comments[string_key]
                     if jumps_window:
                         try:
