@@ -4,8 +4,10 @@ from pickle import dump, load
 from os.path import exists
 from tkinter.simpledialog import messagebox
 import tkinter
+from decoder import PyDecoder
 
-
+decoder = PyDecoder()
+decoder_fitted = False
 
 OPCODE = 'OPCODE'  # For identifying instruction (6 bits)
 EX_OPCODE = 'EX_OPCODE'  # For identifying instruction - compared with after all other named bit segments (5 bits)
@@ -555,6 +557,7 @@ CIC = {
 
 class Disassembler:
     def __init__(self, base_file_path, hacked_file_path, window, status_bar):
+        global decoder_fitted
         def open_rom(file_path):
             if self.base_file and not exists(file_path):
                 with open(file_path, 'wb') as hack_file:
@@ -681,7 +684,7 @@ class Disassembler:
 
         self.cic = None
         self.branches = 0
-        self.i_mnemonics = []
+        self.i_mnemonics = [None]
         self.encodes = {}
         self.appearances = {}
         self.identifying_bits = {}
@@ -1002,6 +1005,7 @@ class Disassembler:
         # self.fit('VMADH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 15]], [VD, VT, VS, MOD])
         # print(self.branches)
         # Unfinished
+        decoder_fitted = True
 
     def fit(self, mnemonic, encoding, appearance):
         appearance_bit_correspondence = {}
@@ -1047,6 +1051,18 @@ class Disassembler:
             i += 1
 
         reordered_encoding = new_encoding_segments[0] + new_encoding_segments[1] + new_encoding_segments[2]
+        i = 0
+        cpp = [0] * 18
+        while i < 18:
+            if i // 3 == len(reordered_encoding):
+                break
+            cpp[i] = reordered_encoding[i // 3][i % 3]
+            i += 1
+        if not decoder_fitted:
+            decoder.Fit(cpp[0], cpp[1], cpp[2], cpp[3], cpp[4], cpp[5], cpp[6], cpp[7],
+                        cpp[8], cpp[9], cpp[10], cpp[11], cpp[12], cpp[13], cpp[14], cpp[15],
+                        cpp[16], cpp[17], i // 3)
+
         # if mnemonic in ['DADDU','TRUNC.L.S','TRUNC.L.D','VMULF','VMULU','VRNDP']:
         #     print(mnemonic)
         #     [print(i) for i in reordered_encoding]
@@ -1098,25 +1114,27 @@ class Disassembler:
     def decode(self, int_word, index):
         if int_word == 0:
             return 'NOP'
-        mnemonic = None
-        target_branch = self.opcode_matrix
-        iterating = True
-        while iterating:
-            length = len(target_branch)
-            for sub_branch in range(length):
-                value = target_branch[sub_branch][0][(int_word & target_branch[sub_branch][1]) >>
-                                                     target_branch[sub_branch][2]]
-                if value is None:
-                    if sub_branch == length - 1:
-                        iterating = False
-                        break
-                    continue
-                elif isinstance(value, str):
-                    mnemonic = value
-                    iterating = False
-                    break
-                target_branch = value
-                break
+        # target_branch = self.opcode_matrix
+        # iterating = True
+        # while iterating:
+        #     length = len(target_branch)
+        #     for sub_branch in range(length):
+        #         value = target_branch[sub_branch][0][(int_word & target_branch[sub_branch][1]) >>
+        #                                              target_branch[sub_branch][2]]
+        #         if value is None:
+        #             if sub_branch == length - 1:
+        #                 iterating = False
+        #                 break
+        #             continue
+        #         elif isinstance(value, str):
+        #             mnemonic = value
+        #             iterating = False
+        #             break
+        #         target_branch = value
+        #         break
+        mnemonic = self.i_mnemonics[decoder.Decode(int_word)]
+        # print(decoder.Decode(int_word))
+        # print(decoder.GetStackSize())
 
         if mnemonic is None:
             return ''
@@ -1259,14 +1277,14 @@ class Disassembler:
             self.hack_file[index + i] = ints[i]
 
     def map_jumps(self, text_box):
-        try:
-            if exists(self.jumps_file):
-                with open(self.jumps_file, 'rb') as jumps_file:
-                    self.jumps_to, self.branches_to = load(jumps_file)
-                return
-        except:
-            # If we can't load the file, map the jumps again. No biggie.
-            ''
+        # try:
+        #     if exists(self.jumps_file):
+        #         with open(self.jumps_file, 'rb') as jumps_file:
+        #             self.jumps_to, self.branches_to = load(jumps_file)
+        #         return
+        # except:
+        #     # If we can't load the file, map the jumps again. No biggie.
+        #     ''
 
         def dict_append(dict, key, value):
             try:
