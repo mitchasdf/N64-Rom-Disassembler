@@ -4,9 +4,14 @@ from pickle import dump, load
 from os.path import exists
 from tkinter.simpledialog import messagebox
 import tkinter
-from decoder import PyDecoder
 
-decoder = PyDecoder()
+try:
+    from decoder import PyDecoder
+    decoder = PyDecoder()
+except ImportError:
+    decoder = None
+
+
 decoder_fitted = False
 
 OPCODE = 'OPCODE'  # For identifying instruction (6 bits)
@@ -1058,7 +1063,7 @@ class Disassembler:
                 break
             cpp[i] = reordered_encoding[i // 3][i % 3]
             i += 1
-        if not decoder_fitted:
+        if not decoder_fitted and decoder:
             decoder.Fit(cpp[0], cpp[1], cpp[2], cpp[3], cpp[4], cpp[5], cpp[6], cpp[7],
                         cpp[8], cpp[9], cpp[10], cpp[11], cpp[12], cpp[13], cpp[14], cpp[15],
                         cpp[16], cpp[17], i // 3)
@@ -1114,27 +1119,28 @@ class Disassembler:
     def decode(self, int_word, index):
         if int_word == 0:
             return 'NOP'
-        # target_branch = self.opcode_matrix
-        # iterating = True
-        # while iterating:
-        #     length = len(target_branch)
-        #     for sub_branch in range(length):
-        #         value = target_branch[sub_branch][0][(int_word & target_branch[sub_branch][1]) >>
-        #                                              target_branch[sub_branch][2]]
-        #         if value is None:
-        #             if sub_branch == length - 1:
-        #                 iterating = False
-        #                 break
-        #             continue
-        #         elif isinstance(value, str):
-        #             mnemonic = value
-        #             iterating = False
-        #             break
-        #         target_branch = value
-        #         break
-        mnemonic = self.i_mnemonics[decoder.Decode(int_word)]
-        # print(decoder.Decode(int_word))
-        # print(decoder.GetStackSize())
+        if decoder:
+            mnemonic = self.i_mnemonics[decoder.Decode(int_word)]
+        else:
+            target_branch = self.opcode_matrix
+            iterating = True
+            mnemonic = None
+            while iterating:
+                length = len(target_branch)
+                for sub_branch in range(length):
+                    value = target_branch[sub_branch][0][(int_word & target_branch[sub_branch][1]) >>
+                                                         target_branch[sub_branch][2]]
+                    if value is None:
+                        if sub_branch == length - 1:
+                            iterating = False
+                            break
+                        continue
+                    elif isinstance(value, str):
+                        mnemonic = value
+                        iterating = False
+                        break
+                    target_branch = value
+                    break
 
         if mnemonic is None:
             return ''

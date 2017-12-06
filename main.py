@@ -1646,13 +1646,13 @@ def open_files(mode = ''):
     hack_file_text_box.insert('1.0', 'Mapping jumps and branches...\nPlease wait...')
     comments_text_box.insert('1.0', 'This may take a while with larger roms.\nThis only has to be done once per rom.\n\n'
                                     'If your window is not responding - don\'t worry.')
-    window.update_idletasks()
+    window.update()
     def rest_of_function():
         global jumps_displaying
         window.title('ROM Disassembler - ' + disasm.hack_file_name)
         disasm.map_jumps(address_text_box)
         [text_box.delete('1.0',tk.END) for text_box in ALL_TEXT_BOXES]
-        window.update_idletasks()
+        window.update()
         disasm.loaded = True
 
         # Navigate user to first line of code, start the undo buffer with the current data on screen
