@@ -1277,14 +1277,14 @@ class Disassembler:
             self.hack_file[index + i] = ints[i]
 
     def map_jumps(self, text_box):
-        # try:
-        #     if exists(self.jumps_file):
-        #         with open(self.jumps_file, 'rb') as jumps_file:
-        #             self.jumps_to, self.branches_to = load(jumps_file)
-        #         return
-        # except:
-        #     # If we can't load the file, map the jumps again. No biggie.
-        #     ''
+        try:
+            if exists(self.jumps_file):
+                with open(self.jumps_file, 'rb') as jumps_file:
+                    self.jumps_to, self.branches_to = load(jumps_file)
+                return
+        except:
+            # If we can't load the file, map the jumps again. No biggie.
+            ''
 
         def dict_append(dict, key, value):
             try:
