@@ -2604,7 +2604,7 @@ def change_win_dimensions():
         if event.widget is scale_size:
             scale_size.set(keep_within(scale_size.get() + shift, 4, 30))
         elif event.widget is scale_lines:
-            scale_lines.set(keep_within(scale_lines.get() + shift, 1, 80))
+            scale_lines.set(keep_within(scale_lines.get() + shift, 1, 120))
 
     def dimension_window_equals_none():
         global dimension_window
@@ -2818,21 +2818,22 @@ def text_box_callback(event):
 
 [tbox.bind('<Button-1>', text_box_callback) for tbox in ALL_TEXT_BOXES]
 
-address_input = tk.Text(window, font='Courier')
-address_output = tk.Text(window, font='Courier')
-address_translate_button = tk.Button(window, text='Translate Address', command=lambda:translate_box(button=True))
+address_input = tk.Text(window, font=('Courier', 12))
+address_output = tk.Text(window, font=('Courier', 12))
+address_translate_button = tk.Button(window, text='Translate Address', command=lambda:translate_box(button=True),
+                                     font=('Sans', 9))
 
 address_input.bind('<Return>', lambda e: window.after(1, lambda: translate_box()))
 address_input.bind('<Control-v>', lambda e: window.after(1, lambda: translate_box()))
 address_input.bind('<Control-V>', lambda e: window.after(1, lambda: translate_box()))
 
-address_input.place(x=6, y=8, width=85, height=21)
-address_translate_button.place(x=95, y=8, height=21)
-address_output.place(x=203, y=8, width=85, height=21)
+address_input.place(x=6, y=8, width=88, height=21)
+address_translate_button.place(x=98, y=8, height=21)
+address_output.place(x=214, y=8, width=88, height=21)
 
 auto_copy_var = tk.IntVar()
 auto_copy_checkbtn = tk.Checkbutton(window, text='Auto-copy output to clipboard', var=auto_copy_var, command=lambda:window.after(1,lambda:toggle_auto_copy()))
-auto_copy_checkbtn.place(x=288, y=5)
+auto_copy_checkbtn.place(x=304, y=5)
 auto_copy_var.set(app_config['auto_copy'])
 
 target_up_label = tk.Label(window)
