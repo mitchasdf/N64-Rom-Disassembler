@@ -1378,6 +1378,9 @@ def save_changes_to_file(save_as=False):
             new_file_name += disasm.hack_file_name[dot:]
         new_dir = new_file_path[:new_file_path.rfind('\\') + 1]
         new_file_path = new_dir + new_file_name
+        if exists(new_file_path):
+            simpledialog.messagebox._show('Sorry', 'That file already exists.')
+            return False
         app_config['previous_hack_location'] = new_dir
         app_config['previous_hack_opened'] = new_file_path
         app_config['hack_of_base'][new_file_name] = app_config['hack_of_base'][disasm.hack_file_name]
