@@ -704,12 +704,11 @@ def apply_comment_changes():
         navi = navigation + i
         string_key = '{}'.format(navi)
         hex_navi = extend_zeroes(hexi((navi << 2) + increment), 8)
-        if not split_text[i]:
+        if not split_text[i] and key_in_dict(disasm.comments, string_key):
+            del disasm.comments[string_key]
             if comments_window:
                 if key_in_dict(addresses_dict, hex_navi):
                     comments_list.delete(addresses_dict[hex_navi])
-            if is_in_comments(string_key):
-                del disasm.comments[string_key]
             if key_in_dict(orig_keys, hex_navi):
                 del jumps_displaying[orig_keys[hex_navi]]
                 new_key = orig_keys[hex_navi][:19]
@@ -738,6 +737,8 @@ def apply_comment_changes():
                         break
                 if breaking:
                     break
+            continue
+        elif not split_text[i]:
             continue
 
         if is_in_comments(string_key):
