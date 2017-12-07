@@ -1757,16 +1757,16 @@ def change_immediate_id():
     symbol = simpledialog.askstring('Set immediate identifier symbol',
                                     'Must be one of {}'.format(' '.join(accepted_symbols)))
     if symbol and symbol[:1] in accepted_symbols:
-        hack_text = get_text_content(hack_file_text_box)
+        apply_hack_changes()
+        apply_comment_changes()
         buffer_append(hack_buffer)
-        hack_text.replace(app_config['immediate_identifier'], symbol[:1])
-        hack_file_text_box.delete('1.0', tk.END)
-        hack_file_text_box.insert('1.0', hack_text)
-        for key in user_errors.keys():
+        for key in user_errors:
             user_errors[key] = user_errors[key].replace(app_config['immediate_identifier'], symbol[:1])
         app_config['immediate_identifier'] = symbol[:1]
         if disassembler_loaded():
             disasm.immediate_identifier = symbol[:1]
+        navigate_to(navigation)
+        buffer_append(hack_buffer)
         save_config()
 
 
@@ -1774,7 +1774,7 @@ def set_scroll_amount():
     amount = simpledialog.askstring('Set scroll amount', 'Current: {} lines'.format(app_config['scroll_amount']) +
                                                          '\nUse 0x to specify an amount of bytes')
     try:
-        amount = deci(amount) >> 2  if amount[:2] == '0x' else int(amount)
+        amount = deci(amount) >> 2 if amount[:2] == '0x' else int(amount)
     except:
         return
     app_config['scroll_amount'] = amount
