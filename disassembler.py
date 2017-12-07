@@ -1095,7 +1095,6 @@ class Disassembler:
                 offset = self.matrix_stack
             else:
                 offset = matrix[value + offset]
-        print(self.matrix_stack)
 
         # for j, i in enumerate(reordered_encoding):
         #     value, length, bits_addressed = i
