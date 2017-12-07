@@ -599,7 +599,8 @@ def apply_hack_changes(ignore_slot = None):
 
     current_text = get_text_content(hack_file_text_box).upper()
     split_text = current_text.split('\n')
-    for i in range(max_lines):
+    lines = min([max_lines, len(split_text)])
+    for i in range(lines):
         navi = navigation + i
         file_nav = navi << 2
         if i == ignore_slot:
@@ -698,7 +699,8 @@ def apply_comment_changes():
     orig_keys = {}
     for key in config:
         orig_keys[key[:8]] = key
-    for i in range(max_lines):
+    lines = min([max_lines, len(split_text)])
+    for i in range(lines):
         navi = navigation + i
         string_key = '{}'.format(navi)
         hex_navi = extend_zeroes(hexi((navi << 2) + increment), 8)
@@ -1803,7 +1805,7 @@ def help_box():
         '----Translate Address----',
         'The "Translate Address" section is for addresses you find with your memory editor to be translated to the corresponding '
         'memory address for your emulator. In order to use this feature you will have to grab the game entry point address from '
-        'your memory editor and paste it into "Window->Set memory editor offset". After this, you may use the text box on the left '
+        'your memory editor and paste it into "Options->Set memory editor offset". After this, you may use the text box on the left '
         'side of the translate button to translate addresses. You may copy an address in to automatically have it translated, '
         'or alternatively, you may press the translate button and your clipboard contents will automatically be converted. '
         'When auto copy output to clipboard is on, every time an address is translated your clipboard will be replaced with the output.'
@@ -1852,8 +1854,8 @@ def help_box():
         'Ctrl+Comma: Undo',
         'Ctrl+Fullstop: Redo',
         '',
-        'For the sake of a 100% accurate decoding process, no pseudo-instructions were able to be '
-        'implemented.',
+        'For the sake of a 100% accurate decoding process and performance, no pseudo-instructions '
+        'were able to be implemented.',
         '',
         'When making a multi-line selection, you don\'t need to worry about highlighting '
         'the entirety of the start and end column, that will be done automatically when you attempt '
@@ -2630,9 +2632,6 @@ def change_win_dimensions():
 def bypass_crc():
     if not disassembler_loaded():
         return
-    if disasm.cic == CIC['6106']:
-        simpledialog.messagebox._show('Sorry', 'The developer does not know how to bypass this particular CRC')
-        return
     j, j3, decode, decode3 = disasm.find_checksum_loop()
     if j:
         disasm.split_and_store_bytes(0, j)
@@ -2647,6 +2646,9 @@ def bypass_crc():
             '0x' + extend_zeroes(hexi(j << 2), 8),
             '0x' + extend_zeroes(hexi((j << 2) + 0xC), 8)
         ))
+    else:
+        simpledialog.messagebox._show('Sorry', 'The developer does not know how to bypass this CRC')
+        return
 
 
 manual_cic_win = None
