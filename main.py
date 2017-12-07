@@ -1359,7 +1359,7 @@ def save_changes_to_file(save_as=False):
         navigate_to(int(key), widget=hack_file_text_box, center=True)
         return False
     status_text.set('Calculating checksum...')
-    window.update_idletasks()
+    window.update()
     if app_config['calc_crc'][disasm.hack_file_name]:
         sum1, sum2 = disasm.calc_checksum()
     else:
@@ -1389,8 +1389,9 @@ def save_changes_to_file(save_as=False):
         app_config['hack_of_base'][new_file_name] = app_config['hack_of_base'][disasm.hack_file_name]
         app_config['calc_crc'][new_file_name] = app_config['calc_crc'][disasm.hack_file_name]
         disasm.hack_file_name = new_file_name
-        disasm.comments_file = new_file_path + '.comments'
+        disasm.comments_file = new_file_path + ' comments.txt'
         disasm.jumps_file = new_file_path + ' jumps.data'
+
         window.title('ROM Disassembler - ' + disasm.hack_file_name)
 
     app_config['CIC'][disasm.hack_file_name] = disasm.cic
@@ -1552,6 +1553,9 @@ def open_files(mode = ''):
             if not base_file_path:
                 return
             base_file_path = os.path.realpath(base_file_path)
+            if base_file_path == hack_file_path:
+                simpledialog.messagebox._show('Wait a sec', 'You shouldn\'t choose the same files.')
+                return
         else:
             base_file_path = app_config['hack_of_base'][hack_name]
         base_dir = base_file_path[:base_file_path.rfind('\\') + 1]
