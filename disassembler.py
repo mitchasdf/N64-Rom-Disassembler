@@ -6,6 +6,7 @@ from tkinter.simpledialog import messagebox
 import tkinter
 
 try:
+    import widdleyscuds
     from decoder import PyDecoder
     decoder = PyDecoder()
 except ImportError:
@@ -693,7 +694,10 @@ class Disassembler:
         self.encodes = {}
         self.appearances = {}
         self.identifying_bits = {}
-        self.opcode_matrix = []
+        # stack pointer reaches 12078 with the current amount of fitted instructions
+        # each stacked layer is 66 long
+        self.opcode_matrix = [0] * (12078 + 66)
+        self.matrix_stack = 0
         self.jumps_to = {}
         self.branches_to = {}
         self.jumps_file = '{}{} jumps.data'.format(self.hack_folder, self.hack_file_name)
@@ -1074,32 +1078,52 @@ class Disassembler:
         #     print('')
 
         # Fit the opcode matrix
+        offset = 0
+        matrix = self.opcode_matrix
         for j, i in enumerate(reordered_encoding):
             value, length, bits_addressed = i
             shift_amount = 32 - (length + bits_addressed)
-            bitwise_and = int('0b' + ('1' * length) + ('0' * shift_amount), 2)
-            if not matrix_branch:
-                matrix_branch.append([])
-                target = 0
+            bit_mask = (1 << length) - 1
+            if not matrix[offset + 64]:
+                matrix[offset + 64] = bit_mask
+                matrix[offset + 65] = shift_amount
+            if j == len(reordered_encoding) - 1:
+                matrix_branch[value + offset] = mnemonic
+                break
+            if not matrix[value + offset]:
+                self.matrix_stack += 66
+                matrix[value + offset] = self.matrix_stack
+                offset = self.matrix_stack
             else:
-                target = -1
-                for i in range(len(matrix_branch)):
-                    if matrix_branch[i][1] == bitwise_and and matrix_branch[i][2] == shift_amount:
-                        target = i
-                if target < 0:
-                    target = len(matrix_branch)
-                    matrix_branch.append([])
-            if not matrix_branch[target]:
-                matrix_branch[target].append([None] * (2 ** length))
-                matrix_branch[target].append(bitwise_and)
-                matrix_branch[target].append(shift_amount)
-                self.branches += 1
-            if j < len(reordered_encoding) - 1:
-                if matrix_branch[target][0][value] is None:
-                    matrix_branch[target][0][value] = []
-                matrix_branch = matrix_branch[target][0][value]
-            else:
-                matrix_branch[target][0][value] = mnemonic
+                offset = matrix[value + offset]
+        print(self.matrix_stack)
+
+        # for j, i in enumerate(reordered_encoding):
+        #     value, length, bits_addressed = i
+        #     shift_amount = 32 - (length + bits_addressed)
+        #     bitwise_and = int('0b' + ('1' * length) + ('0' * shift_amount), 2)
+        #     if not matrix_branch:
+        #         matrix_branch.append([])
+        #         target = 0
+        #     else:
+        #         target = -1
+        #         for i in range(len(matrix_branch)):
+        #             if matrix_branch[i][1] == bitwise_and and matrix_branch[i][2] == shift_amount:
+        #                 target = i
+        #         if target < 0:
+        #             target = len(matrix_branch)
+        #             matrix_branch.append([])
+        #     if not matrix_branch[target]:
+        #         matrix_branch[target].append([None] * (2 ** length))
+        #         matrix_branch[target].append(bitwise_and)
+        #         matrix_branch[target].append(shift_amount)
+        #         self.branches += 1
+        #     if j < len(reordered_encoding) - 1:
+        #         if matrix_branch[target][0][value] is None:
+        #             matrix_branch[target][0][value] = []
+        #         matrix_branch = matrix_branch[target][0][value]
+        #     else:
+        #         matrix_branch[target][0][value] = mnemonic
         appearance = [[i, appearance_bit_correspondence[i]] for i in appearance]
         if mnemonic in DOCUMENTATION:
             self.documentation[mnemonic] = DOCUMENTATION[mnemonic]
@@ -1122,26 +1146,19 @@ class Disassembler:
         if decoder:
             mnemonic = self.i_mnemonics[decoder.Decode(int_word)]
         else:
-            target_branch = self.opcode_matrix
-            iterating = True
             mnemonic = None
-            while iterating:
-                length = len(target_branch)
-                for sub_branch in range(length):
-                    value = target_branch[sub_branch][0][(int_word & target_branch[sub_branch][1]) >>
-                                                         target_branch[sub_branch][2]]
-                    if value is None:
-                        if sub_branch == length - 1:
-                            iterating = False
-                            break
-                        continue
-                    elif isinstance(value, str):
-                        mnemonic = value
-                        iterating = False
-                        break
-                    target_branch = value
+            offset = 0
+            while True:
+                value = self.opcode_matrix[ offset +
+                                            ((int_word >> self.opcode_matrix[offset + 65]) &
+                                             self.opcode_matrix[offset + 64])
+                ]
+                if isinstance(value, str):
+                    mnemonic = value
                     break
-
+                elif not value:
+                    break
+                offset = value
         if mnemonic is None:
             return ''
         parameters = ''
