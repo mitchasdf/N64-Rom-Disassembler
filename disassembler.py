@@ -6,7 +6,6 @@ from tkinter.simpledialog import messagebox
 import tkinter
 
 try:
-    import widdleyscuds
     from decoder import PyDecoder
     decoder = PyDecoder()
 except ImportError:
