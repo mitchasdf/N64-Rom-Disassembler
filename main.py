@@ -987,7 +987,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         handle.delete(cursor_value(line, 0), cursor_value(line, len(split_text[line-1])))
         new_column = 0
         if insert_branch:
-            branch_template = 'BEQ R0, R0, $'
+            branch_template = 'BEQ R0, R0, {}'.format(disasm.immediate_identifier)
             handle.insert(cursor_value(line, 0), branch_template)
             new_column = len(branch_template)
         window.after(0, lambda: handle.mark_set(tk.INSERT, cursor_value(line, new_column)))
@@ -1843,12 +1843,15 @@ def help_box():
         'The mapped jumps are only mapped by a basic "distance from UNKNOWN/NOT AN INSTRUCTION" algorithm, so there may be some '
         'miss-decoded jumps from sections that aren\'t instructions, and very few unmapped actual jumps.'
     ])
+    imm_id = '$'
+    if disassembler_loaded():
+        imm_id = disasm.immediate_identifier
     message_3 = '\n'.join([
         '----Hack Textbox Hotkeys/Info----',
         'Ctrl+F: Follow jump/branch at text insert cursor',
         'Ctrl+G: Find all jumps to function enveloping text insert cursor',
         'Ctrl+R: Restore multi-line selection or line at text insert cursor to original code',
-        'Ctrl+B: Replace current line with "BEQ R0, R0, $"',
+        'Ctrl+B: Replace current line with "BEQ R0, R0, {}"'.format(imm_id),
         'Shift+Delete or Shift+Backspace: Remove line of text at text insert cursor',
         'Return: Move to end of next line',
         'Shift+Return: Move to end of previous line',
