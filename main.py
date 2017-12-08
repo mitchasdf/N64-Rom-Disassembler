@@ -1434,6 +1434,10 @@ def save_changes_to_file(save_as=False):
 
 def destroy_them(not_main=False):
     global colours_window, jumps_window, comments_window, dimension_window, change_log_win, manual_cic_win
+    global changes_win
+    if changes_win:
+        changes_win.destroy()
+        changes_win = None
     if colours_window:
         colours_window.destroy()
         colours_window = None
@@ -1504,8 +1508,8 @@ def open_files(mode = ''):
         disasm = None
         jumps_displaying = {}
         reset_target()
-        target_down_label.place_forget()
-        target_up_label.place_forget()
+        target_of_down_label.place_forget()
+        target_of_up_label.place_forget()
         [text_box.delete('1.0', tk.END) for text_box in ALL_TEXT_BOXES]
         window.title('ROM Disassembler')
     [text_box.configure(state=tk.NORMAL) for text_box in ALL_TEXT_BOXES]
@@ -1678,7 +1682,7 @@ def open_files(mode = ''):
 
 
 def toggle_address_mode():
-    global function_list_box, jump_list_box, function_select
+    global function_select
     if not disassembler_loaded():
         return
     apply_hack_changes()
@@ -1696,12 +1700,19 @@ def toggle_address_mode():
     increment = disasm.game_offset if toggle_to else -disasm.game_offset
     config_data = jumps_displaying.copy()
 
-    if comments_window:
-        list_contents = comments_list.get(0, tk.END)
+    def fix_listbox(listbox):
+        list_contents = listbox.get(0, tk.END)
         addresses = [extend_zeroes(hexi(deci(i[:8]) + increment), 8) for i in list_contents]
-        comments_list.delete(0, tk.END)
+        listbox.delete(0, tk.END)
         for i, address in enumerate(addresses):
-            comments_list.insert(tk.END, '{}{}'.format(address, list_contents[i][8:]))
+            listbox.insert(tk.END, '{}{}'.format(address, list_contents[i][8:]))
+
+    if comments_window:
+        fix_listbox(comments_list)
+
+    if changes_win:
+        fix_listbox(changes_list_box)
+
     for key in config_data:
         del jumps_displaying[key]
         addy_1 = deci(key[:8]) + increment
@@ -1712,7 +1723,7 @@ def toggle_address_mode():
         new_key = '{} - {}{}'.format(addy_1, addy_2, comment)
         jumps_displaying[new_key] = []
         for address in config_data[key]:
-            new_address = extend_zeroes(hexi(deci(address) + increment), 8)
+            new_address = extend_zeroes(hexi(deci(address[:8]) + increment), 8)
             jumps_displaying[new_key].append(new_address)
     save_config()
     if jumps_window:
@@ -1729,8 +1740,8 @@ def toggle_address_mode():
         for key in jumps_displaying:
             function_list_box.insert(tk.END, key)
         for i in jump_box:
-            value = extend_zeroes(hexi(deci(i) + increment), 8)
-            jump_list_box.insert(tk.END, value)
+            value = extend_zeroes(hexi(deci(i[:8]) + increment), 8)
+            jump_list_box.insert(tk.END, value + i[8:])
 
 
 def toggle_hex_mode():
@@ -2721,6 +2732,70 @@ def toggle_calc_crc():
     save_config()
 
 
+changes_win = changes_list_box = None
+def scour_changes():
+    global changes_win, changes_list_box
+    if not disassembler_loaded():
+        return
+    ch_ch_changes = []  # don't wanna be a richer man
+    percent = (disasm.file_length >> 2) // 100
+    for i in range(0, disasm.file_length, 4):
+        if not (i >> 2) & percent:
+            status_text.set(str((i >> 2) // percent) + '%')
+            window.update()
+        for j in range(4):
+            if disasm.hack_file[i+j] != disasm.base_file[i+j]:
+                ch_ch_changes.append(i)
+                break
+    status_text.set('100%')
+    display_list = []
+    for i in ch_ch_changes:
+        key = str(i >> 2)
+        instruction = disasm.decode(int_of_4_byte_aligned_region(disasm.hack_file[i:i+4]), i >> 2)
+        if not instruction:
+            instruction = 'UNKNOWN/NOT AN INSTRUCTION'
+        hex_of = hex_space(disasm.hack_file[i:i+4].hex().upper())
+        if disasm.game_address_mode:
+            i += disasm.game_offset
+        address = extend_zeroes(hexi(i), 8)
+        the_text = '{}: {}    {}'.format(address,hex_of,instruction)
+        if key_in_dict(disasm.comments, key):
+            the_text += '  | {}'.format(disasm.comments[key])
+        display_list.append(the_text)
+
+    def changes_win_equals_none():
+        global changes_win
+        changes_win.destroy()
+        changes_win = None
+
+    if changes_win:
+        changes_win_equals_none()
+    if display_list:
+        changes_win = tk.Tk()
+        changes_win.title('{} Differences'.format(len(display_list)))
+        changes_win.geometry('900x500+50+50')
+        changes_list_box = tk.Listbox(changes_win, font=('Courier', 10))
+        [changes_list_box.insert(tk.END, i) for i in display_list]
+
+        def list_callback():
+            curselect = changes_list_box.curselection()
+            if not curselect:
+                return
+            apply_hack_changes()
+            apply_comment_changes()
+            entry = changes_list_box.get(curselect[0])
+            increment = 0 if not disasm.game_address_mode else -(disasm.game_offset >> 2)
+            address = deci(entry[:8]) >> 2
+            reset_target()
+            navigate_to(address + increment, center=True, widget=None)
+
+        changes_list_box.bind('<<ListboxSelect>>', lambda _: list_callback())
+        changes_list_box.place(x=5, y=5, width=890, height=490)
+        changes_win.protocol('WM_DELETE_WINDOW', changes_win_equals_none)
+        changes_win.bind('<Escape>', lambda _: changes_win_equals_none())
+        changes_win.mainloop()
+
+
 def tst():
     phrase = simpledialog.askstring('Find what','')
     if not phrase:
@@ -2760,10 +2835,11 @@ nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
 menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 
 tools_menu = tk.Menu(menu_bar, tearoff=0)
+tools_menu.add_command(label='Set memory editor offset', command=set_mem_edit_offset)
+tools_menu.add_command(label='Scour hack for differences', command=scour_changes)
 tools_menu.add_command(label='Bypass CRC', command=bypass_crc)
 tools_menu.add_command(label='Manually set CIC chip', command=manual_cic)
-tools_menu.add_checkbutton(label='Calculate checksum when saving', command=toggle_calc_crc,
-                           variable=calc_crc)
+tools_menu.add_checkbutton(label='Calculate checksum when saving', command=toggle_calc_crc, variable=calc_crc)
 # tools_menu.add_command(label='Test', command=tst)
 menu_bar.add_cascade(label='Tools', menu=tools_menu)
 
@@ -2772,7 +2848,6 @@ opts_menu.add_command(label='Toggle "game entry point" mode (F5)', command=toggl
 opts_menu.add_command(label='Toggle hex mode (F6)', command=toggle_hex_mode)
 opts_menu.add_command(label='Toggle hex space separation (F7)', command=toggle_hex_space)
 opts_menu.add_command(label='Set immediate value identifier', command=change_immediate_id)
-opts_menu.add_command(label='Set memory editor offset', command=set_mem_edit_offset)
 opts_menu.add_command(label='Set scroll amount', command=set_scroll_amount)
 menu_bar.add_cascade(label='Options', menu=opts_menu)
 
