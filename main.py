@@ -1724,7 +1724,7 @@ def toggle_address_mode():
         jumps_displaying[new_key] = []
         for address in config_data[key]:
             new_address = extend_zeroes(hexi(deci(address[:8]) + increment), 8)
-            jumps_displaying[new_key].append(new_address)
+            jumps_displaying[new_key].append(new_address + address[8:])
     save_config()
     if jumps_window:
         if function_select:
