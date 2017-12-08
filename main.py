@@ -2793,6 +2793,12 @@ def scour_changes():
         changes_list_box.place(x=5, y=5, width=890, height=490)
         changes_win.protocol('WM_DELETE_WINDOW', changes_win_equals_none)
         changes_win.bind('<Escape>', lambda _: changes_win_equals_none())
+        changes_win.bind('<F1>', lambda e: view_comments())
+        changes_win.bind('<F3>', lambda e: toggle_base_file())
+        changes_win.bind('<F4>', lambda e: navigation_prompt(root=changes_win))
+        changes_win.bind('<F5>', lambda e: toggle_address_mode())
+        changes_win.bind('<Control-s>', lambda e: save_changes_to_file())
+        changes_win.bind('<Control-S>', lambda e: save_changes_to_file())
         changes_win.mainloop()
 
 
