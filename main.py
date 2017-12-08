@@ -4,7 +4,7 @@ import tkinter.font as tkfont
 from tkinter import simpledialog, filedialog, colorchooser
 import os
 from function_defs import *
-from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS, CIC
+from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS, CIC, DOCUMENTATION
 import webbrowser
 
 
@@ -1433,8 +1433,11 @@ def save_changes_to_file(save_as=False):
 
 
 def destroy_them(not_main=False):
-    global colours_window, jumps_window, comments_window, dimension_window, change_log_win, manual_cic_win
-    global changes_win
+    global colours_window, jumps_window, comments_window, dimension_window, manual_cic_win
+    global changes_win, opcodes_win
+    if opcodes_win:
+        opcodes_win.destroy()
+        opcodes_win = None
     if changes_win:
         changes_win.destroy()
         changes_win = None
@@ -1901,6 +1904,19 @@ def help_box():
     simpledialog.messagebox._show('Help', message)
     simpledialog.messagebox._show('Help (continued)', message_2)
     simpledialog.messagebox._show('Help (final)', message_3)
+
+
+opcodes_win = None
+def opcodes_list():
+    global opcodes_win
+    opcodes_win = tk.Tk()
+    opcodes_win.title('Opcodes list')
+    opcodes_win.geometry('650x800+50+50')
+    codes_list = tk.Listbox(opcodes_win, font=('Courier', 10))
+    [codes_list.insert(tk.END, i + ': ' + DOCUMENTATION[i]) for i in DOCUMENTATION]
+    codes_list.place(x=5, y=5, width=640, height=790)
+    opcodes_win.bind('<Escape>', lambda _: opcodes_win.destroy())
+    opcodes_win.mainloop()
 
 
 def about_box():
@@ -2866,6 +2882,7 @@ menu_bar.add_cascade(label='Window', menu=win_menu)
 
 help_menu = tk.Menu(menu_bar,tearoff=0)
 help_menu.add_command(label='Usage Info', command=help_box)
+help_menu.add_command(label='Opcodes list', command=opcodes_list)
 help_menu.add_command(label='About', command=about_box)
 menu_bar.add_cascade(label='Help', menu=help_menu)
 
