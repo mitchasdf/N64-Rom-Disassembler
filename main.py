@@ -1821,7 +1821,7 @@ def help_box():
         '----Translate Address----',
         'The "Translate Address" section is for addresses you find with your memory editor to be translated to the corresponding '
         'memory address for your emulator. In order to use this feature you will have to grab the game entry point address from '
-        'your memory editor and paste it into "Options->Set memory editor offset". After this, you may use the text box on the left '
+        'your memory editor and paste it into "Tools->Set memory editor offset". After this, you may use the text box on the left '
         'side of the translate button to translate addresses. You may copy an address in to automatically have it translated, '
         'or alternatively, you may press the translate button and your clipboard contents will automatically be converted. '
         'When auto copy output to clipboard is on, every time an address is translated your clipboard will be replaced with the output.'
