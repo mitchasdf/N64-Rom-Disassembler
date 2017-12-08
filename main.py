@@ -1435,9 +1435,6 @@ def save_changes_to_file(save_as=False):
 def destroy_them(not_main=False):
     global colours_window, jumps_window, comments_window, dimension_window, manual_cic_win
     global changes_win, opcodes_win
-    if opcodes_win:
-        opcodes_win.destroy()
-        opcodes_win = None
     if changes_win:
         changes_win.destroy()
         changes_win = None
@@ -1456,6 +1453,9 @@ def destroy_them(not_main=False):
     if manual_cic_win:
         manual_cic_win.destroy()
         manual_cic_win = None
+    if opcodes_win:
+        opcodes_win.destroy()
+        opcodes_win = None
     if not not_main:
         window.destroy()
 
