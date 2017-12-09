@@ -2559,6 +2559,9 @@ def target_of_down():
 
 def toggle_base_file():
     app_config['toggle_base_file'] = not app_config['toggle_base_file']
+    apply_comment_changes()
+    apply_hack_changes()
+    navigate_to(navigation)
     save_config()
     set_widget_sizes()
 
