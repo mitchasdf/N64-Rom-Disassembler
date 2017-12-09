@@ -690,6 +690,7 @@ def apply_comment_changes():
     split_text = current_text.split('\n')
     config = jumps_displaying.copy()
     increment = disasm.game_offset if disasm.game_address_mode else 0
+    filtering = filter_text.get('1.0', tk.END).split('\n')[0].lower()
     if comments_window:
         comments_in = comments_list.get(0, tk.END)
         addresses = [j[:8] for j in comments_in]
@@ -750,7 +751,8 @@ def apply_comment_changes():
         if comments_window:
             if key_in_dict(addresses_dict, hex_navi):
                 comments_list.delete(addresses_dict[hex_navi])
-                comments_list.insert(addresses_dict[hex_navi], '{}: {}'.format(hex_navi, split_text[i]))
+                if filtering in split_text[i].lower():
+                    comments_list.insert(addresses_dict[hex_navi], '{}: {}'.format(hex_navi, split_text[i]))
             else:
                 this_int_address = navi << 2
                 if disasm.game_address_mode:
@@ -760,10 +762,11 @@ def apply_comment_changes():
                     if this_int_address < int_addresses[j]:
                         target = j
                         break
-                if target >= 0:
-                    comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
-                else:
-                    comments_list.insert(tk.END, '{}: {}'.format(hex_navi, split_text[i]))
+                if filtering in split_text[i].lower():
+                    if target >= 0:
+                        comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
+                    else:
+                        comments_list.insert(tk.END, '{}: {}'.format(hex_navi, split_text[i]))
 
         if key_in_dict(orig_keys, hex_navi):
             del jumps_displaying[orig_keys[hex_navi]]
@@ -2136,8 +2139,9 @@ def find_jumps(just_window=False):
 
 comments_window = None
 comments_list = None
+filter_text = None
 def view_comments():
-    global comments_window, comments_list
+    global comments_window, comments_list, filter_text
     if not disassembler_loaded():
         return
     if comments_window:
@@ -2172,21 +2176,35 @@ def view_comments():
             hack_checkbox.deselect()
         save_config()
 
+    def increment():
+        if disasm.game_address_mode:
+            return disasm.game_offset
+        return 0
+
+    def populate_list():
+        if comments_window:
+            comments_list.delete(0, tk.END)
+            filtering = filter_text.get('1.0', tk.END).split('\n')[0].lower()
+            for key in sorted([int(key) for key in disasm.comments if filtering in disasm.comments[key].lower()]):
+                comments_list.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi((key << 2) + increment()), 8),
+                                                             disasm.comments[str(key)]))
+
     hack_checkbox = tk.Checkbutton(comments_window, text='Auto-focus hack textbox',
                                    command=lambda: window.after(1, lambda: hack_checkbox_callback()))
     comment_checkbox = tk.Checkbutton(comments_window, text='Auto-focus comments textbox',
                                       command=lambda: window.after(1, lambda: comments_checkbox_callback()))
+    filter_text = tk.Text(comments_window, font=('Courier', 10))
     hack_checkbox.place(x=6, y=6)
     comment_checkbox.place(x=175, y=6)
+    filter_text.place(x=370, y=9, width=font_dimension(10)[0] * 20, height=20)
+    tk.Label(comments_window, text='Filter list').place(x=535,y=9)
+    filter_text.bind('<Key>', lambda _: window.after(1, populate_list))
     if app_config['comments_auto_focus_comments']:
         comment_checkbox.select()
     elif app_config['comments_auto_focus_hack']:
         hack_checkbox.select()
-    increment = 0
-    if disasm.game_address_mode:
-        increment = disasm.game_offset
-    for key in sorted([int(key) for key in disasm.comments]):
-        comments_list.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi((key << 2) + increment),8), disasm.comments[str(key)]))
+
+    populate_list()
 
     def comments_list_callback(event):
         curselect = comments_list.curselection()
