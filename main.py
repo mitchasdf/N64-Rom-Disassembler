@@ -189,7 +189,8 @@ def change_colours():
      for text_box in ALL_TEXT_BOXES]
     [hack_file_text_box.tag_config(tag, background=new_tag_config[tag]) for tag in new_tag_config]
     [text_box.config(bg=text_bg, fg=text_fg) for text_box in ALL_TEXT_BOXES + [address_input, address_output, status_bar]]
-    address_translate_button.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg)
+    [button.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg) for button in
+     [address_translate_button, nav_button]]
     auto_copy_checkbtn.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg, selectcolor=win_bg)
     window.config(bg=win_bg)
     [label.config(bg=new_tag_config['target']) for label in [target_down_label, target_up_label]]
@@ -1320,11 +1321,8 @@ def navigate_to(index, center=False, widget=None):
     highlight_stuff(widget, skip_moving_cursor=center)
 
 
-def navigation_prompt(root=window):
-    if not disassembler_loaded():
-        return
+def navigation_callback(address):
     widget = check_widget(window.focus_get())
-    address = simpledialog.askstring('Navigate to address', '', parent=root)
     if not address and widget:
         widget.focus_force()
     try:
@@ -1342,6 +1340,14 @@ def navigation_prompt(root=window):
     navigate_to(address, center=True, widget=widget)
     if widget:
         widget.focus_force()
+
+
+
+def navigation_prompt(root=window):
+    if not disassembler_loaded():
+        return
+    address = simpledialog.askstring('Navigate to address', '', parent=root)
+    navigation_callback(address)
 
 
 def scroll_callback(event):
@@ -2944,14 +2950,29 @@ address_input.bind('<Return>', lambda e: window.after(1, lambda: translate_box()
 address_input.bind('<Control-v>', lambda e: window.after(1, lambda: translate_box()))
 address_input.bind('<Control-V>', lambda e: window.after(1, lambda: translate_box()))
 
+
 address_input.place(x=6, y=8, width=88, height=21)
 address_translate_button.place(x=98, y=8, height=21)
 address_output.place(x=214, y=8, width=88, height=21)
 
 auto_copy_var = tk.IntVar()
-auto_copy_checkbtn = tk.Checkbutton(window, text='Auto-copy output to clipboard', var=auto_copy_var, command=lambda:window.after(1,lambda:toggle_auto_copy()))
+auto_copy_checkbtn = tk.Checkbutton(window, text='Auto-copy to clipboard', var=auto_copy_var, command=lambda:window.after(1,lambda:toggle_auto_copy()))
 auto_copy_checkbtn.place(x=304, y=5)
 auto_copy_var.set(app_config['auto_copy'])
+
+def nav_button_callback():
+    if not disassembler_loaded():
+        return
+    try:
+        clip_content = window.clipboard_get()
+        navigation_callback(clip_content)
+    except:
+        ''
+
+nav_button = tk.Button(window, text='Navigate to address in clipboard', command=nav_button_callback,
+                       font=('Sans', 9))
+nav_button.place(x=500, y=8, height=21)
+
 
 target_up_label = tk.Label(window)
 target_down_label = tk.Label(window)
