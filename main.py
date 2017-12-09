@@ -990,7 +990,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     paste_text = ''
     lines_diff = 0
 
-    if wipe_line or (not has_selection and is_pasting and not pasting_newlines and hack_function):
+    if (wipe_line or (not has_selection and is_pasting and not pasting_newlines)) and hack_function:
         handle.delete(cursor_value(line, 0), cursor_value(line, len(split_text[line-1])))
         new_column = 0
         if insert_branch:
