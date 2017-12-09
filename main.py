@@ -690,8 +690,8 @@ def apply_comment_changes():
     split_text = current_text.split('\n')
     config = jumps_displaying.copy()
     increment = disasm.game_offset if disasm.game_address_mode else 0
-    filtering = filter_text.get('1.0', tk.END).split('\n')[0].lower()
     if comments_window:
+        filtering = filter_text.get('1.0', tk.END).split('\n')[0].lower()
         comments_in = comments_list.get(0, tk.END)
         addresses = [j[:8] for j in comments_in]
         addresses_dict = {}
