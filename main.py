@@ -627,7 +627,7 @@ def apply_hack_changes(ignore_slot = None):
         elif is_hex_part or app_config['hex_mode']:
             without_spaces = split_text[i].replace(' ', '')
             try:
-                if len(without_spaces) != 8:
+                if len(without_spaces) not in range(0, 9):
                     raise Exception()
                 int_of = deci(without_spaces)
             except:
@@ -969,8 +969,14 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 0, 'min', split_text)
             selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, 0, 'max', split_text)
     except:
-        selection_start, sel_start_line, sel_start_column = '1.0', 0, 0
-        selection_end, sel_end_line, sel_end_column = '1.0', 0, 0
+        if is_cutting or is_copying:
+            selection_start, sel_start_line, sel_start_column = \
+                modify_cursor(cursor, 0, 'min', split_text)
+            selection_end, sel_end_line, sel_end_column = \
+                modify_cursor(cursor, 0, 'max', split_text)
+        else:
+            selection_start, sel_start_line, sel_start_column = '1.0', 0, 0
+            selection_end, sel_end_line, sel_end_column = '1.0', 0, 0
 
     has_selection = selection_start != selection_end
     selection_lines = sel_end_line - sel_start_line
