@@ -19,6 +19,8 @@ def unpickle_data(name):
 
 
 def deci(hex_num):
+    if not hex_num:
+        return 0
     return int('0x' + hex_num if '0x' not in hex_num else hex_num,16)
 
 
