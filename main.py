@@ -2139,7 +2139,7 @@ def view_comments():
     if not disassembler_loaded():
         return
     if comments_window:
-        comments_window.focus_force()
+        filter_text.focus_force()
         return
     comments_window = tk.Tk()
     comments_window.title('Comments')
@@ -2226,7 +2226,13 @@ def view_comments():
         comments_window.destroy()
         comments_window = None
 
+    def focus_in(event):
+        if not event.widget is comments_list:
+            filter_text.focus_force()
+
     comments_window.bind('<Escape>', lambda e: comments_window_equals_none())
+    comments_window.bind('<FocusIn>', focus_in)
+    comments_window.bind('<F1>', lambda e: filter_text.focus_force())
     comments_window.bind('<F2>', lambda e: find_jumps(just_window=True))
     comments_window.bind('<F3>', lambda e: toggle_base_file())
     comments_window.bind('<F4>', lambda e: navigation_prompt(root=comments_window))
@@ -2234,7 +2240,7 @@ def view_comments():
     comments_window.bind('<Control-s>', lambda e: save_changes_to_file())
     comments_window.bind('<Control-S>', lambda e: save_changes_to_file())
     comments_window.protocol('WM_DELETE_WINDOW', comments_window_equals_none)
-    comments_window.focus_force()
+    filter_text.focus_force()
     comments_window.mainloop()
 
 
@@ -2842,6 +2848,7 @@ def scour_changes():
         changes_win.bind('<F5>', lambda e: toggle_address_mode())
         changes_win.bind('<Control-s>', lambda e: save_changes_to_file())
         changes_win.bind('<Control-S>', lambda e: save_changes_to_file())
+        changes_win.focus_force()
         changes_win.mainloop()
 
 
