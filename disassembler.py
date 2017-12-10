@@ -1216,7 +1216,7 @@ class Disassembler:
             punc = len(string)
         opcode = string[:punc]
         string = string[punc + 1:]
-        if not key_in_dict(self.encodes, opcode):
+        if not opcode in self.encodes:
             # Syntax error - no such mnemonic
             return -1
         str_parameters = []
@@ -1252,7 +1252,7 @@ class Disassembler:
             for i in range(len(self.appearances[opcode])):
                 param = str_parameters[i]
                 if param[0] == self.immediate_identifier or self.appearances[opcode][i][0] == 'MOD':
-                    if key_in_dict(SHWIFTY_INSTRUCTIONS, opcode):
+                    if opcode in SHWIFTY_INSTRUCTIONS:
                         param = int(param[1:])
                     else:
                         param = deci(param[1:])
@@ -1307,13 +1307,6 @@ class Disassembler:
             # If we can't load the file, map the jumps again. No biggie.
             ''
 
-        def dict_append(dict, key, value):
-            try:
-                dict[key].append(value)
-            except KeyError:
-                dict[key] = []
-                dict[key].append(value)
-
         percent = (len(self.hack_file) >> 2) // 100
         cut = 19
         collect = 9
@@ -1346,9 +1339,10 @@ class Disassembler:
             if len(buffer) == cut:
                 popped = buffer.pop(collect)
                 if isinstance(popped, tuple):
-                    dict_append(dict=popped[0],
-                                key=str(popped[1]),
-                                value=popped[2])
+                    key = str(popped[1])
+                    if not key in popped[0]:
+                        popped[0][key] = []
+                    popped[0][key].append(popped[2])
         with open(self.jumps_file, 'wb') as jumps_file:
             dump((self.jumps_to, self.branches_to), jumps_file)
 
@@ -1394,7 +1388,7 @@ class Disassembler:
     def unmap(self, dict, address, target):
         unmapped_target = False
         unmapped_address = False
-        if key_in_dict(dict, target):
+        if target in dict:
             try:
                 place = dict[target].index(address)
                 dict[target].pop(place)
@@ -1409,7 +1403,7 @@ class Disassembler:
     def map(self, dict, address, target):
         mapped_target = False
         mapped_address = False
-        if not key_in_dict(dict, target):
+        if not target in dict:
             dict[target] = []
             mapped_target = True
         if address not in dict[target]:

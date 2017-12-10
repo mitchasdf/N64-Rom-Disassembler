@@ -234,7 +234,7 @@ def hex_space(string):
 def clear_error(key):
     if isinstance(key, int):
         key = '{}'.format(key)
-    if key_in_dict(user_errors, key):
+    if key in user_errors:
         del user_errors[key]
 
 
@@ -385,6 +385,7 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
     address = None if c_line else prev_address_target
     for i in range(len(text)):
         navi = navigation + i
+        key = str(navi)
         if not app_config['hex_mode']:
             line = i + 1
             line_text = text[i]
@@ -431,26 +432,19 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
                                            cursor_value(line, len(text[i])))
 
             # Highlight instructions in which are a target of any jump or branch
-            # Because the disasm.jumps dict is so huge, a try/except works "exceptionally" faster than iterative methods
-            try:
-                _ = disasm.jumps_to[str(navi)]
+            key = str(navi)
+            if key in disasm.jumps_to:
                 hack_file_text_box.tag_add('jump_to',
                                            cursor_value(line, 0),
                                            cursor_value(line + 1, 0))
-            except KeyError:
-                ''
 
-            try:
-                _ = disasm.branches_to[str(navi)]
+            if key in disasm.branches_to:
                 hack_file_text_box.tag_add('branch_to',
                                            cursor_value(line, 0),
                                            cursor_value(line + 1, 0))
-            except KeyError:
-                ''
 
         # Highlight errors
-        key = str(navi)
-        if key_in_dict(user_errors, key):
+        if key in user_errors:
             err_code = user_errors[key][0]
             hack_file_text_box.tag_add('bad' if err_code > -3 else 'out_of_range',
                                        cursor_value(i + 1, 0),
@@ -460,9 +454,9 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
     if hack_function:
         this_key = str(prev_cursor_location)
         dictie = None
-        if key_in_dict(disasm.branches_to, this_key):
+        if this_key in disasm.branches_to:
             dictie = disasm.branches_to
-        elif key_in_dict(disasm.jumps_to, this_key):
+        elif this_key in disasm.jumps_to:
             dictie = disasm.jumps_to
         if dictie:
             had_ups = False
@@ -706,12 +700,12 @@ def apply_comment_changes():
         navi = navigation + i
         string_key = '{}'.format(navi)
         hex_navi = extend_zeroes(hexi((navi << 2) + increment), 8)
-        if not split_text[i] and key_in_dict(disasm.comments, string_key):
+        if not split_text[i] and string_key in disasm.comments:
             del disasm.comments[string_key]
             if comments_window:
-                if key_in_dict(addresses_dict, hex_navi):
+                if hex_navi in addresses_dict:
                     comments_list.delete(addresses_dict[hex_navi])
-            if key_in_dict(orig_keys, hex_navi):
+            if hex_navi in orig_keys:
                 del jumps_displaying[orig_keys[hex_navi]]
                 new_key = orig_keys[hex_navi][:19]
                 jumps_displaying[new_key] = config[orig_keys[hex_navi]]
@@ -749,7 +743,7 @@ def apply_comment_changes():
         disasm.comments[string_key] = split_text[i]
 
         if comments_window:
-            if key_in_dict(addresses_dict, hex_navi):
+            if hex_navi in addresses_dict:
                 comments_list.delete(addresses_dict[hex_navi])
                 if filtering in split_text[i].lower():
                     comments_list.insert(addresses_dict[hex_navi], '{}: {}'.format(hex_navi, split_text[i]))
@@ -768,7 +762,7 @@ def apply_comment_changes():
                     else:
                         comments_list.insert(tk.END, '{}: {}'.format(hex_navi, split_text[i]))
 
-        if key_in_dict(orig_keys, hex_navi):
+        if hex_navi in orig_keys:
             del jumps_displaying[orig_keys[hex_navi]]
             new_key = orig_keys[hex_navi][:19] + ' ' + disasm.comments[string_key]
             jumps_displaying[new_key] = config[orig_keys[hex_navi]]
@@ -2808,7 +2802,7 @@ def scour_changes():
             i += disasm.game_offset
         address = extend_zeroes(hexi(i), 8)
         the_text = '{}: {}    {}'.format(address,hex_of,instruction)
-        if key_in_dict(disasm.comments, key):
+        if key in disasm.comments:
             the_text += '  | {}'.format(disasm.comments[key])
         display_list.append(the_text)
 
@@ -2950,6 +2944,8 @@ def text_box_callback(event):
             line = get_cursor(event.widget)[1]
             if event.widget is hack_file_text_box:
                 prev_cursor_location = (line - 1) + navigation
+            elif event.widget in [comments_text_box, address_text_box, base_file_text_box]:
+                reset_target()
             highlight_stuff(widget=event.widget, skip_moving_cursor=True)
             if event.widget is address_text_box:
                 window.clipboard_clear()
