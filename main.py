@@ -179,6 +179,7 @@ try:
     window.tk.call('wm', 'iconbitmap', window._w, working_dir + 'n64_disassembler.ico')
 except:
     print('Could not load n64_disassembler.ico. Defaulting to tkinter quill.')
+    ####
 window.config(bg=app_config['window_background_colour'])
 
 
