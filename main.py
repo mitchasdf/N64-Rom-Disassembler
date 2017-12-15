@@ -88,7 +88,7 @@ if not exists(SCRIPTS_DIR):
             'var label = function(address, note) {\n'\
             '\tlabels[\'\' + address] = note;\n'\
             '};\n'\
-            'var counter = new Array();\n'\
+            'var counter = new Object();\n'\
             'counter[\'{{iter}}\'] = 0; //only header items containing iter or note will be copied\n'\
             '{{endheader}}\n'\
             'events.onexec(0x{{iter}}, function() {\n'\
@@ -122,8 +122,8 @@ if not exists(SCRIPTS_DIR):
             'var label = function(address, note) {\n'\
             '\tlabels[\'\' + address] = note;\n'\
             '};\n'\
-            'var count = new Array();\n'\
-            'count[\'{{iter}}\'] = 0; //only header items containing {{iter}} or {{note}} will be copied\n'\
+            'var count = new Object();\n'\
+            'count[\'{{iter}}\'] = 0; //only header items containing iter or note will be copied\n'\
             '{{endheader}}\n'\
             'events.onexec(0x{{iter}}, function() {\n'\
             '\tif(forgetting.indexOf(\'{{iter}}\') < 0) {\n'\
@@ -1197,9 +1197,42 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         apply_function(ignore_slot = line - 1)
         if split_text[line - 1] == 'NOP' and hack_function:
             handle.delete(cursor_value(line, 0), cursor_value(line, 3))
-        line_chars = len(split_text[line - 1])
+        def find_line_chars(text, max_char):
+            text_list = text.split('\t')
+            if len(text_list) == 1:
+                return text[:max_char - 1], len(text)
+            new_text = text_list[0] + '\t'
+            line_chars = len(text_list[0])
+            prev_not = not text_list[0]
+            for i, txt in enumerate(text_list[1:]):
+                txtlen = len(txt)
+                if not txt:
+                    if not line_chars % 8 and not prev_not:
+                        line_chars += 1
+                    else:
+                        line_chars += 8 - (line_chars % 8)
+                    prev_not = True
+                else:
+                    line_chars += txtlen + (8 - (line_chars % 8))
+                    if line_chars > max_char - 1:
+                        new_text += txt[:(max_char - 1) - line_chars]
+                    prev_not = False
+                if line_chars < max_char:
+                    new_text += txt
+                    if i != len(text_list) - 2:
+                        new_text += '\t'
+            return new_text, line_chars
+        new_text, line_chars = find_line_chars(text=split_text[line - 1], max_char=max_char)
         if line_chars > max_char - 1:
-            handle.delete(cursor_value(line, max_char - 1), cursor_value(line, max_char))
+            handle.delete(cursor_value(line, 0),
+                          modify_cursor(cursor, 0, 'max', split_text)[0])
+            handle.insert(cursor_value(line, 0), new_text)
+        if hack_function and event.keysym == event.keysym.lower():
+            def replace_with_upper(event, cursor):
+                new_cursor = modify_cursor(cursor, 0, 1, get_text_content(hack_file_text_box))[0]
+                hack_file_text_box.delete(cursor, new_cursor)
+                hack_file_text_box.insert(cursor, event.keysym.upper())
+            window.after(0, lambda: replace_with_upper(event, cursor))
 
     # Make delete do nothing if cursor precedes a new line
     # Make backspace act as left arrow if cursor at column 0 then validate code (ignoring the line if cursor not at column 0)
@@ -3060,7 +3093,8 @@ def generate_script():
             '',
             '{{note}} - Can be used instead of {{iter}} for string operations.',
             'If no comment exists on that batch item (has less than 10 chars), it will translate to '
-            '"0xaddress", and if the comment contains certain symbols, they will be removed for the script.',
+            '"0x{{iter}}". Just be careful which symbols you use in the comments, as they may cause '
+            'errors in your script depending on the language',
             'Javascript example:',
             'events.onexec(0x{{iter}}, function() {',
             '  \tconsole.log(\'CPU is executing {{note}}\');',
@@ -3109,9 +3143,9 @@ def generate_script():
             return
         test_win = tk.Tk()
         test_win.title('Test script generation')
-        test_win.geometry('1000x500+50+50')
+        test_win.geometry('1000x900+50+50')
         test_box = tk.Text(test_win)
-        test_box.place(x=5, y=5, width=990, height=490)
+        test_box.place(x=5, y=5, width=990, height=890)
         test_box.insert('1.0', scriptified)
 
     def save_template_callback():
