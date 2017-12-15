@@ -92,7 +92,7 @@ if not exists(SCRIPTS_DIR):
             'counter[\'{{iter}}\'] = 0; //only header items containing iter or note will be copied\n'\
             '{{endheader}}\n'\
             'events.onexec(0x{{iter}}, function() {\n'\
-            '\tif(forgetting.indexOf(address) < 0) {\n'\
+            '\tif(forgetting.indexOf(\'{{iter}}\') < 0) {\n'\
             '\t\tvar note;\n'\
             '\t\tif(labels.indexOf(\'{{iter}}\') < 0 && note != \'0x{{iter}}\') {\n'\
             '\t\t\tnote = \': {{note}}\';\n'\
@@ -126,7 +126,7 @@ if not exists(SCRIPTS_DIR):
             'count[\'{{iter}}\'] = 0; //only header items containing {{iter}} or {{note}} will be copied\n'\
             '{{endheader}}\n'\
             'events.onexec(0x{{iter}}, function() {\n'\
-            '\tif(forgetting.indexOf(address) < 0) {\n'\
+            '\tif(forgetting.indexOf(\'{{iter}}\') < 0) {\n'\
             '\t\tvar note;\n'\
             '\t\tif(labels.indexOf(\'{{iter}}\') < 0 && note != \'0x{{iter}}\') {\n'\
             '\t\t\tnote = \': {{note}}\';\n'\
