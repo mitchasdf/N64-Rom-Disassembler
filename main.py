@@ -2939,6 +2939,8 @@ def scour_changes():
 script_win = None
 def generate_script():
     global script_win
+    if not disassembler_loaded():
+        return
     if script_win:
         script_win.focus_force()
         return
