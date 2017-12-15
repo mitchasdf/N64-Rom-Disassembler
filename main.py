@@ -88,8 +88,8 @@ if not exists(SCRIPTS_DIR):
             'var label = function(address, note) {\n'\
             '\tlabels[\'\' + address] = note;\n'\
             '};\n'\
-            'var count = new Array();\n'\
-            'count[\'{{iter}}\'] = 0; //only header items containing iter or note will be copied\n'\
+            'var counter = new Array();\n'\
+            'counter[\'{{iter}}\'] = 0; //only header items containing iter or note will be copied\n'\
             '{{endheader}}\n'\
             'events.onexec(0x{{iter}}, function() {\n'\
             '\tif(forgetting.indexOf(address) < 0) {\n'\
@@ -101,7 +101,7 @@ if not exists(SCRIPTS_DIR):
             '\t\t}\n'\
             '\t\tconsole.log(\'CPU attempt to execute 0x{{iter}}\' + note);\n'\
             '\t\tif(counting) {\n'\
-            '\t\t\tconsole.log(\'Count: \' + ++count[\'{{iter}}\']);\n'\
+            '\t\t\tconsole.log(\'Count: \' + ++counter[\'{{iter}}\']);\n'\
             '\t\t}\n'\
             '\t\tdebug.breakhere();\n'\
             '\t}\n'\
