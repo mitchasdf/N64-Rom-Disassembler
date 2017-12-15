@@ -24,6 +24,7 @@ working_dir = os.path.dirname(os.path.realpath(__file__)) + '\\'
 FRESH_APP_CONFIG = {
     'previous_base_location': working_dir,
     'previous_hack_location': working_dir,
+    'script_output_dir': working_dir,
     'previous_base_opened': '',
     'previous_hack_opened': '',
     'open_roms_automatically': False,
@@ -66,6 +67,80 @@ FRESH_APP_CONFIG = {
     }
 }
 
+SCRIPTS_DIR = working_dir + 'script templates\\'
+if not exists(SCRIPTS_DIR):
+    os.mkdir(SCRIPTS_DIR)
+    basic_break_script_file = SCRIPTS_DIR + 'Example Project64d breakpoint.txt'
+    if not exists(basic_break_script_file):
+        basic_break_script = \
+            '{{header}}\n'\
+            'var counting = true;\n'\
+            'var count = function() {\n'\
+            '\tcounting = !counting;\n'\
+            '}\n'\
+            'var forgetting = new Array();\n'\
+            'var forget = function(address) {\n'\
+            '\tif(forgetting.indexOf(address) < 0) {\n'\
+            '\t\tforgetting.push(address);\n'\
+            '\t}\n'\
+            '};\n'\
+            'var labels = new Object();\n'\
+            'var label = function(address, note) {\n'\
+            '\tlabels[\'\' + address] = note;\n'\
+            '};\n'\
+            'var count = new Array();\n'\
+            'count[\'{{iter}}\'] = 0; //only header items containing iter or note will be copied\n'\
+            '{{endheader}}\n'\
+            'events.onexec(0x{{iter}}, function() {\n'\
+            '\tif(forgetting.indexOf(address) < 0) {\n'\
+            '\t\tvar note;\n'\
+            '\t\tif(labels.indexOf(\'{{iter}}\') < 0 && note != \'0x{{iter}}\') {\n'\
+            '\t\t\tnote = \': {{note}}\';\n'\
+            '\t\telse {\n'\
+            '\t\t\tnote = \': \' + labels[\'{{iter}}\'];\n'\
+            '\t\t}\n'\
+            '\t\tconsole.log(\'CPU attempt to execute 0x{{iter}}\' + note);\n'\
+            '\t\tif(counting) {\n'\
+            '\t\t\tconsole.log(\'Count: \' + ++count[\'{{iter}}\']);\n'\
+            '\t\t}\n'\
+            '\t\tdebug.breakhere();\n'\
+            '\t}\n'\
+            '});'
+        with open(basic_break_script_file, 'w') as file:
+            file.write(basic_break_script)
+    basic_log_counter_script_file = SCRIPTS_DIR + 'Example Project64d log counter.txt'
+    if not exists(basic_log_counter_script_file):
+        basic_log_counter_script = \
+            '{{header}}\n'\
+            'var forgetting = new Array();\n'\
+            'var forget = function(address) {\n'\
+            '\tif(forgetting.indexOf(address) < 0) {\n'\
+            '\t\tforgetting.push(address);\n'\
+            '\t}\n'\
+            '};\n'\
+            'var labels = new Object();\n'\
+            'var label = function(address, note) {\n'\
+            '\tlabels[\'\' + address] = note;\n'\
+            '};\n'\
+            'var count = new Array();\n'\
+            'count[\'{{iter}}\'] = 0; //only header items containing {{iter}} or {{note}} will be copied\n'\
+            '{{endheader}}\n'\
+            'events.onexec(0x{{iter}}, function() {\n'\
+            '\tif(forgetting.indexOf(address) < 0) {\n'\
+            '\t\tvar note;\n'\
+            '\t\tif(labels.indexOf(\'{{iter}}\') < 0 && note != \'0x{{iter}}\') {\n'\
+            '\t\t\tnote = \': {{note}}\';\n'\
+            '\t\telse {\n'\
+            '\t\t\tnote = \': \' + labels[\'{{iter}}\'];\n'\
+            '\t\t}\n'\
+            '\t\tconsole.log(\'CPU executing 0x{{iter}}\' + note);\n'\
+            '\t\tconsole.log(\'Count: \' + ++count[\'{{iter}}\']);\n'\
+            '\t}\n'\
+            '});'
+        with open(basic_log_counter_script_file, 'w') as file:
+            file.write(basic_log_counter_script)
+
+
 # Setup app_config either fresh or from file
 if os.path.exists(CONFIG_FILE):
     try:
@@ -100,7 +175,10 @@ else:
 app_config['window_geometry'] = FRESH_APP_CONFIG['window_geometry']
 window.title('ROM Disassembler')
 window.geometry('{}+5+5'.format(app_config['window_geometry']))
-window.iconbitmap('n64_disassembler.ico')
+try:
+    window.tk.call('wm', 'iconbitmap', window._w, working_dir + 'n64_disassembler.ico')
+except:
+    print('Could not load n64_disassembler.ico. Defaulting to tkinter quill.')
 window.config(bg=app_config['window_background_colour'])
 
 
@@ -223,6 +301,14 @@ def get_text_content(handle):
     if '\n'.count(text_content) == max_lines:
         text_content = text_content[:-1]
     return text_content
+
+
+def tags_in_text(filter_text, text):
+    tags = filter_text.split(' ')
+    for tag in tags:
+        if tag not in text:
+            return False
+    return True
 
 
 def hex_space(string):
@@ -737,7 +823,7 @@ def apply_comment_changes():
         elif not split_text[i]:
             continue
 
-        if is_in_comments(string_key):
+        if string_key in disasm.comments:
             if split_text[i] == disasm.comments[string_key]:
                 continue
         disasm.comments[string_key] = split_text[i]
@@ -745,7 +831,7 @@ def apply_comment_changes():
         if comments_window:
             if hex_navi in addresses_dict:
                 comments_list.delete(addresses_dict[hex_navi])
-                if filtering in split_text[i].lower():
+                if tags_in_text(filtering, split_text[i].lower()):
                     comments_list.insert(addresses_dict[hex_navi], '{}: {}'.format(hex_navi, split_text[i]))
             else:
                 this_int_address = navi << 2
@@ -756,7 +842,7 @@ def apply_comment_changes():
                     if this_int_address < int_addresses[j]:
                         target = j
                         break
-                if filtering in split_text[i].lower():
+                if tags_in_text(filtering, split_text[i].lower()):
                     if target >= 0:
                         comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
                     else:
@@ -1443,7 +1529,7 @@ def save_changes_to_file(save_as=False):
 
 def destroy_them(not_main=False):
     global colours_window, jumps_window, comments_window, dimension_window, manual_cic_win
-    global changes_win, opcodes_win
+    global changes_win, opcodes_win, script_win
     if changes_win:
         changes_win.destroy()
         changes_win = None
@@ -1465,6 +1551,9 @@ def destroy_them(not_main=False):
     if opcodes_win:
         opcodes_win.destroy()
         opcodes_win = None
+    if script_win:
+        script_win.destroy()
+        script_win = None
     if not not_main:
         window.destroy()
 
@@ -1946,14 +2035,6 @@ def about_box():
     about.mainloop()
 
 
-def is_in_comments(key):
-    try:
-        _ = disasm.comments[key]
-        return True
-    except:
-        return False
-
-
 jumps_window = None
 function_list_box = None
 jump_list_box = None
@@ -2103,27 +2184,27 @@ def find_jumps(just_window=False):
     increment = -disasm.game_offset if disasm.game_address_mode else 0
     try:
         comment_key = str((deci(key[:8]) + increment) >> 2)
-    except ValueError:
+    except ValueError as e:
         # User attempting to get jumps from the top of the header
         return
+    is_in_comments = comment_key in disasm.comments
     for display_key in config:
         key_not_in_jumps_displaying = key_not_in_jumps_displaying and display_key[:19] != key
         if not key_not_in_jumps_displaying:
-            if is_in_comments(comment_key):
+            if is_in_comments:
                 new_key = key + ' ' + disasm.comments[comment_key]
             else:
                 new_key = key
             if new_key != display_key:
                 del jumps_displaying[display_key]
                 key_not_in_jumps_displaying = True
-                key = new_key
-    if not config:
-        if is_in_comments(comment_key):
-            key += ' {}'.format(disasm.comments[comment_key])
+                # key = new_key
+    if is_in_comments:
+        key += ' {}'.format(disasm.comments[comment_key])
     if key_not_in_jumps_displaying and jumps:
         for i in range(len(jumps)):
             comment_key = str((deci(jumps[i]) + increment) >> 2)
-            if is_in_comments(comment_key):
+            if comment_key in disasm.comments:
                 jumps[i] += ' ' + disasm.comments[comment_key]
         jumps_displaying[key] = jumps
         save_config()
@@ -2179,7 +2260,8 @@ def view_comments():
         if comments_window:
             comments_list.delete(0, tk.END)
             filtering = filter_text.get('1.0', tk.END).split('\n')[0].lower()
-            for key in sorted([int(key) for key in disasm.comments if filtering in disasm.comments[key].lower()]):
+            for key in sorted([int(key) for key in disasm.comments
+                               if tags_in_text(filtering, disasm.comments[key].lower())]):
                 comments_list.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi((key << 2) + increment()), 8),
                                                              disasm.comments[str(key)]))
 
@@ -2852,6 +2934,256 @@ def scour_changes():
         changes_win.mainloop()
 
 
+
+script_win = None
+def generate_script():
+    global script_win
+    if script_win:
+        script_win.focus_force()
+        return
+    script_win = tk.Tk()
+    script_win.title('Generate script')
+    script_win.geometry('900x666+50+50')  # not intentional
+    script_text_box = tk.Text(script_win, font=('Courier', 10))
+    batch_text = tk.Text(script_win, font=('Courier', 10))
+
+    def scriptify(text):
+        def replace_tags(line, iter_text, note_text):
+            try:
+                if not len(iter_text) == 8:
+                    raise Exception()
+                # Raises exception if the first 8 chars cannot be converted from hex to int
+                _ = deci(iter_text)
+            except:
+                msg = 'Unable to translate the address within the first 8 characters on this line: \n'\
+                      '{}'.format(iter_text + note_text)
+                simpledialog.messagebox._show('Error', msg, parent=script_win)
+                return
+            if not note_text:
+                note_text = '0x' + iter_text
+            return line.replace('{{iter}}', iter_text).replace('{{note}}', note_text)
+
+        split_text = text.split('\n')
+        batch = batch_text.get('1.0', tk.END)
+        if len(batch) == batch.count('\n'):
+            simpledialog.messagebox._show('Error', 'You need items in the batch. Try grouping '
+                                                   'some addresses by adding #groupname at the '
+                                                   'end of their comments.',
+                                          parent=script_win)
+            return
+        return_script = '\n'
+        batch = batch.split('\n')
+        header_items = []
+        if '{{header}}' in text:
+            if '{{endheader}}' not in text:
+                simpledialog.messagebox._show('Error', 'You need to close {{header}} with {{endheader}}',
+                                              parent=script_win)
+                return
+            in_header = False
+            popped = 0
+            iter_split_text = text.split('\n')
+            for i in range(len(iter_split_text)):
+                line = iter_split_text[i]
+                popeye = split_text.pop(i - popped)
+                popped += 1
+                if line:
+                    if line == '{{header}}':
+                        in_header = True
+                        continue
+                    if in_header:
+                        if line == '{{endheader}}':
+                            break
+                        else:
+                            if ('{{iter}}' in line or '{{note}}' in line) and not '\t' in line:
+                                header_items.append(popeye)
+                            else:
+                                return_script += line + '\n'
+        if header_items:
+            for script in header_items:
+                for b in batch:
+                    if not b:
+                        continue
+                    replaced = replace_tags(script, b[:8], b[10:])
+                    if not replaced:
+                        continue
+                    return_script += replaced + '\n'
+                return_script += '\n'
+            return_script += '\n'
+
+        for b in batch:
+            if not b:
+                continue
+            for script in split_text:
+                replaced = replace_tags(script, b[:8], b[10:])
+                if not replaced:
+                    continue
+                return_script += replaced + '\n'
+            return_script += '\n'
+
+        return return_script
+
+    def out_file_callback():
+        file_name = filedialog.asksaveasfilename(title='Select the directory and script name',
+                                                 initialdir=app_config['script_output_dir'],
+                                                 parent=script_win)
+        if not file_name:
+            return
+        file_name = os.path.realpath(file_name)
+        file_dir = file_name[:file_name.rfind('\\') + 1]
+        app_config['script_output_dir'] = file_dir
+        save_config()
+        scriptified_text = scriptify(script_text_box.get('1.0', tk.END))
+        if not scriptified_text:
+            return
+        with open(file_name, 'w') as script_file:
+            script_file.write(scriptified_text)
+
+    def help_button_callback():
+        msg = '\n'.join([
+            'You can create a script to apply the code you type in to every address in the batch. '
+            'You can write the script in any language you wish to. ',
+            'So you want to populate the batch with either the plus button or input your own addresses. '
+            'You can "group" your comments by adding hashtags to the end. (eg. Some comment #example group)',
+            'Basically, you only have to type out 1 instance of what you want to happen to each '
+            'address in the batch, but replace a few pieces with {{}} tags.',
+            '',
+            'Tags:',
+            '',
+            '{{iter}} - Used to return the address iterating upon (first 8 chars) within the batch.',
+            'Javascript example:',
+            'events.onexec(0x{{iter}}, function() {',
+            '  \tconsole.log(\'CPU is executing 0x{{iter}}\');',
+            '}',
+            '',
+            '{{note}} - Can be used instead of {{iter}} for string operations.',
+            'If no comment exists on that batch item (has less than 10 chars), it will translate to '
+            '"0xaddress", and if the comment contains certain symbols, they will be removed for the script.',
+            'Javascript example:',
+            'events.onexec(0x{{iter}}, function() {',
+            '  \tconsole.log(\'CPU is executing {{note}}\');',
+            '}',
+            '',
+            '{{header}} - Can be used to mark header items, such as var declaration. Must be closed with '
+            '{{endheader}}. You can also use {{iter}} or {{note}} in conjunction with header items. '
+            'Any line of code inside the header which doesn\'t contain {{iter}} or {{note}} will not '
+            'be copied for each batch item.',
+            'Javascript example:',
+            '{{header}}',
+            'var count = new Object(); //No tags = only one instance generated.',
+            'count[\'{{iter}}\'] = 0;',
+            'var note{{iter}} = "{{note}}";',
+            '{{endheader}}',
+            'events.onexec(0x{{iter}}, function() {',
+            '  \tconsole.log(\'CPU is executing \' + note{{iter}});',
+            '  \tconsole.log(\'Count: \' + ++count[\'{{iter}}\']);',
+            '}',
+            '',
+            'There are 2 example scripts inside your script templates folder. View them with "Load '
+            'script template", then see what the output script will be with "Generate and view script".'
+        ])
+        simpledialog.messagebox._show('Script help', msg, parent=script_win)
+
+    def plus_button_callback():
+        curselect = group_list_box.curselection()
+        if not curselect:
+            return
+        group_select = groups[group_list_box.get(curselect[0])]
+        current_batch_text = batch_text.get('1.0', tk.END)
+        if current_batch_text:
+            if not current_batch_text.count('\n') == len(current_batch_text):
+                if current_batch_text[-1] != '\n':
+                    batch_text.insert(tk.END, '\n')
+        for address in group_select:
+            batch_text.insert(tk.END, address)
+            comment_key = str((deci(address) - disasm.game_offset) >> 2)
+            if comment_key in disasm.comments:
+                batch_text.insert(tk.END, ': ' + disasm.comments[comment_key])
+            batch_text.insert(tk.END, '\n')
+
+    def view_test_callback():
+        scriptified = scriptify(script_text_box.get('1.0', tk.END))
+        if not scriptified:
+            return
+        test_win = tk.Tk()
+        test_win.title('Test script generation')
+        test_win.geometry('1000x500+50+50')
+        test_box = tk.Text(test_win)
+        test_box.place(x=5, y=5, width=990, height=490)
+        test_box.insert('1.0', scriptified)
+
+    def save_template_callback():
+        script = script_text_box.get('1.0', tk.END)
+        template_file_path = filedialog.asksaveasfilename(title='Save script template',
+                                                          initialdir=SCRIPTS_DIR,
+                                                          parent=script_win)
+        if not template_file_path:
+            return
+        template_file_path = os.path.realpath(template_file_path)
+        with open(template_file_path, 'w') as template_file:
+            template_file.write(script)
+
+    def load_template_callback():
+        template_file_path = filedialog.askopenfilename(title='Open script template',
+                                                        initialdir=SCRIPTS_DIR,
+                                                        parent=script_win)
+        if not template_file_path:
+            return
+        template_file_path = os.path.realpath(template_file_path)
+        with open(template_file_path, 'r') as template_file:
+            script_text_box.delete('1.0', tk.END)
+            script_text_box.insert('1.0', template_file.read())
+
+    groups = {}
+    def populate_list():
+        backup_groups = groups.copy()
+        for i in backup_groups:
+            del groups[i]
+        group_list_box.delete(0, tk.END)
+        for key in disasm.comments:
+            if '#' in disasm.comments[key]:
+                place = disasm.comments[key].rfind('#')
+                group = disasm.comments[key][place:]
+                address = extend_zeroes(hexi((int(key) << 2) + disasm.game_offset), 8)
+                if group in groups:
+                    groups[group].append(address)
+                else:
+                    groups[group] = [address]
+
+        [group_list_box.insert(tk.END, group) for group in groups]
+
+
+    help_button = tk.Button(script_win, text='?', command=help_button_callback)
+    plus_button = tk.Button(script_win, text='+', command=plus_button_callback)
+    out_file_button = tk.Button(script_win, text='Generate and save as', command=out_file_callback)
+    view_test = tk.Button(script_win, text='Generate and view script', command=view_test_callback)
+    save_template = tk.Button(script_win, text='Save script template', command=save_template_callback)
+    load_template = tk.Button(script_win, text='Load script template', command=load_template_callback)
+    group_list_box = tk.Listbox(script_win)
+    populate_list()
+
+    tk.Label(script_win, text='Groups').place(x=5, y=8)
+    tk.Button(script_win, text='Refresh', command=populate_list).place(x=60, y=5)
+    tk.Label(script_win, text='Batch').place(x=191, y=8)
+    tk.Label(script_win, text='Script').place(x=5, y=280-34)
+    help_button.place(x=869, y=274-34, width=25, height=25)
+    group_list_box.place(x=5, y=34, width=150, height=200)
+    plus_button.place(x=160, y=34, width=25, height=200)
+    batch_text.place(x=191, y=34, width=704, height=200)
+    out_file_button.place(x=100, y=274-34)
+    view_test.place(x=280, y=274-34)
+    save_template.place(x=460, y=274-34)
+    load_template.place(x=640, y=274-34)
+    script_text_box.place(x=5, y=305-34, width=890, height=390)
+
+    def script_win_equals_none():
+        global script_win
+        script_win.destroy()
+        script_win = None
+
+    script_win.protocol('WM_DELETE_WINDOW', script_win_equals_none)
+    script_win.mainloop()
+
+
 def tst():
     phrase = simpledialog.askstring('Find what','')
     if not phrase:
@@ -2891,6 +3223,7 @@ nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
 menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 
 tools_menu = tk.Menu(menu_bar, tearoff=0)
+tools_menu.add_command(label='Generate script for batch of addresses', command=generate_script)
 tools_menu.add_command(label='Set memory editor offset', command=set_mem_edit_offset)
 tools_menu.add_command(label='Scour hack for differences', command=scour_changes)
 tools_menu.add_command(label='Bypass CRC', command=bypass_crc)
