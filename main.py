@@ -1444,8 +1444,6 @@ def navigation_callback(address):
         widget.focus_force()
     try:
         address = deci(address)
-        if not address:
-            raise Exception()
         if disasm.game_address_mode:
             address -= disasm.game_offset
         address //= 4
@@ -1466,6 +1464,8 @@ def navigation_prompt(root=window):
     if not disassembler_loaded():
         return
     address = simpledialog.askstring('Navigate to address', '', parent=root)
+    if not address:
+        return
     navigation_callback(address)
 
 
