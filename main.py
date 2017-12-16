@@ -1444,6 +1444,8 @@ def navigation_callback(address):
         widget.focus_force()
     try:
         address = deci(address)
+        if not address:
+            raise Exception()
         if disasm.game_address_mode:
             address -= disasm.game_offset
         address //= 4
