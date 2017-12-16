@@ -1231,7 +1231,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             def replace_with_upper(event, cursor):
                 new_cursor = modify_cursor(cursor, 0, 1, get_text_content(hack_file_text_box))[0]
                 hack_file_text_box.delete(cursor, new_cursor)
-                hack_file_text_box.insert(cursor, event.keysym.upper())
+                hack_file_text_box.insert(cursor, event.char.upper())
             window.after(0, lambda: replace_with_upper(event, cursor))
 
     # Make delete do nothing if cursor precedes a new line
