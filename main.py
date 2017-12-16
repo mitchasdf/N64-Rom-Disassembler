@@ -3361,6 +3361,8 @@ def nav_button_callback():
         return
     try:
         clip_content = window.clipboard_get()
+        if not clip_content:
+            return
         navigation_callback(clip_content)
     except:
         ''
