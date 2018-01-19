@@ -1613,6 +1613,7 @@ def save_changes_to_file(save_as=False):
                 with open(_filename, 'w') as backup_comments_file:
                     with open(disasm.comments_file, 'r') as comments_file:
                         backup_comments_file.write(comments_file.read())
+                break
 
     try:
         with open(disasm.comments_file, 'w') as file:
@@ -1998,12 +1999,15 @@ def toggle_address_mode(buffering=True):
 
     def fix_listbox(listbox, see):
         list_contents = listbox.get(0, tk.END)
-        list_addresses = [deci(i[:8]) for i in list_contents]
-        realigned_addresses = [disasm.region_align(i) if toggle_to else disasm.region_unalign(i) for i in list_addresses]
-        addresses = [extend_zeroes(hexi(i + increment), 8) for i in realigned_addresses]
+        list_addresses = [deci(i[:8]) if i else 0 for i in list_contents]
+        realigned_addresses = [0 if not i else (disasm.region_align(i) if toggle_to else disasm.region_unalign(i)) for i in list_addresses]
+        addresses = [extend_zeroes(hexi(i + increment), 8) if i else '' for i in realigned_addresses]
         listbox.delete(0, tk.END)
         for i, address in enumerate(addresses):
-            listbox.insert(tk.END, '{}{}'.format(address, list_contents[i][8:]))
+            if address:
+                listbox.insert(tk.END, '{}{}'.format(address, list_contents[i][8:]))
+            else:
+                listbox.insert(tk.END, '')
         listbox.see(see)
 
     if comments_window:
