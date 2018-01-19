@@ -73,71 +73,26 @@ if not exists(SCRIPTS_DIR):
     os.mkdir(SCRIPTS_DIR)
     basic_break_script_file = SCRIPTS_DIR + 'Example Project64d breakpoint.txt'
     if not exists(basic_break_script_file):
-        basic_break_script = \
-            '{{header}}\n'\
-            'var counting = true;\n'\
-            'var count = function() {\n'\
-            '\tcounting = !counting;\n'\
-            '}\n'\
-            'var forgetting = new Array();\n'\
-            'var forget = function(address) {\n'\
-            '\tif(forgetting.indexOf(address) < 0) {\n'\
-            '\t\tforgetting.push(address);\n'\
-            '\t}\n'\
-            '};\n'\
-            'var labels = new Object();\n'\
-            'var label = function(address, note) {\n'\
-            '\tlabels[\'\' + address] = note;\n'\
-            '};\n'\
-            'var counter = new Object();\n'\
-            'counter[\'{{iter}}\'] = 0; //only header items containing iter or note will be copied\n'\
-            '{{endheader}}\n'\
-            'events.onexec(0x{{iter}}, function() {\n'\
-            '\tif(forgetting.indexOf(\'{{iter}}\') < 0) {\n'\
-            '\t\tvar note;\n'\
-            '\t\tif(labels.indexOf(\'{{iter}}\') < 0 && note != \'0x{{iter}}\') {\n'\
-            '\t\t\tnote = \': {{note}}\';\n'\
-            '\t\telse {\n'\
-            '\t\t\tnote = \': \' + labels[\'{{iter}}\'];\n'\
-            '\t\t}\n'\
-            '\t\tconsole.log(\'CPU attempt to execute 0x{{iter}}\' + note);\n'\
-            '\t\tif(counting) {\n'\
-            '\t\t\tconsole.log(\'Count: \' + ++counter[\'{{iter}}\']);\n'\
-            '\t\t}\n'\
-            '\t\tdebug.breakhere();\n'\
-            '\t}\n'\
+        basic_break_script = '\n'.join([
+            'events.onexec(0x{{iter}}, function() {',
+            '\tdebug.breakhere();',
             '});'
+        ])
         with open(basic_break_script_file, 'w') as file:
             file.write(basic_break_script)
     basic_log_counter_script_file = SCRIPTS_DIR + 'Example Project64d log counter.txt'
     if not exists(basic_log_counter_script_file):
-        basic_log_counter_script = \
-            '{{header}}\n'\
-            'var forgetting = new Array();\n'\
-            'var forget = function(address) {\n'\
-            '\tif(forgetting.indexOf(address) < 0) {\n'\
-            '\t\tforgetting.push(address);\n'\
-            '\t}\n'\
-            '};\n'\
-            'var labels = new Object();\n'\
-            'var label = function(address, note) {\n'\
-            '\tlabels[\'\' + address] = note;\n'\
-            '};\n'\
-            'var count = new Object();\n'\
-            'count[\'{{iter}}\'] = 0; //only header items containing iter or note will be copied\n'\
-            '{{endheader}}\n'\
-            'events.onexec(0x{{iter}}, function() {\n'\
-            '\tif(forgetting.indexOf(\'{{iter}}\') < 0) {\n'\
-            '\t\tvar note;\n'\
-            '\t\tif(labels.indexOf(\'{{iter}}\') < 0 && note != \'0x{{iter}}\') {\n'\
-            '\t\t\tnote = \': {{note}}\';\n'\
-            '\t\telse {\n'\
-            '\t\t\tnote = \': \' + labels[\'{{iter}}\'];\n'\
-            '\t\t}\n'\
-            '\t\tconsole.log(\'CPU executing 0x{{iter}}\' + note);\n'\
-            '\t\tconsole.log(\'Count: \' + ++count[\'{{iter}}\']);\n'\
-            '\t}\n'\
+        basic_log_counter_script = '\n'.join([
+            '{{header}}',
+            'var count = [];',
+            'count[\'{{iter}}\'] = 0; // only header items containing iter or note will be copied',
+            '{{endheader}}',
+            '',
+            'events.onexec(0x{{iter}}, function() {',
+            '\tconsole.log(\'Executing 0x{{iter}}: {{note}}\');',
+            '\tconsole.log(\'Count: \' + ++count[\'{{iter}}\']);',
             '});'
+        ])
         with open(basic_log_counter_script_file, 'w') as file:
             file.write(basic_log_counter_script)
 
