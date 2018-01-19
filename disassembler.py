@@ -158,7 +158,7 @@ REGISTERS = {
         'RA'
     ],
 
-    'FLOAT': ['F' + extend_zeroes(str(i), 2) for i in range(32)],
+    'FLOAT': ['F' + str(i) for i in range(32)],
 
     'CP0': [
         'INDEX',
@@ -680,9 +680,12 @@ class Disassembler:
         segment = self.hack_file[self.header_items['Game Offset'][0]: self.header_items['Game Offset'][1]]
         self.game_offset = int.from_bytes(segment, byteorder='big', signed=False) - 0x1000
         self.game_offset_unadjusted = self.game_offset + 0x1000
+        self.game_offset_4 = self.game_offset >> 2
 
         self.jumps_offset = (self.game_offset_unadjusted & 0xFFFFFF) - 0x1000
         self.jumps_offset_div_4 = self.jumps_offset >> 2
+
+        self.memory_regions = []
 
         self.game_address_mode = False
         self.immediate_identifier = '$'
@@ -742,277 +745,280 @@ class Disassembler:
 
         # Missing 0th to 5th bit OPCODES:  19, 28, 29, 30, 31, 54, 58, 59, 62
 
-        # Load and Store instructions
-        self.fit('LB',    [[OPCODE, 32], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LBU',   [[OPCODE, 36], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LD',    [[OPCODE, 55], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LDL',   [[OPCODE, 26], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LDR',   [[OPCODE, 27], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LH',    [[OPCODE, 33], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LHU',   [[OPCODE, 37], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LL',    [[OPCODE, 48], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LLD',   [[OPCODE, 52], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LW',    [[OPCODE, 35], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LWL',   [[OPCODE, 34], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LWR',   [[OPCODE, 38], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('LWU',   [[OPCODE, 39], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SB',    [[OPCODE, 40], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SC',    [[OPCODE, 56], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SCD',   [[OPCODE, 60], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SD',    [[OPCODE, 63], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SDL',   [[OPCODE, 44], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SDR',   [[OPCODE, 45], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SH',    [[OPCODE, 41], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SW',    [[OPCODE, 43], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SWL',   [[OPCODE, 42], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SWR',   [[OPCODE, 46], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-        self.fit('SYNC',  [[OPCODE, 0], 20, [OPCODE, 15]],      [])
+        # So my IDE will allow me to collapse this section
+        if True:
 
-        # Arithmetic Instructions
-        self.fit('ADD',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 32]],  [RD, RS, RT])
-        self.fit('ADDI',    [[OPCODE, 8], RS, RT, IMMEDIATE],            [RT, RS, IMMEDIATE])
-        self.fit('ADDIU',   [[OPCODE, 9], RS, RT, IMMEDIATE],            [RT, RS, IMMEDIATE])
-        self.fit('ADDU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 33]],  [RD, RS, RT])
-        self.fit('AND',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 36]],  [RD, RS, RT])
-        self.fit('ANDI',    [[OPCODE, 12], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
-        self.fit('DADD',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 44]],  [RD, RS, RT])
-        self.fit('DADDI',   [[OPCODE, 24], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
-        self.fit('DADDIU',  [[OPCODE, 25], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
-        self.fit('DADDU',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 45]],  [RD, RS, RT])
-        self.fit('DDIV',    [[OPCODE, 0], RS, RT, 10, [OPCODE, 30]],     [RS, RT])
-        self.fit('DDIVU',   [[OPCODE, 0], RS, RT, 10, [OPCODE, 31]],     [RS, RT])
-        self.fit('DIV',     [[OPCODE, 0], RS, RT, 10, [OPCODE, 26]],     [RS, RT])
-        self.fit('DIVU',    [[OPCODE, 0], RS, RT, 10, [OPCODE, 27]],     [RS, RT])
-        self.fit('DMULT',   [[OPCODE, 0], RS, RT, 10, [OPCODE, 28]],     [RS, RT])
-        self.fit('DMULTU',  [[OPCODE, 0], RS, RT, 10, [OPCODE, 29]],     [RS, RT])
-        self.fit('DSLL',    [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 56]],  [RD, RT, SA])
-        self.fit('DSLL32',  [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 60]],  [RD, RT, SA])
-        self.fit('DSLLV',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 20]],  [RD, RT, RS])
-        self.fit('DSRA',    [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 59]],  [RD, RT, SA])
-        self.fit('DSRA32',  [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 63]],  [RD, RT, SA])
-        self.fit('DSRAV',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 23]],  [RD, RT, RS])
-        self.fit('DSRL',    [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 58]],  [RD, RT, SA])
-        self.fit('DSRL32',  [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 62]],  [RD, RT, SA])
-        self.fit('DSRLV',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 22]],  [RD, RT, RS])
-        self.fit('DSUB',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 46]],  [RD, RS, RT])
-        self.fit('DSUBU',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 47]],  [RD, RS, RT])
-        self.fit('LUI',     [[OPCODE, 15], 5, RT, IMMEDIATE],            [RT, IMMEDIATE])
-        self.fit('MFHI',    [[OPCODE, 0], 5, 5, RD, 5, [OPCODE, 16]],    [RD])
-        self.fit('MFLO',    [[OPCODE, 0], 5, 5, RD, 5, [OPCODE, 18]],    [RD])
-        self.fit('MTHI',    [[OPCODE, 0], RS, 15, [OPCODE, 17]],         [RS])
-        self.fit('MTLO',    [[OPCODE, 0], RS, 15, [OPCODE, 19]],         [RS])
-        self.fit('MULT',    [[OPCODE, 0], RS, RT, 10, [OPCODE, 24]],     [RS, RT])
-        self.fit('MULTU',   [[OPCODE, 0], RS, RT, 10, [OPCODE, 25]],     [RS, RT])
-        self.fit('NOR',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 39]],  [RD, RS, RT])
-        self.fit('OR',      [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 37]],  [RD, RS, RT])
-        self.fit('ORI',     [[OPCODE, 13], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
-        self.fit('SLL',     [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 0]],   [RD, RT, SA])
-        self.fit('SLLV',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 4]],   [RD, RT, RS])
-        self.fit('SLT',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 42]],  [RD, RS, RT])
-        self.fit('SLTI',    [[OPCODE, 10], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
-        self.fit('SLTIU',   [[OPCODE, 11], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
-        self.fit('SLTU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 43]],  [RD, RS, RT])
-        self.fit('SRA',     [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 3]],   [RD, RT, SA])
-        self.fit('SRAV',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 7]],   [RD, RT, RS])
-        self.fit('SRL',     [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 2]],   [RD, RT, SA])
-        self.fit('SRLV',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 6]],   [RD, RT, RS])
-        self.fit('SUB',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 34]],  [RD, RS, RT])
-        self.fit('SUBU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 35]],  [RD, RS, RT])
-        self.fit('XOR',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 38]],  [RD, RS, RT])
-        self.fit('XORI',    [[OPCODE, 14], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            # Load and Store instructions
+            self.fit('LB',    [[OPCODE, 32], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LBU',   [[OPCODE, 36], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LD',    [[OPCODE, 55], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LDL',   [[OPCODE, 26], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LDR',   [[OPCODE, 27], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LH',    [[OPCODE, 33], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LHU',   [[OPCODE, 37], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LL',    [[OPCODE, 48], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LLD',   [[OPCODE, 52], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LW',    [[OPCODE, 35], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LWL',   [[OPCODE, 34], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LWR',   [[OPCODE, 38], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LWU',   [[OPCODE, 39], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('SB',    [[OPCODE, 40], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('SC',    [[OPCODE, 56], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('SCD',   [[OPCODE, 60], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('SD',    [[OPCODE, 63], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('SDL',   [[OPCODE, 44], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('SDR',   [[OPCODE, 45], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('SH',    [[OPCODE, 41], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('SW',    [[OPCODE, 43], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('SWL',   [[OPCODE, 42], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('SWR',   [[OPCODE, 46], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('SYNC',  [[OPCODE, 0], 20, [OPCODE, 15]],      [])
 
-        # Jump and Branch Instructions
-        self.fit('BEQ',      [[OPCODE, 4], RS, RT, OFFSET],             [RS, RT, OFFSET])
-        self.fit('BEQL',     [[OPCODE, 20], RS, RT, OFFSET],            [RS, RT, OFFSET])
-        self.fit('BGEZ',     [[OPCODE, 1], RS, [FMT, 1], OFFSET],       [RS, OFFSET])
-        self.fit('BGEZAL',   [[OPCODE, 1], RS, [FMT, 17], OFFSET],      [RS, OFFSET])
-        self.fit('BGEZALL',  [[OPCODE, 1], RS, [FMT, 19], OFFSET],      [RS, OFFSET])
-        self.fit('BGEZL',    [[OPCODE, 1], RS, [FMT, 3], OFFSET],       [RS, OFFSET])
-        self.fit('BGTZ',     [[OPCODE, 7], RS, 5, OFFSET],              [RS, OFFSET])
-        self.fit('BGTZL',    [[OPCODE, 23], RS, 5, OFFSET],             [RS, OFFSET])
-        self.fit('BLEZ',     [[OPCODE, 6], RS, 5, OFFSET],              [RS, OFFSET])
-        self.fit('BLEZL',    [[OPCODE, 22], RS, 5, OFFSET],             [RS, OFFSET])
-        self.fit('BLTZ',     [[OPCODE, 1], RS, 5, OFFSET],              [RS, OFFSET])
-        self.fit('BLTZAL',   [[OPCODE, 1], RS, [FMT, 16], OFFSET],      [RS, OFFSET])
-        self.fit('BLTZALL',  [[OPCODE, 1], RS, [FMT, 18], OFFSET],      [RS, OFFSET])
-        self.fit('BLTZL',    [[OPCODE, 1], RS, [FMT, 2], OFFSET],       [RS, OFFSET])
-        self.fit('BNEL',     [[OPCODE, 21], RS, RT, OFFSET],            [RS, RT, OFFSET])
-        self.fit('BNE',      [[OPCODE, 5], RS, RT, OFFSET],             [RS, RT, OFFSET])
-        self.fit('J',        [[OPCODE, 2], ADDRESS],                    [ADDRESS])
-        self.fit('JAL',      [[OPCODE, 3], ADDRESS],                    [ADDRESS])
-        self.fit('JALR',     [[OPCODE, 0], RS, 5, RD, 5, [OPCODE, 9]],  [RD, RS])
-        self.fit('JR',       [[OPCODE, 0], RS, 15, [OPCODE, 8]],        [RS])
+            # Arithmetic Instructions
+            self.fit('ADD',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 32]],  [RD, RS, RT])
+            self.fit('ADDI',    [[OPCODE, 8], RS, RT, IMMEDIATE],            [RT, RS, IMMEDIATE])
+            self.fit('ADDIU',   [[OPCODE, 9], RS, RT, IMMEDIATE],            [RT, RS, IMMEDIATE])
+            self.fit('ADDU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 33]],  [RD, RS, RT])
+            self.fit('AND',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 36]],  [RD, RS, RT])
+            self.fit('ANDI',    [[OPCODE, 12], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            self.fit('DADD',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 44]],  [RD, RS, RT])
+            self.fit('DADDI',   [[OPCODE, 24], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            self.fit('DADDIU',  [[OPCODE, 25], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            self.fit('DADDU',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 45]],  [RD, RS, RT])
+            self.fit('DDIV',    [[OPCODE, 0], RS, RT, 10, [OPCODE, 30]],     [RS, RT])
+            self.fit('DDIVU',   [[OPCODE, 0], RS, RT, 10, [OPCODE, 31]],     [RS, RT])
+            self.fit('DIV',     [[OPCODE, 0], RS, RT, 10, [OPCODE, 26]],     [RS, RT])
+            self.fit('DIVU',    [[OPCODE, 0], RS, RT, 10, [OPCODE, 27]],     [RS, RT])
+            self.fit('DMULT',   [[OPCODE, 0], RS, RT, 10, [OPCODE, 28]],     [RS, RT])
+            self.fit('DMULTU',  [[OPCODE, 0], RS, RT, 10, [OPCODE, 29]],     [RS, RT])
+            self.fit('DSLL',    [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 56]],  [RD, RT, SA])
+            self.fit('DSLL32',  [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 60]],  [RD, RT, SA])
+            self.fit('DSLLV',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 20]],  [RD, RT, RS])
+            self.fit('DSRA',    [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 59]],  [RD, RT, SA])
+            self.fit('DSRA32',  [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 63]],  [RD, RT, SA])
+            self.fit('DSRAV',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 23]],  [RD, RT, RS])
+            self.fit('DSRL',    [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 58]],  [RD, RT, SA])
+            self.fit('DSRL32',  [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 62]],  [RD, RT, SA])
+            self.fit('DSRLV',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 22]],  [RD, RT, RS])
+            self.fit('DSUB',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 46]],  [RD, RS, RT])
+            self.fit('DSUBU',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 47]],  [RD, RS, RT])
+            self.fit('LUI',     [[OPCODE, 15], 5, RT, IMMEDIATE],            [RT, IMMEDIATE])
+            self.fit('MFHI',    [[OPCODE, 0], 5, 5, RD, 5, [OPCODE, 16]],    [RD])
+            self.fit('MFLO',    [[OPCODE, 0], 5, 5, RD, 5, [OPCODE, 18]],    [RD])
+            self.fit('MTHI',    [[OPCODE, 0], RS, 15, [OPCODE, 17]],         [RS])
+            self.fit('MTLO',    [[OPCODE, 0], RS, 15, [OPCODE, 19]],         [RS])
+            self.fit('MULT',    [[OPCODE, 0], RS, RT, 10, [OPCODE, 24]],     [RS, RT])
+            self.fit('MULTU',   [[OPCODE, 0], RS, RT, 10, [OPCODE, 25]],     [RS, RT])
+            self.fit('NOR',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 39]],  [RD, RS, RT])
+            self.fit('OR',      [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 37]],  [RD, RS, RT])
+            self.fit('ORI',     [[OPCODE, 13], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            self.fit('SLL',     [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 0]],   [RD, RT, SA])
+            self.fit('SLLV',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 4]],   [RD, RT, RS])
+            self.fit('SLT',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 42]],  [RD, RS, RT])
+            self.fit('SLTI',    [[OPCODE, 10], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            self.fit('SLTIU',   [[OPCODE, 11], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            self.fit('SLTU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 43]],  [RD, RS, RT])
+            self.fit('SRA',     [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 3]],   [RD, RT, SA])
+            self.fit('SRAV',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 7]],   [RD, RT, RS])
+            self.fit('SRL',     [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 2]],   [RD, RT, SA])
+            self.fit('SRLV',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 6]],   [RD, RT, RS])
+            self.fit('SUB',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 34]],  [RD, RS, RT])
+            self.fit('SUBU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 35]],  [RD, RS, RT])
+            self.fit('XOR',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 38]],  [RD, RS, RT])
+            self.fit('XORI',    [[OPCODE, 14], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
 
-        # Special Instructions
-        self.fit('BREAK',    [[OPCODE, 0], CODE_20, [OPCODE, 13]],  [CODE_20])
-        self.fit('SYSCALL',  [[OPCODE, 0], CODE_20, [OPCODE, 12]],  [CODE_20])
+            # Jump and Branch Instructions
+            self.fit('BEQ',      [[OPCODE, 4], RS, RT, OFFSET],             [RS, RT, OFFSET])
+            self.fit('BEQL',     [[OPCODE, 20], RS, RT, OFFSET],            [RS, RT, OFFSET])
+            self.fit('BGEZ',     [[OPCODE, 1], RS, [FMT, 1], OFFSET],       [RS, OFFSET])
+            self.fit('BGEZAL',   [[OPCODE, 1], RS, [FMT, 17], OFFSET],      [RS, OFFSET])
+            self.fit('BGEZALL',  [[OPCODE, 1], RS, [FMT, 19], OFFSET],      [RS, OFFSET])
+            self.fit('BGEZL',    [[OPCODE, 1], RS, [FMT, 3], OFFSET],       [RS, OFFSET])
+            self.fit('BGTZ',     [[OPCODE, 7], RS, 5, OFFSET],              [RS, OFFSET])
+            self.fit('BGTZL',    [[OPCODE, 23], RS, 5, OFFSET],             [RS, OFFSET])
+            self.fit('BLEZ',     [[OPCODE, 6], RS, 5, OFFSET],              [RS, OFFSET])
+            self.fit('BLEZL',    [[OPCODE, 22], RS, 5, OFFSET],             [RS, OFFSET])
+            self.fit('BLTZ',     [[OPCODE, 1], RS, 5, OFFSET],              [RS, OFFSET])
+            self.fit('BLTZAL',   [[OPCODE, 1], RS, [FMT, 16], OFFSET],      [RS, OFFSET])
+            self.fit('BLTZALL',  [[OPCODE, 1], RS, [FMT, 18], OFFSET],      [RS, OFFSET])
+            self.fit('BLTZL',    [[OPCODE, 1], RS, [FMT, 2], OFFSET],       [RS, OFFSET])
+            self.fit('BNEL',     [[OPCODE, 21], RS, RT, OFFSET],            [RS, RT, OFFSET])
+            self.fit('BNE',      [[OPCODE, 5], RS, RT, OFFSET],             [RS, RT, OFFSET])
+            self.fit('J',        [[OPCODE, 2], ADDRESS],                    [ADDRESS])
+            self.fit('JAL',      [[OPCODE, 3], ADDRESS],                    [ADDRESS])
+            self.fit('JALR',     [[OPCODE, 0], RS, 5, RD, 5, [OPCODE, 9]],  [RD, RS])
+            self.fit('JR',       [[OPCODE, 0], RS, 15, [OPCODE, 8]],        [RS])
 
-        # Exception Instructions
-        self.fit('TEQ',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 52]],  [CODE_10, RS, RT])
-        self.fit('TEQI',   [[OPCODE, 1], RS, [FMT, 12], IMMEDIATE],       [RS, IMMEDIATE])
-        self.fit('TGE',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 48]],  [CODE_10, RS, RT])
-        self.fit('TGEI',   [[OPCODE, 1], RS, [FMT, 8], IMMEDIATE],        [RS, IMMEDIATE])
-        self.fit('TGEIU',  [[OPCODE, 1], RS, [FMT, 9], IMMEDIATE],        [RS, IMMEDIATE])
-        self.fit('TGEU',   [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 49]],  [CODE_10, RS, RT])
-        self.fit('TLT',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 50]],  [CODE_10, RS, RT])
-        self.fit('TLTI',   [[OPCODE, 1], RS, [FMT, 10], IMMEDIATE],       [RS, IMMEDIATE])
-        self.fit('TLTIU',  [[OPCODE, 1], RS, [FMT, 11], IMMEDIATE],       [RS, IMMEDIATE])
-        self.fit('TLTU',   [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 51]],  [CODE_10, RS, RT])
-        self.fit('TNE',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 54]],  [CODE_10, RS, RT])
-        self.fit('TNEI',   [[OPCODE, 1], RS, [FMT, 14], IMMEDIATE],       [RS, IMMEDIATE])
+            # Special Instructions
+            self.fit('BREAK',    [[OPCODE, 0], CODE_20, [OPCODE, 13]],  [CODE_20])
+            self.fit('SYSCALL',  [[OPCODE, 0], CODE_20, [OPCODE, 12]],  [CODE_20])
 
-        # System Control Processor (COP0) Instructions
-        self.fit('CACHE',  [[OPCODE, 47], BASE, OP, IMMEDIATE],                     [OP, IMMEDIATE, BASE])
-        self.fit('DMFC0',  [[OPCODE, 16], [EX_OPCODE, 1], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
-        self.fit('DMTC0',  [[OPCODE, 16], [EX_OPCODE, 5], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
-        self.fit('ERET',   [[OPCODE, 16], CO, 19, [OPCODE, 24]],                    [])
-        self.fit('MFC0',   [[OPCODE, 16], [EX_OPCODE, 0], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
-        self.fit('MTC0',   [[OPCODE, 16], [EX_OPCODE, 4], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
-        self.fit('TLBP',   [[OPCODE, 16], CO, 19, [OPCODE, 8]],                     [])
-        self.fit('TLBR',   [[OPCODE, 16], CO, 19, [OPCODE, 1]],                     [])
-        self.fit('TLBWI',  [[OPCODE, 16], CO, 19, [OPCODE, 2]],                     [])
-        self.fit('TLBWR',  [[OPCODE, 16], CO, 19, [OPCODE, 6]],                     [])
+            # Exception Instructions
+            self.fit('TEQ',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 52]],  [CODE_10, RS, RT])
+            self.fit('TEQI',   [[OPCODE, 1], RS, [FMT, 12], IMMEDIATE],       [RS, IMMEDIATE])
+            self.fit('TGE',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 48]],  [CODE_10, RS, RT])
+            self.fit('TGEI',   [[OPCODE, 1], RS, [FMT, 8], IMMEDIATE],        [RS, IMMEDIATE])
+            self.fit('TGEIU',  [[OPCODE, 1], RS, [FMT, 9], IMMEDIATE],        [RS, IMMEDIATE])
+            self.fit('TGEU',   [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 49]],  [CODE_10, RS, RT])
+            self.fit('TLT',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 50]],  [CODE_10, RS, RT])
+            self.fit('TLTI',   [[OPCODE, 1], RS, [FMT, 10], IMMEDIATE],       [RS, IMMEDIATE])
+            self.fit('TLTIU',  [[OPCODE, 1], RS, [FMT, 11], IMMEDIATE],       [RS, IMMEDIATE])
+            self.fit('TLTU',   [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 51]],  [CODE_10, RS, RT])
+            self.fit('TNE',    [[OPCODE, 0], RS, RT, CODE_10, [OPCODE, 54]],  [CODE_10, RS, RT])
+            self.fit('TNEI',   [[OPCODE, 1], RS, [FMT, 14], IMMEDIATE],       [RS, IMMEDIATE])
 
-        # Floating-point Unit (COP1) Instructions
-        # These, instead of having OPCODE as the final segment, should be [ES, 3], [COND, (0 to 15 for each code)]
-        # But changing it to what I have optimises it slightly
-        self.fit('C.F.S',     [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 48]],  [FS, FT])
-        self.fit('C.UN.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 49]],  [FS, FT])
-        self.fit('C.EQ.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 50]],  [FS, FT])
-        self.fit('C.UEQ.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 51]],  [FS, FT])
-        self.fit('C.OLT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 52]],  [FS, FT])
-        self.fit('C.ULT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 53]],  [FS, FT])
-        self.fit('C.OLE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 54]],  [FS, FT])
-        self.fit('C.ULE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 55]],  [FS, FT])
-        self.fit('C.SF.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 56]],  [FS, FT])
-        self.fit('C.NGLE.S',  [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 57]],  [FS, FT])
-        self.fit('C.SEQ.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 58]],  [FS, FT])
-        self.fit('C.NGL.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 59]],  [FS, FT])
-        self.fit('C.LT.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 60]],  [FS, FT])
-        self.fit('C.NGE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 61]],  [FS, FT])
-        self.fit('C.LE.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 62]],  [FS, FT])
-        self.fit('C.NGT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 63]],  [FS, FT])
-        self.fit('C.F.D',     [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 48]],  [FS, FT])
-        self.fit('C.UN.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 49]],  [FS, FT])
-        self.fit('C.EQ.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 50]],  [FS, FT])
-        self.fit('C.UEQ.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 51]],  [FS, FT])
-        self.fit('C.OLT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 52]],  [FS, FT])
-        self.fit('C.ULT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 53]],  [FS, FT])
-        self.fit('C.OLE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 54]],  [FS, FT])
-        self.fit('C.ULE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 55]],  [FS, FT])
-        self.fit('C.SF.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 56]],  [FS, FT])
-        self.fit('C.NGLE.D',  [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 57]],  [FS, FT])
-        self.fit('C.SEQ.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 58]],  [FS, FT])
-        self.fit('C.NGL.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 59]],  [FS, FT])
-        self.fit('C.LT.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 60]],  [FS, FT])
-        self.fit('C.NGE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 61]],  [FS, FT])
-        self.fit('C.LE.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 62]],  [FS, FT])
-        self.fit('C.NGT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 63]],  [FS, FT])
+            # System Control Processor (COP0) Instructions
+            self.fit('CACHE',  [[OPCODE, 47], BASE, OP, IMMEDIATE],                     [OP, IMMEDIATE, BASE])
+            self.fit('DMFC0',  [[OPCODE, 16], [EX_OPCODE, 1], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
+            self.fit('DMTC0',  [[OPCODE, 16], [EX_OPCODE, 5], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
+            self.fit('ERET',   [[OPCODE, 16], CO, 19, [OPCODE, 24]],                    [])
+            self.fit('MFC0',   [[OPCODE, 16], [EX_OPCODE, 0], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
+            self.fit('MTC0',   [[OPCODE, 16], [EX_OPCODE, 4], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
+            self.fit('TLBP',   [[OPCODE, 16], CO, 19, [OPCODE, 8]],                     [])
+            self.fit('TLBR',   [[OPCODE, 16], CO, 19, [OPCODE, 1]],                     [])
+            self.fit('TLBWI',  [[OPCODE, 16], CO, 19, [OPCODE, 2]],                     [])
+            self.fit('TLBWR',  [[OPCODE, 16], CO, 19, [OPCODE, 6]],                     [])
 
-        # Floating-point Unit (COP1) Instructions continued...
-        self.fit('ABS.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 5]],   [FD, FS])
-        self.fit('ABS.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 5]],   [FD, FS])
-        self.fit('ADD.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 0]],  [FD, FS, FT])
-        self.fit('ADD.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 0]],  [FD, FS, FT])
-        self.fit('BC1F',       [[OPCODE, 17], [FMT, 8], [FMT, 0], OFFSET],          [OFFSET])
-        self.fit('BC1FL',      [[OPCODE, 17], [FMT, 8], [FMT, 2], OFFSET],          [OFFSET])
-        self.fit('BC1T',       [[OPCODE, 17], [FMT, 8], [FMT, 1], OFFSET],          [OFFSET])
-        self.fit('BC1TL',      [[OPCODE, 17], [FMT, 8], [FMT, 3], OFFSET],          [OFFSET])
-        self.fit('CEIL.L.S',   [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 10]],  [FD, FS])
-        self.fit('CEIL.L.D',   [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 10]],  [FD, FS])
-        self.fit('CEIL.W.S',   [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 14]],  [FD, FS])
-        self.fit('CEIL.W.D',   [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 14]],  [FD, FS])
-        self.fit('CFC1',       [[OPCODE, 17], [FMT, 2], RT, FS, 11],                [RT, FS])
-        self.fit('CTC1',       [[OPCODE, 17], [FMT, 6], RT, FS, 11],                [RT, FS])
-        self.fit('CVT.D.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 33]],  [FD, FS])
-        self.fit('CVT.D.W',    [[OPCODE, 17], [FMT, 20], 5, FS, FD, [OPCODE, 33]],  [FD, FS])
-        self.fit('CVT.D.L',    [[OPCODE, 17], [FMT, 21], 5, FS, FD, [OPCODE, 33]],  [FD, FS])
-        self.fit('CVT.L.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 37]],  [FD, FS])
-        self.fit('CVT.L.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 37]],  [FD, FS])
-        self.fit('CVT.S.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 32]],  [FD, FS])
-        self.fit('CVT.S.W',    [[OPCODE, 17], [FMT, 20], 5, FS, FD, [OPCODE, 32]],  [FD, FS])
-        self.fit('CVT.S.L',    [[OPCODE, 17], [FMT, 21], 5, FS, FD, [OPCODE, 32]],  [FD, FS])
-        self.fit('CVT.W.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 36]],  [FD, FS])
-        self.fit('CVT.W.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 36]],  [FD, FS])
-        self.fit('DIV.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 3]],  [FD, FS, FT])
-        self.fit('DIV.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 3]],  [FD, FS, FT])
-        self.fit('DMFC1',      [[OPCODE, 17], [FMT, 1], RT, FS, 11],                [RT, FS])
-        self.fit('DMTC1',      [[OPCODE, 17], [FMT, 5], RT, FS, 11],                [RT, FS])
-        self.fit('FLOOR.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 11]],  [FD, FS])
-        self.fit('FLOOR.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 11]],  [FD, FS])
-        self.fit('FLOOR.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 15]],  [FD, FS])
-        self.fit('FLOOR.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 15]],  [FD, FS])
-        self.fit('LDC1',       [[OPCODE, 53], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
-        self.fit('LWC1',       [[OPCODE, 49], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
-        self.fit('MFC1',       [[OPCODE, 17], [FMT, 0], RT, FS, 11],                [RT, FS])
-        self.fit('MOV.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 6]],   [FD, FS])
-        self.fit('MOV.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 6]],   [FD, FS])
-        self.fit('MTC1',       [[OPCODE, 17], [FMT, 4], RT, FS, 11],                [RT, FS])
-        self.fit('MUL.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 2]],  [FD, FS, FT])
-        self.fit('MUL.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 2]],  [FD, FS, FT])
-        self.fit('NEG.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 7]],   [FD, FS])
-        self.fit('NEG.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 7]],   [FD, FS])
-        self.fit('ROUND.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 8]],   [FD, FS])
-        self.fit('ROUND.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 8]],   [FD, FS])
-        self.fit('ROUND.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 12]],  [FD, FS])
-        self.fit('ROUND.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 12]],  [FD, FS])
-        self.fit('SDC1',       [[OPCODE, 61], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
-        self.fit('SQRT.S',     [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 4]],   [FD, FS])
-        self.fit('SQRT.D',     [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 4]],   [FD, FS])
-        self.fit('SUB.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 1]],  [FD, FS, FT])
-        self.fit('SUB.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 1]],  [FD, FS, FT])
-        self.fit('SWC1',       [[OPCODE, 57], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
-        self.fit('TRUNC.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 9]],   [FD, FS])
-        self.fit('TRUNC.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 9]],   [FD, FS])
-        self.fit('TRUNC.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 13]],  [FD, FS])
-        self.fit('TRUNC.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 13]],  [FD, FS])
+            # Floating-point Unit (COP1) Instructions
+            # These, instead of having OPCODE as the final segment, should be [ES, 3], [COND, (0 to 15 for each code)]
+            # But changing it to what I have optimises it slightly
+            self.fit('C.F.S',     [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 48]],  [FS, FT])
+            self.fit('C.UN.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 49]],  [FS, FT])
+            self.fit('C.EQ.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 50]],  [FS, FT])
+            self.fit('C.UEQ.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 51]],  [FS, FT])
+            self.fit('C.OLT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 52]],  [FS, FT])
+            self.fit('C.ULT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 53]],  [FS, FT])
+            self.fit('C.OLE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 54]],  [FS, FT])
+            self.fit('C.ULE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 55]],  [FS, FT])
+            self.fit('C.SF.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 56]],  [FS, FT])
+            self.fit('C.NGLE.S',  [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 57]],  [FS, FT])
+            self.fit('C.SEQ.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 58]],  [FS, FT])
+            self.fit('C.NGL.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 59]],  [FS, FT])
+            self.fit('C.LT.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 60]],  [FS, FT])
+            self.fit('C.NGE.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 61]],  [FS, FT])
+            self.fit('C.LE.S',    [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 62]],  [FS, FT])
+            self.fit('C.NGT.S',   [[OPCODE, 17], [FMT, 16], FT, FS, 5, [OPCODE, 63]],  [FS, FT])
+            self.fit('C.F.D',     [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 48]],  [FS, FT])
+            self.fit('C.UN.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 49]],  [FS, FT])
+            self.fit('C.EQ.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 50]],  [FS, FT])
+            self.fit('C.UEQ.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 51]],  [FS, FT])
+            self.fit('C.OLT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 52]],  [FS, FT])
+            self.fit('C.ULT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 53]],  [FS, FT])
+            self.fit('C.OLE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 54]],  [FS, FT])
+            self.fit('C.ULE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 55]],  [FS, FT])
+            self.fit('C.SF.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 56]],  [FS, FT])
+            self.fit('C.NGLE.D',  [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 57]],  [FS, FT])
+            self.fit('C.SEQ.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 58]],  [FS, FT])
+            self.fit('C.NGL.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 59]],  [FS, FT])
+            self.fit('C.LT.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 60]],  [FS, FT])
+            self.fit('C.NGE.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 61]],  [FS, FT])
+            self.fit('C.LE.D',    [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 62]],  [FS, FT])
+            self.fit('C.NGT.D',   [[OPCODE, 17], [FMT, 17], FT, FS, 5, [OPCODE, 63]],  [FS, FT])
 
-        # Vector Load/Store
-        # Opcode 50 and 51 may or may not need swapping
-        # self.fit('LBV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('LSV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('LLV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('LDV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('LQV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('LRV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('LPV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('LUV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('LHV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('LFV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('LWV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('LTV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('SBV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('SSV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('SLV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('SDV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('SQV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('SRV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('SPV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('SUV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('SHV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('SFV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('SWV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-        # self.fit('STV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # Floating-point Unit (COP1) Instructions continued...
+            self.fit('ABS.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 5]],   [FD, FS])
+            self.fit('ABS.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 5]],   [FD, FS])
+            self.fit('ADD.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 0]],  [FD, FS, FT])
+            self.fit('ADD.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 0]],  [FD, FS, FT])
+            self.fit('BC1F',       [[OPCODE, 17], [FMT, 8], [FMT, 0], OFFSET],          [OFFSET])
+            self.fit('BC1FL',      [[OPCODE, 17], [FMT, 8], [FMT, 2], OFFSET],          [OFFSET])
+            self.fit('BC1T',       [[OPCODE, 17], [FMT, 8], [FMT, 1], OFFSET],          [OFFSET])
+            self.fit('BC1TL',      [[OPCODE, 17], [FMT, 8], [FMT, 3], OFFSET],          [OFFSET])
+            self.fit('CEIL.L.S',   [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 10]],  [FD, FS])
+            self.fit('CEIL.L.D',   [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 10]],  [FD, FS])
+            self.fit('CEIL.W.S',   [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 14]],  [FD, FS])
+            self.fit('CEIL.W.D',   [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 14]],  [FD, FS])
+            self.fit('CFC1',       [[OPCODE, 17], [FMT, 2], RT, FS, 11],                [RT, FS])
+            self.fit('CTC1',       [[OPCODE, 17], [FMT, 6], RT, FS, 11],                [RT, FS])
+            self.fit('CVT.D.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 33]],  [FD, FS])
+            self.fit('CVT.D.W',    [[OPCODE, 17], [FMT, 20], 5, FS, FD, [OPCODE, 33]],  [FD, FS])
+            self.fit('CVT.D.L',    [[OPCODE, 17], [FMT, 21], 5, FS, FD, [OPCODE, 33]],  [FD, FS])
+            self.fit('CVT.L.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 37]],  [FD, FS])
+            self.fit('CVT.L.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 37]],  [FD, FS])
+            self.fit('CVT.S.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 32]],  [FD, FS])
+            self.fit('CVT.S.W',    [[OPCODE, 17], [FMT, 20], 5, FS, FD, [OPCODE, 32]],  [FD, FS])
+            self.fit('CVT.S.L',    [[OPCODE, 17], [FMT, 21], 5, FS, FD, [OPCODE, 32]],  [FD, FS])
+            self.fit('CVT.W.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 36]],  [FD, FS])
+            self.fit('CVT.W.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 36]],  [FD, FS])
+            self.fit('DIV.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 3]],  [FD, FS, FT])
+            self.fit('DIV.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 3]],  [FD, FS, FT])
+            self.fit('DMFC1',      [[OPCODE, 17], [FMT, 1], RT, FS, 11],                [RT, FS])
+            self.fit('DMTC1',      [[OPCODE, 17], [FMT, 5], RT, FS, 11],                [RT, FS])
+            self.fit('FLOOR.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 11]],  [FD, FS])
+            self.fit('FLOOR.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 11]],  [FD, FS])
+            self.fit('FLOOR.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 15]],  [FD, FS])
+            self.fit('FLOOR.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 15]],  [FD, FS])
+            self.fit('LDC1',       [[OPCODE, 53], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
+            self.fit('LWC1',       [[OPCODE, 49], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
+            self.fit('MFC1',       [[OPCODE, 17], [FMT, 0], RT, FS, 11],                [RT, FS])
+            self.fit('MOV.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 6]],   [FD, FS])
+            self.fit('MOV.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 6]],   [FD, FS])
+            self.fit('MTC1',       [[OPCODE, 17], [FMT, 4], RT, FS, 11],                [RT, FS])
+            self.fit('MUL.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 2]],  [FD, FS, FT])
+            self.fit('MUL.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 2]],  [FD, FS, FT])
+            self.fit('NEG.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 7]],   [FD, FS])
+            self.fit('NEG.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 7]],   [FD, FS])
+            self.fit('ROUND.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 8]],   [FD, FS])
+            self.fit('ROUND.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 8]],   [FD, FS])
+            self.fit('ROUND.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 12]],  [FD, FS])
+            self.fit('ROUND.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 12]],  [FD, FS])
+            self.fit('SDC1',       [[OPCODE, 61], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
+            self.fit('SQRT.S',     [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 4]],   [FD, FS])
+            self.fit('SQRT.D',     [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 4]],   [FD, FS])
+            self.fit('SUB.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 1]],  [FD, FS, FT])
+            self.fit('SUB.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 1]],  [FD, FS, FT])
+            self.fit('SWC1',       [[OPCODE, 57], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
+            self.fit('TRUNC.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 9]],   [FD, FS])
+            self.fit('TRUNC.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 9]],   [FD, FS])
+            self.fit('TRUNC.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 13]],  [FD, FS])
+            self.fit('TRUNC.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 13]],  [FD, FS])
 
-        # Vector Math
-        # self.fit('VMULF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 0]], [VD, VT, VS, MOD])
-        # self.fit('VMULU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 1]], [VD, VT, VS, MOD])
-        # self.fit('VRNDP', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 2]], [VD, VT, VS, MOD])
-        # self.fit('VMULQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 3]], [VD, VT, VS, MOD])
-        # self.fit('VMUDL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 4]], [VD, VT, VS, MOD])
-        # self.fit('VMUDM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 5]], [VD, VT, VS, MOD])
-        # self.fit('VMUDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 6]], [VD, VT, VS, MOD])
-        # self.fit('VMUDH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 7]], [VD, VT, VS, MOD])
-        # self.fit('VMACF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 8]], [VD, VT, VS, MOD])
-        # self.fit('VMACU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 9]], [VD, VT, VS, MOD])
-        # self.fit('VRNDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 10]], [VD, VT, VS, MOD])
-        # self.fit('VMACQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 11]], [VD, VT, VS, MOD])
-        # self.fit('VMADL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 12]], [VD, VT, VS, MOD])
-        # self.fit('VMADM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 13]], [VD, VT, VS, MOD])
-        # self.fit('VMADN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 14]], [VD, VT, VS, MOD])
-        # self.fit('VMADH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 15]], [VD, VT, VS, MOD])
-        # print(self.branches)
-        # Unfinished
+            # Vector Load/Store
+            # Opcode 50 and 51 may or may not need swapping
+            # self.fit('LBV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('LSV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('LLV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('LDV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('LQV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('LRV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('LPV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('LUV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('LHV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('LFV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('LWV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('LTV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('SBV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('SSV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('SLV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('SDV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('SQV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('SRV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('SPV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('SUV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('SHV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('SFV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('SWV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            # self.fit('STV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+
+            # Vector Math
+            # self.fit('VMULF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 0]], [VD, VT, VS, MOD])
+            # self.fit('VMULU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 1]], [VD, VT, VS, MOD])
+            # self.fit('VRNDP', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 2]], [VD, VT, VS, MOD])
+            # self.fit('VMULQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 3]], [VD, VT, VS, MOD])
+            # self.fit('VMUDL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 4]], [VD, VT, VS, MOD])
+            # self.fit('VMUDM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 5]], [VD, VT, VS, MOD])
+            # self.fit('VMUDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 6]], [VD, VT, VS, MOD])
+            # self.fit('VMUDH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 7]], [VD, VT, VS, MOD])
+            # self.fit('VMACF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 8]], [VD, VT, VS, MOD])
+            # self.fit('VMACU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 9]], [VD, VT, VS, MOD])
+            # self.fit('VRNDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 10]], [VD, VT, VS, MOD])
+            # self.fit('VMACQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 11]], [VD, VT, VS, MOD])
+            # self.fit('VMADL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 12]], [VD, VT, VS, MOD])
+            # self.fit('VMADM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 13]], [VD, VT, VS, MOD])
+            # self.fit('VMADN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 14]], [VD, VT, VS, MOD])
+            # self.fit('VMADH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 15]], [VD, VT, VS, MOD])
+            # print(self.branches)
+            # Unfinished
         decoder_fitted = True
 
     def fit(self, mnemonic, encoding, appearance):
@@ -1130,13 +1136,53 @@ class Disassembler:
         self.appearances[mnemonic] = appearance
         self.identifying_bits[mnemonic] = int(identifying_bits, 2)
 
+    def region_align(self, address, invert=False, game_offset=False):
+        if game_offset:
+            address -= self.game_offset
+        for reg in self.memory_regions:
+            if address + reg[2] in range(reg[0], reg[0] + reg[1]):
+                if invert:
+                    address -= reg[2] - self.game_offset
+                else:
+                    address += reg[2] - self.game_offset
+                break
+        if game_offset:
+            address += self.game_offset
+        return address
+
+    def region_unalign(self, address, invert=False, game_offset=False):
+        if game_offset:
+            address += self.game_offset
+        for reg in self.memory_regions:
+            if address in range(reg[0], reg[0] + reg[1]):
+                if invert:
+                    address += reg[2] - self.game_offset
+                else:
+                    address -= reg[2] - self.game_offset
+                break
+        if game_offset:
+            address -= self.game_offset
+        return address
+
     def solve_address(self, index, address):
+        # address = self.region_align(address << 2)
+        address <<= 2
         if index >= 0x400:
-            address -= self.jumps_offset_div_4
+            address -= self.jumps_offset
         else:
-            address -= 0x1000000
-        address += index & 0x3F000000
-        return address << 2
+            address -= 0x4000000
+        address += (index & 0x3F000000) << 2
+        return address
+
+    def reverse_solve_address(self, index, address):
+        # address = self.region_unalign(address << 2)
+        address <<= 2
+        if index >= 0x400:
+            address += self.jumps_offset
+        else:
+            address += 0x4000000
+        address -= (index & 0x3F000000) << 2
+        return address
 
     def decode(self, int_word, index):
         if int_word == 0:
@@ -1147,10 +1193,9 @@ class Disassembler:
             mnemonic = None
             offset = 0
             while True:
-                value = self.opcode_matrix[ offset +
-                                            ((int_word >> self.opcode_matrix[offset + 65]) &
-                                             self.opcode_matrix[offset + 64])
-                ]
+                value = self.opcode_matrix[offset +
+                                           ((int_word >> self.opcode_matrix[offset + 65]) &
+                                            self.opcode_matrix[offset + 64])]
                 if isinstance(value, str):
                     mnemonic = value
                     break
@@ -1198,7 +1243,7 @@ class Disassembler:
                     decode_text = '(' + decode_text + ')'
             if param_type == 'VHEX':
                 ''
-            elif parameters != '':
+            elif parameters:
                 if param_name == 'BASE':
                     decode_text = ' ' + decode_text
                 else:
@@ -1297,25 +1342,30 @@ class Disassembler:
         for i in range(4):
             self.hack_file[index + i] = ints[i]
 
-    def map_jumps(self, text_box):
-        try:
-            if exists(self.jumps_file):
-                with open(self.jumps_file, 'rb') as jumps_file:
-                    self.jumps_to, self.branches_to = load(jumps_file)
-                return
-        except:
-            # If we can't load the file, map the jumps again. No biggie.
-            ''
-
-        percent = (len(self.hack_file) >> 2) // 100
-        cut = 19
-        collect = 9
-        buffer = [None] * (cut - 1)
-        for i in range(0x40, len(self.hack_file), 4):
+    def map_jumps(self, text_box, skip_loading=False):
+        if not skip_loading:
+            try:
+                if exists(self.jumps_file):
+                    with open(self.jumps_file, 'rb') as jumps_file:
+                        self.jumps_to, self.branches_to = load(jumps_file)
+                    return
+            except:
+                # If we can't load the file, map the jumps again. No biggie.
+                ''
+        else:
+            del self.jumps_to
+            del self.branches_to
+            self.jumps_to = {}
+            self.branches_to = {}
+        percent = (self.file_length >> 2) // 100
+        cut = 300
+        undercut = cut - 1
+        buffer = [None] * (undercut)
+        for i in range(0x40, self.file_length, 4):
             j = i >> 2
             int_word = int_of_4_byte_aligned_region(self.hack_file[i:i+4])
             decoded = self.decode(int_word, j)
-            if not j & percent:
+            if not j & percent and text_box:
                 text_box.delete('1.0', tkinter.END)
                 text_box.insert('1.0', str(j // percent) + '%')
                 text_box.update()
@@ -1337,14 +1387,15 @@ class Disassembler:
             else:
                 buffer.insert(0, None)
             if len(buffer) == cut:
-                popped = buffer.pop(collect)
-                if isinstance(popped, tuple):
+                popped = buffer.pop(0)
+                if not popped is None:
                     key = str(popped[1])
                     if not key in popped[0]:
                         popped[0][key] = []
                     popped[0][key].append(popped[2])
         with open(self.jumps_file, 'wb') as jumps_file:
             dump((self.jumps_to, self.branches_to), jumps_file)
+        return
 
     def find_jumps(self, index):
         this_function = []
@@ -1375,12 +1426,15 @@ class Disassembler:
         end_of_function = i + index
         jumps = []
         for i in this_function:
-            key = str(i)
+            function_offset = self.region_align(i << 2) >> 2
+            key = str(function_offset)
             if key in self.jumps_to:
                 offsetting = 0 if not self.game_address_mode else self.game_offset
-                [jumps.append(extend_zeroes(hexi((j << 2) + offsetting), 8))
+                [jumps.append(extend_zeroes(hexi((self.region_align(j << 2) if self.game_address_mode else j << 2) + offsetting), 8))
                  for j in self.jumps_to[key]]
         if self.game_address_mode:
+            start_of_function = self.region_align(start_of_function << 2) >> 2
+            end_of_function = self.region_align(end_of_function << 2) >> 2
             start_of_function += self.game_offset >> 2
             end_of_function += self.game_offset >> 2
         return jumps, start_of_function, end_of_function
@@ -1407,13 +1461,19 @@ class Disassembler:
             dict[target] = []
             mapped_target = True
         if address not in dict[target]:
-            dict[target].append(address)
+            i = 0
+            while i < len(dict[target]) - 2:
+                if target == keep_within(target, dict[target][i], dict[target][i+1]):
+                    break
+                i += 1
+            dict[target].insert(i, address)
             mapped_address = True
         return mapped_target, mapped_address
 
     def byte_swap(self, bytes):
-        new_bytes = bytearray(bytes)
+        new_bytes = bytearray()
         for i in range(0, len(bytes), 4):
+            [new_bytes.append(0) for _ in [None] * 4]
             new_bytes[i + 1] = bytes[i]
             new_bytes[i] = bytes[i + 1]
             new_bytes[i + 3] = bytes[i + 2]
@@ -1421,8 +1481,9 @@ class Disassembler:
         return new_bytes
 
     def byte_reverse(self, bytes):
-        new_bytes = bytearray(bytes)
+        new_bytes = bytearray()
         for i in range(0, len(bytes), 4):
+            [new_bytes.append(0) for _ in [None] * 4]
             new_bytes[i] = bytes[i+3]
             new_bytes[i+1] = bytes[i+2]
             new_bytes[i+2] = bytes[i+1]
