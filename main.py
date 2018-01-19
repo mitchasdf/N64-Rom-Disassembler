@@ -47,6 +47,7 @@ FRESH_APP_CONFIG = {
     'jumps_auto_focus_comments': False,
     'jumps_auto_focus_hack': False,
     'mem_edit_offset': {},
+    'memory_regions': {},
     'jumps_displaying': {},
     'cursor_line_colour': '#686868',
     'window_background_colour': '#606060',
@@ -152,6 +153,9 @@ if os.path.exists(CONFIG_FILE):
             if key not in config_keys:
                 config_in_file[key] = FRESH_APP_CONFIG[key]
         for key in config_keys:
+            # if key == 'game_address_mode':
+            #     backup_config = unpickle_data('rom disassembler - Copy.config')
+            #     config_in_file[key] = backup_config[key].copy()
             if key not in fresh_keys:
                 del config_in_file[key]
         app_config = config_in_file.copy()
@@ -267,18 +271,64 @@ def change_colours():
       text_box.tag_config('cursor_line', background=cursor_line_colour))
      for text_box in ALL_TEXT_BOXES]
     [hack_file_text_box.tag_config(tag, background=new_tag_config[tag]) for tag in new_tag_config]
-    [text_box.config(bg=text_bg, fg=text_fg) for text_box in ALL_TEXT_BOXES + [address_input, address_output, status_bar]]
-    [button.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg) for button in
-     [address_translate_button, nav_button]]
-    auto_copy_checkbtn.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg, selectcolor=win_bg)
-    window.config(bg=win_bg)
+
+    r, g, b = get_colours_of_hex(text_bg)
+    new_insert_colour = solve_against_greyscale(r, g, b)
+    # global colours_window, jumps_window, comments_window
+    # global changes_win, opcodes_win, script_win
+
+    labels = []
+    listboxes = []
+    textboxes = ALL_TEXT_BOXES + [address_input, address_output]
+    backgrounds = [window]
+    buttons = [address_translate_button, nav_button]
+    check_buttons = [auto_copy_checkbtn]
+
+    if phrases_win:
+        backgrounds.append(phrases_win)
+        listboxes.append(phrases_list_box)
+    if colours_window:
+        backgrounds.append(colours_window)
+        labels.append(change_colours_label)
+    if jumps_window:
+        backgrounds.append(jumps_window)
+        [labels.append(i) for i in [functions_label, jumps_label]]
+        [listboxes.append(i) for i in [function_list_box, jump_list_box]]
+        [check_buttons.append(i) for i in [jumps_comment_checkbox, jumps_hack_checkbox]]
+    if comments_window:
+        backgrounds.append(comments_window)
+        labels.append(comments_filter_label)
+        listboxes.append(comments_list_box)
+        textboxes.append(filter_text)
+        [check_buttons.append(i) for i in [comments_comment_checkbox, comments_hack_checkbox]]
+    if changes_win:
+        listboxes.append(changes_list_box)
+        backgrounds.append(changes_win)
+    if opcodes_win:
+        backgrounds.append(opcodes_win)
+        listboxes.append(codes_list_box)
+    if script_win:
+        backgrounds.append(script_win)
+        listboxes.append(group_list_box)
+        [labels.append(i) for i in [groups_label, batch_label, script_label]]
+        [textboxes.append(i) for i in [batch_text_box, script_text_box]]
+        [buttons.append(i) for i in [script_help_button, plus_button, out_file_button, save_template_button,
+                                     load_template_button, view_test_button, groups_refresh_button]]
+
+    [text_box.config(insertbackground=new_insert_colour) for text_box in textboxes]
+    [wndw.config(bg=win_bg) for wndw in backgrounds]
+    [checkbtn.config(bg=win_bg, fg=text_fg, activebackground=win_bg,activeforeground=text_fg, selectcolor=win_bg)
+     for checkbtn in check_buttons]
+    [butt.config(bg=win_bg, fg=text_fg, activebackground=text_bg, activeforeground=text_fg) for butt in buttons]
+    [widget.config(bg=text_bg, fg=text_fg) for widget in [status_bar] + textboxes + listboxes]
+    [label.config(bg=win_bg, fg=text_fg) for label in labels]
+    [listbox.config(bg=text_bg, fg=text_fg, selectbackground=win_bg,
+                    highlightcolor=text_bg, highlightbackground=text_bg) for listbox in listboxes]
+
     [label.config(bg=new_tag_config['target']) for label in [target_down_label, target_up_label]]
     [label.config(bg=new_tag_config['jump_from']) for label in [target_of_down_label, target_of_up_label]]
     if change_rom_name_button:
         change_rom_name_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg, activeforeground=text_fg)
-    r, g, b = get_colours_of_hex(text_bg)
-    new_insert_colour = solve_against_greyscale(r, g, b)
-    [text_box.config(insertbackground=new_insert_colour) for text_box in [address_input, address_output] + ALL_TEXT_BOXES]
     highlight_stuff(skip_moving_cursor=True)
 
 
@@ -519,16 +569,18 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
                                            cursor_value(line, len(text[i])))
 
             # Highlight instructions in which are a target of any jump or branch
-            key = str(navi)
-            if key in disasm.jumps_to:
-                hack_file_text_box.tag_add('jump_to',
-                                           cursor_value(line, 0),
-                                           cursor_value(line + 1, 0))
-
             if key in disasm.branches_to:
                 hack_file_text_box.tag_add('branch_to',
                                            cursor_value(line, 0),
                                            cursor_value(line + 1, 0))
+            navi_offset = navi << 2
+            navi_offset = disasm.region_align(navi_offset)
+            key2 = str(navi_offset >> 2)
+            if key2 in disasm.jumps_to:
+                hack_file_text_box.tag_add('jump_to',
+                                           cursor_value(line, 0),
+                                           cursor_value(line + 1, 0))
+            # End if not hex_mode
 
         # Highlight errors
         if key in user_errors:
@@ -539,12 +591,14 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
 
     # Highlight jumps/branches to target instruction
     if hack_function:
+        reg_offset_key = str(disasm.region_align(prev_cursor_location << 2) >> 2)
         this_key = str(prev_cursor_location)
         dictie = None
         if this_key in disasm.branches_to:
             dictie = disasm.branches_to
-        elif this_key in disasm.jumps_to:
+        elif reg_offset_key in disasm.jumps_to:
             dictie = disasm.jumps_to
+            this_key = reg_offset_key
         if dictie:
             had_ups = False
             had_downs = False
@@ -572,11 +626,12 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
         if hack_function:
             if c_line:
                 try:
-                    # Raises error if user types non-numeric characters where an address/offset is
+                    # Raises error if user types non-hex characters where an address/offset is
                     address = deci(address)
                 except:
                     address = -1
                 else:
+                    address = disasm.region_unalign(address, game_offset=not disasm.game_address_mode)
                     if disasm.game_address_mode:
                         address -= disasm.game_offset
                     address >>= 2
@@ -634,6 +689,7 @@ def apply_hack_changes(ignore_slot = None):
     targets_upper = [deci(i[11:19]) >> 2 for i in jumps_displaying]
     def find_target_key(target):
         if disasm.game_address_mode:
+            # target = disasm.region_align(target << 2) >> 2
             target += disasm.game_offset >> 2
         i = 0
         target_key = ''
@@ -644,7 +700,7 @@ def apply_hack_changes(ignore_slot = None):
             i += 1
         return target_key
 
-    def unmap(decoded_word, navi):
+    def unmap(decoded_word, navi, int_word):
         target = 0
         dic = {}
         if decoded_word in ['J', 'JAL']:
@@ -657,9 +713,12 @@ def apply_hack_changes(ignore_slot = None):
             str_target = str(target)
             unmapped_target, unmapped_address = disasm.unmap(dic, navi, str_target)
             if dic is disasm.jumps_to:
-                target_key = find_target_key(target)
+                target_key = find_target_key(target << 2)
                 if unmapped_address and target_key:
-                    address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if disasm.game_address_mode else 0)), 8)
+                    offset_address = navi << 2
+                    # offset_address = disasm.region_align(offset_address)
+                    offset_address += disasm.game_offset if disasm.game_address_mode else 0
+                    address = extend_zeroes(hexi(offset_address), 8)
                     cut_jumps = [i[:8] for i in jumps_displaying[target_key]]
                     if address in cut_jumps:
                         place = cut_jumps.index(address)
@@ -681,6 +740,21 @@ def apply_hack_changes(ignore_slot = None):
 
     current_text = get_text_content(hack_file_text_box).upper()
     split_text = current_text.split('\n')
+    for i, text in enumerate(split_text):
+        try:
+            space_in = text.find(' ')
+            immid_in = text.rfind(app_config['immediate_identifier'])
+            if space_in >= 0 and immid_in >= 0:
+                if text[:space_in] in BRANCH_FUNCTIONS + ['J', 'JAL']:
+                    address = deci(text[immid_in + 1:])
+                    if text[:space_in] in ['J', 'JAL'] and not disasm.game_address_mode:
+                        address = disasm.region_align(address)
+                    else:
+                        address = disasm.region_unalign(address)
+                    new_text = text[:immid_in + 1] + extend_zeroes(hexi(address), 8)
+                    split_text[i] = new_text
+        except:
+            ''
     lines = min([max_lines, len(split_text)])
     for i in range(lines):
         navi = navigation + i
@@ -719,20 +793,20 @@ def apply_hack_changes(ignore_slot = None):
             disasm.split_and_store_bytes(int_of, navi)
             clear_error(string_key)
             if not is_hex_part:
-                unmap(decoded_word, navi)
+                unmap(decoded_word, navi, int_word)
 
         elif not split_text[i]:
             disasm.split_and_store_bytes(0, navi)
             hack_file_text_box.insert(cursor_value(i + 1, 0), 'NOP')
             clear_error(string_key)
-            unmap(decoded_word, navi)
+            unmap(decoded_word, navi, int_word)
 
         elif split_text[i] != 'UNKNOWN/NOT AN INSTRUCTION':
             encoded_int = disasm.encode(split_text[i], navi)
             if encoded_int >= 0:
                 disasm.split_and_store_bytes(encoded_int, navi)
                 clear_error(string_key)
-                unmap(decoded_word, navi)
+                unmap(decoded_word, navi, int_word)
                 if this_word in ['J', 'JAL'] + BRANCH_FUNCTIONS:
                     try:
                         found = split_text[i].rfind(app_config['immediate_identifier'])
@@ -751,7 +825,10 @@ def apply_hack_changes(ignore_slot = None):
                         if mapped_address:
                             target_key = find_target_key(target >> 2)
                             if target_key:
-                                address = extend_zeroes(hexi((navi << 2) + (disasm.game_offset if disasm.game_address_mode else 0)), 8)
+                                address = navi << 2
+                                # if disasm.game_offset:
+                                #     address = disasm.region_align(address) + disasm.game_offset
+                                address = extend_zeroes(hexi(address), 8)
                                 if address not in jumps_displaying[target_key]:
                                     jumps_displaying[target_key].append(address)
                                     if jumps_window and function_select == target_key:
@@ -773,7 +850,7 @@ def apply_comment_changes():
     increment = disasm.game_offset if disasm.game_address_mode else 0
     if comments_window:
         filtering = filter_text.get('1.0', tk.END).split('\n')[0].lower()
-        comments_in = comments_list.get(0, tk.END)
+        comments_in = comments_list_box.get(0, tk.END)
         addresses = [j[:8] for j in comments_in]
         addresses_dict = {}
         for j, i in enumerate(addresses):
@@ -791,7 +868,7 @@ def apply_comment_changes():
             del disasm.comments[string_key]
             if comments_window:
                 if hex_navi in addresses_dict:
-                    comments_list.delete(addresses_dict[hex_navi])
+                    comments_list_box.delete(addresses_dict[hex_navi])
             if hex_navi in orig_keys:
                 del jumps_displaying[orig_keys[hex_navi]]
                 new_key = orig_keys[hex_navi][:19]
@@ -831,9 +908,9 @@ def apply_comment_changes():
 
         if comments_window:
             if hex_navi in addresses_dict:
-                comments_list.delete(addresses_dict[hex_navi])
+                comments_list_box.delete(addresses_dict[hex_navi])
                 if tags_in_text(filtering, split_text[i].lower()):
-                    comments_list.insert(addresses_dict[hex_navi], '{}: {}'.format(hex_navi, split_text[i]))
+                    comments_list_box.insert(addresses_dict[hex_navi], '{}: {}'.format(hex_navi, split_text[i]))
             else:
                 this_int_address = navi << 2
                 if disasm.game_address_mode:
@@ -845,9 +922,9 @@ def apply_comment_changes():
                         break
                 if tags_in_text(filtering, split_text[i].lower()):
                     if target >= 0:
-                        comments_list.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
+                        comments_list_box.insert(target, '{}: {}'.format(hex_navi, split_text[i]))
                     else:
-                        comments_list.insert(tk.END, '{}: {}'.format(hex_navi, split_text[i]))
+                        comments_list_box.insert(tk.END, '{}: {}'.format(hex_navi, split_text[i]))
 
         if hex_navi in orig_keys:
             del jumps_displaying[orig_keys[hex_navi]]
@@ -1013,8 +1090,10 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                     save_config()
                     disasm.immediate_identifier = immediate_id
                 if game_address_mode != disasm.game_address_mode:
-                    disasm.game_address_mode = game_address_mode
-                    save_config()
+                    # disasm.game_address_mode = game_address_mode
+                    # app_config['game_address_mode'][disasm.hack_file_name] = game_address_mode
+                    # save_config()
+                    toggle_address_mode(buffering=False)
                 if hex_mode != app_config['hex_mode']:
                     app_config['hex_mode'] = hex_mode
                     save_config()
@@ -1102,6 +1181,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             clipboard = selection_text
             # So that when user pastes, window clipboard won't override clipboard
             window.after(0, window.clipboard_clear)
+            window.after(0, lambda: window.clipboard_append(selection_text))
 
         if selection_removable:
             handle.delete(selection_start, selection_end)
@@ -1132,6 +1212,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                     handle.delete(min_del, max_del)
                     lines_diff = 0
             paste_text = winnie_clip
+            window.after(1, lambda: (window.clipboard_clear(), window.clipboard_append(winnie_clip)))
 
     # Either clear lines which would be excess lines after the paste
     # Or add new lines to fill in what would be the gaps after the paste
@@ -1332,18 +1413,20 @@ def destroy_change_rom_name_button():
         change_rom_name_button = None
 
 
-def navigate_to(index, center=False, widget=None):
+def navigate_to(index, center=False, widget=None, region_treatment=False, region_override=False):
     global navigation, change_rom_name_button, prev_cursor_location
     if not disassembler_loaded():
         return
     destroy_change_rom_name_button()
+    if (region_treatment and disasm.game_address_mode) or region_override:
+        index = disasm.region_unalign(index << 2, invert=False, game_offset=True) >> 2
     indexed = index
     if center:
         index -= max_lines >> 1
     shift_amount = navigation
 
     # Correct the navigation if traveling out of bounds, also calculate limits for file samples to display
-    amount_words = disasm.file_length // 4
+    amount_words = disasm.file_length >> 2
     navigation = index if index + max_lines < amount_words else amount_words - max_lines
     if navigation < 0:
         navigation = 0
@@ -1370,10 +1453,23 @@ def navigate_to(index, center=False, widget=None):
         if string_key in disasm.comments.keys():
             sample_comments[i] = disasm.comments[string_key]
 
-    # Calculate what addresses to display in the address box, and disassemble ints into instructions, display header section as hex
-    address_range = [extend_zeroes(hexi((i * 4) + (disasm.game_offset
-                                                   if disasm.game_address_mode else 0)), 8) for i in range(navigation, limit)]
+    # Calculate what addresses to display in the address box
+    addresses = [i * 4 for i in range(navigation, limit)]
+    if disasm.game_address_mode:
+        for i, address in enumerate(addresses):
+            in_region = False
+            for reg in disasm.memory_regions:
+                rom_start = reg[0] - reg[2]
+                rom_end = (reg[0] + reg[1]) - reg[2]
+                if address in range(rom_start, rom_end):
+                    addresses[i] += reg[2]
+                    in_region = True
+                    break
+            if not in_region:
+                addresses[i] += disasm.game_offset
+    address_range = [extend_zeroes(hexi(i), 8) for i in addresses]
 
+    # Disassemble ints into instructions, display header section as hex
     base_disassembled = [disasm.decode(ints_in_base_sample[i], navigation + i)
                          if navigation + i > 15 and not app_config['hex_mode'] else
                          hex_space(extend_zeroes(hexi(ints_in_base_sample[i]), 8))
@@ -1382,6 +1478,22 @@ def navigate_to(index, center=False, widget=None):
                          if navigation + i > 15 and not app_config['hex_mode'] else
                          hex_space(extend_zeroes(hexi(ints_in_hack_sample[i]), 8))
                          for i in range(len(ints_in_hack_sample))]
+    for disassembly in [base_disassembled, hack_disassembled]:
+        for i, text in enumerate(disassembly):
+            try:
+                space_in = text.find(' ')
+                immid_in = text.rfind(app_config['immediate_identifier'])
+                if space_in >= 0 and immid_in >= 0:
+                    if text[:space_in] in BRANCH_FUNCTIONS + ['J', 'JAL']:
+                        address = deci(text[immid_in + 1:])
+                        if text[:space_in] in ['J', 'JAL'] and not disasm.game_address_mode:
+                            address = disasm.region_unalign(address, game_offset=True)
+                        else:
+                            address = disasm.region_align(address, game_offset=True)
+                        new_text = text[:immid_in + 1] + extend_zeroes(hexi(address), 8)
+                        disassembly[i] = new_text
+            except:
+                ''
 
     # Replace disassembled data in the hack file with any errors the user has made
     for i in range(len(hack_disassembled)):
@@ -1446,7 +1558,7 @@ def navigation_callback(address):
         address = deci(address)
         if disasm.game_address_mode:
             address -= disasm.game_offset
-        address //= 4
+        address >>= 2
     except:
         if widget:
             widget.focus_force()
@@ -1454,7 +1566,7 @@ def navigation_callback(address):
     apply_hack_changes()
     apply_comment_changes()
     reset_target()
-    navigate_to(address, center=True, widget=widget)
+    navigate_to(address, center=True, widget=widget, region_treatment=True)
     if widget:
         widget.focus_force()
 
@@ -1489,9 +1601,9 @@ def save_changes_to_file(save_as=False):
     for key in user_errors:
         navigate_to(int(key), widget=hack_file_text_box, center=True)
         return False
-    status_text.set('Calculating checksum...')
-    window.update()
     if app_config['calc_crc'][disasm.hack_file_name]:
+        status_text.set('Calculating checksum...')
+        window.update()
         sum1, sum2 = disasm.calc_checksum()
     else:
         sum1 = sum2 = 0
@@ -1519,6 +1631,7 @@ def save_changes_to_file(save_as=False):
         app_config['previous_hack_opened'] = new_file_path
         app_config['hack_of_base'][new_file_name] = app_config['hack_of_base'][disasm.hack_file_name]
         app_config['calc_crc'][new_file_name] = app_config['calc_crc'][disasm.hack_file_name]
+        app_config['memory_regions'][new_file_name] = app_config['memory_regions'][disasm.hack_file_name].copy()
         disasm.hack_file_name = new_file_name
         disasm.comments_file = new_file_path + ' comments.txt'
         disasm.jumps_file = new_file_path + ' jumps.data'
@@ -1535,22 +1648,26 @@ def save_changes_to_file(save_as=False):
     with open(disasm.hack_folder + disasm.hack_file_name, 'wb') as file:
         file.write(disasm.hack_file)
 
+    _filename = disasm.comments_file + '(Backup '
     if exists(disasm.comments_file):
-        with open(disasm.comments_file + '(Backup).txt', 'w') as backup_comments_file:
-            with open(disasm.comments_file, 'r') as comments_file:
-                backup_comments_file.write(comments_file.read())
+        i = 0
+        while True:
+            i += 1
+            if not exists(_filename + str(i) + ').txt'):
+                _filename += str(i) + ').txt'
+                with open(_filename, 'w') as backup_comments_file:
+                    with open(disasm.comments_file, 'r') as comments_file:
+                        backup_comments_file.write(comments_file.read())
 
     try:
         with open(disasm.comments_file, 'w') as file:
             file.write(dict_to_string(disasm.comments))
-        if exists(disasm.comments_file + '(Backup).txt'):
-            os.remove(disasm.comments_file + '(Backup).txt')
+        if _filename != disasm.comments_file + '(Backup ':
+            os.remove(_filename)
     except Exception as e:
         simpledialog.messagebox._show('Error', 'There was trouble saving your comments file. '
                                                'A backup of your old comments can be found next to the original comments file. '
-                                               'Your rom file was saved without error. '
-                                               '\nYou should go there now and rescue the backup before attempting to save again.'
-                                               '\nIf you save again, that backup will be over-written.'
+                                               'Your rom file was saved without error.'
                                                '\n\n' + str(e))
     checksum_text = ' Checksum calculated - CRC1: {} | CRC2: {}'.format(
             extend_zeroes(hexi(sum1), 8),
@@ -1565,7 +1682,7 @@ def save_changes_to_file(save_as=False):
 
 def destroy_them(not_main=False):
     global colours_window, jumps_window, comments_window, dimension_window, manual_cic_win
-    global changes_win, opcodes_win, script_win
+    global changes_win, opcodes_win, script_win, phrases_win, mem_regions_win
     if changes_win:
         changes_win.destroy()
         changes_win = None
@@ -1590,6 +1707,12 @@ def destroy_them(not_main=False):
     if script_win:
         script_win.destroy()
         script_win = None
+    if phrases_win:
+        phrases_win.destroy()
+        phrases_win = None
+    if mem_regions_win:
+        mem_regions_win.destroy()
+        mem_regions_win = None
     if not not_main:
         window.destroy()
 
@@ -1795,9 +1918,14 @@ def open_files(mode = ''):
     comments_text_box.insert('1.0', 'This may take a while with larger roms.\nThis only has to be done once per rom.\n\n'
                                     'If your window is not responding - don\'t worry.')
     window.update()
+
     def rest_of_function():
         global jumps_displaying
         window.title('ROM Disassembler - ' + disasm.hack_file_name)
+        if disasm.hack_file_name not in app_config['memory_regions']:
+            app_config['memory_regions'][disasm.hack_file_name] = []
+        else:
+            disasm.memory_regions = app_config['memory_regions'][disasm.hack_file_name].copy()
         disasm.map_jumps(address_text_box)
         [text_box.delete('1.0',tk.END) for text_box in ALL_TEXT_BOXES]
         window.update()
@@ -1811,6 +1939,7 @@ def open_files(mode = ''):
             app_config['jumps_displaying'][disasm.hack_file_name] = {}
         jumps_displaying = app_config['jumps_displaying'][disasm.hack_file_name].copy()
         time_taken = timer_get()
+
         if time_taken > 100:
             simpledialog.messagebox._show('Woah!', 'That took {} seconds.'.format(time_taken))
 
@@ -1818,18 +1947,93 @@ def open_files(mode = ''):
     window.after(1, rest_of_function)
 
 
-def toggle_address_mode():
+def remap_jumps():
+    if not disassembler_loaded():
+        return
+
+    class custom_tbox():
+        def __init__(self, statustext, update):
+            self.update = update
+            self.tbox = statustext
+        def insert(self, index, text):
+            self.tbox.set(text)
+        def delete(self, start, end):
+            ''
+
+    disasm.map_jumps(custom_tbox(status_text, status_bar.update), skip_loading=True)
+    status_text.set('100%')
+    status_bar.update()
+
+
+# def find_largest_decodable_sections():
+#     if not disassembler_loaded():
+#         return
+#     # undecodables = disasm.map_jumps(text_box=address_text_box,skip_loading=True)
+#
+#     def test_map():
+#         f_len = disasm.file_length
+#         decodables = []
+#         i = 0
+#         decodable = 0
+#         while i < f_len:
+#             decoded = disasm.decode(int_of_4_byte_aligned_region(disasm.hack_file[i:i+4]), i >> 2)
+#             if decoded:
+#                 decodable += 1
+#             else:
+#                 if decodable:
+#                     decodables.append([
+#                         extend_zeroes(hexi(i - (decodable << 2)), 8),
+#                         extend_zeroes(hexi(i - 4), 8)
+#                     ])
+#                 decodable = 0
+#             i += 4
+#         return decodables
+#
+#     decodables = test_map()
+#     remap_win = tk.Tk()
+#     remap_win.title('Decodable sections')
+#     remap_win.geometry('500x800+50+50')
+#     sects_list = tk.Listbox(remap_win, font=('Courier', main_font_size))
+#
+#     length_reference = {}
+#     length_keys = []
+#     keys_add = lambda i: '' if i in length_keys else length_keys.append(i)
+#     [keys_add(deci(i[1]) - deci(i[0])) for i in decodables]
+#     for i in reversed(sorted(length_keys)):
+#         length_reference[str(i)] = []
+#
+#     for addr_range in decodables:
+#         key = str(deci(addr_range[1]) - deci(addr_range[0]))
+#         length_reference[key].append(addr_range[0] + ' - ' + addr_range[1] + '  ||  Length: 0x' + hexi(int(key)))
+#
+#     for key in length_reference:
+#         for entry in length_reference[key]:
+#             sects_list.insert(tk.END, entry)
+#
+#     def list_box_callback():
+#         curselect = sects_list.curselection()
+#         if not curselect:
+#             return
+#         address = sects_list.get(curselect[0])[:8]
+#         navi = deci(address) >> 2
+#         navigate_to(navi, center=True, widget=None)
+#
+#     sects_list.bind('<<ListboxSelect>>', lambda _: list_box_callback())
+#     sects_list.place(x=5, y=5, width=490, height=790)
+#     remap_win.mainloop()
+
+
+def toggle_address_mode(buffering=True):
     global function_select
     if not disassembler_loaded():
         return
     apply_hack_changes()
     apply_comment_changes()
     cursor, line, column = get_cursor(hack_file_text_box)
-    buffer_append(hack_buffer)
+    if buffering:
+        buffer_append(hack_buffer)
     toggle_to = not disasm.game_address_mode
     disasm.game_address_mode = toggle_to
-    if disassembler_loaded():
-        disasm.game_address_mode = toggle_to
     save_config()
     navigate_to(navigation)
     hack_file_text_box.mark_set(tk.INSERT, cursor)
@@ -1837,23 +2041,31 @@ def toggle_address_mode():
     increment = disasm.game_offset if toggle_to else -disasm.game_offset
     config_data = jumps_displaying.copy()
 
-    def fix_listbox(listbox):
+    def fix_listbox(listbox, see):
         list_contents = listbox.get(0, tk.END)
-        addresses = [extend_zeroes(hexi(deci(i[:8]) + increment), 8) for i in list_contents]
+        list_addresses = [deci(i[:8]) for i in list_contents]
+        realigned_addresses = [disasm.region_align(i) if toggle_to else disasm.region_unalign(i) for i in list_addresses]
+        addresses = [extend_zeroes(hexi(i + increment), 8) for i in realigned_addresses]
         listbox.delete(0, tk.END)
         for i, address in enumerate(addresses):
             listbox.insert(tk.END, '{}{}'.format(address, list_contents[i][8:]))
+        listbox.see(see)
 
     if comments_window:
-        fix_listbox(comments_list)
+        fix_listbox(comments_list_box, comments_curselection)
 
     if changes_win:
-        fix_listbox(changes_list_box)
+        fix_listbox(changes_list_box, changes_curselect)
+
+    if phrases_win:
+        fix_listbox(phrases_list_box, phrases_curselect)
 
     for key in config_data:
         del jumps_displaying[key]
-        addy_1 = deci(key[:8]) + increment
-        addy_2 = deci(key[11:19]) + increment
+        addy_1 = deci(key[:8])
+        addy_2 = deci(key[11:19])
+        addy_1 = (disasm.region_align(addy_1) if toggle_to else disasm.region_unalign(addy_1)) + increment
+        addy_2 = (disasm.region_align(addy_2) if toggle_to else disasm.region_unalign(addy_2)) + increment
         comment = key[19:]
         addy_1 = extend_zeroes(hexi(addy_1), 8)
         addy_2 = extend_zeroes(hexi(addy_2), 8)
@@ -1865,11 +2077,13 @@ def toggle_address_mode():
     save_config()
     if jumps_window:
         if function_select:
-            addy_1 = function_select[:8]
-            addy_2 = function_select[11:19]
+            addy_1 = deci(function_select[:8])
+            addy_2 = deci(function_select[11:19])
             comment = function_select[19:]
-            addy_1 = extend_zeroes(hexi(deci(addy_1) + increment), 8)
-            addy_2 = extend_zeroes(hexi(deci(addy_2) + increment), 8)
+            addy_1 = (disasm.region_align(addy_1) if toggle_to else disasm.region_unalign(addy_1)) + increment
+            addy_2 = (disasm.region_align(addy_2) if toggle_to else disasm.region_unalign(addy_2)) + increment
+            addy_1 = extend_zeroes(hexi(addy_1), 8)
+            addy_2 = extend_zeroes(hexi(addy_2), 8)
             function_select = '{} - {}{}'.format(addy_1, addy_2, comment)
         function_list_box.delete(0, tk.END)
         jump_box = jump_list_box.get(0,tk.END)
@@ -1877,8 +2091,15 @@ def toggle_address_mode():
         for key in jumps_displaying:
             function_list_box.insert(tk.END, key)
         for i in jump_box:
-            value = extend_zeroes(hexi(deci(i[:8]) + increment), 8)
+            value = deci(i[:8])
+            value = (disasm.region_align(value) if toggle_to else disasm.region_unalign(value)) + increment
+            value = extend_zeroes(hexi(value), 8)
             jump_list_box.insert(tk.END, value + i[8:])
+        if function_curselect:
+            function_list_box.see(function_curselect)
+        if jumps_curselect:
+            jump_list_box.see(jumps_curselect)
+
 
 
 def toggle_hex_mode():
@@ -1902,11 +2123,10 @@ def toggle_hex_space():
     highlight_stuff(skip_moving_cursor=True)
 
 
-
 def change_immediate_id():
     accepted_symbols = ['<', '>', ':', ';', '\'', '"', '{', '}',
-                        '=', '+', '-', '_', '*', '&', '^', '%', '$', '#',
-                        '@', '!', '`', '~', '/', '?', '\\']
+                        '=', '+', '-', '_', '&', '^', '%', '$', '#',
+                        '@', '!', '`', '~', '/', '?']
     symbol = simpledialog.askstring('Set immediate identifier symbol',
                                     'Must be one of {}'.format(' '.join(accepted_symbols)))
     if symbol and symbol[:1] in accepted_symbols:
@@ -2040,16 +2260,21 @@ def help_box():
     simpledialog.messagebox._show('Help (final)', message_3)
 
 
-opcodes_win = None
+opcodes_win = codes_list_box = None
 def opcodes_list():
-    global opcodes_win
+    global opcodes_win, codes_list_box
+    if opcodes_win:
+        opcodes_win.deiconify()
+        opcodes_win.focus_force()
+        return
     opcodes_win = tk.Tk()
     opcodes_win.title('Opcodes list')
     opcodes_win.geometry('650x800+50+50')
-    codes_list = tk.Listbox(opcodes_win, font=('Courier', 10))
-    [codes_list.insert(tk.END, i + ': ' + DOCUMENTATION[i]) for i in DOCUMENTATION]
-    codes_list.place(x=5, y=5, width=640, height=790)
+    codes_list_box = tk.Listbox(opcodes_win, font=('Courier', 10))
+    [codes_list_box.insert(tk.END, i + ': ' + DOCUMENTATION[i]) for i in DOCUMENTATION]
+    codes_list_box.place(x=5, y=5, width=640, height=790)
     opcodes_win.bind('<Escape>', lambda _: opcodes_win.destroy())
+    change_colours()
     opcodes_win.mainloop()
 
 
@@ -2075,10 +2300,15 @@ jumps_window = None
 function_list_box = None
 jump_list_box = None
 jumps_label = None
+functions_label = None
+jumps_comment_checkbox = jumps_hack_checkbox = None
 function_select = ''
 jumps_displaying = {}
+function_curselect = 0
+jumps_curselect = 0
 def find_jumps(just_window=False):
-    global function_select, jumps_window, function_list_box, jump_list_box, jumps_label
+    global function_select, jumps_window, function_list_box, jump_list_box, jumps_label, functions_label, \
+        jumps_comment_checkbox, jumps_hack_checkbox, function_curselect, jumps_curselect
     if not disassembler_loaded():
         return
     if just_window:
@@ -2101,41 +2331,42 @@ def find_jumps(just_window=False):
         def hack_checkbox_callback():
             if app_config['jumps_auto_focus_hack']:
                 app_config['jumps_auto_focus_hack'] = False
-                hack_checkbox.deselect()
+                jumps_hack_checkbox.deselect()
             else:
                 app_config['jumps_auto_focus_comments'] = False
                 app_config['jumps_auto_focus_hack'] = True
-                hack_checkbox.select()
-                comment_checkbox.deselect()
+                jumps_hack_checkbox.select()
+                jumps_comment_checkbox.deselect()
             save_config()
 
         def comments_checkbox_callback():
             if app_config['jumps_auto_focus_comments']:
                 app_config['jumps_auto_focus_comments'] = False
-                comment_checkbox.deselect()
+                jumps_comment_checkbox.deselect()
             else:
                 app_config['jumps_auto_focus_hack'] = False
                 app_config['jumps_auto_focus_comments'] = True
-                comment_checkbox.select()
-                hack_checkbox.deselect()
+                jumps_comment_checkbox.select()
+                jumps_hack_checkbox.deselect()
             save_config()
 
-        hack_checkbox = tk.Checkbutton(jumps_window, text='Auto-focus hack textbox',
+        jumps_hack_checkbox = tk.Checkbutton(jumps_window, text='Auto-focus hack textbox',
                                        command=lambda: window.after(1, lambda: hack_checkbox_callback()))
-        comment_checkbox = tk.Checkbutton(jumps_window, text='Auto-focus comments textbox',
+        jumps_comment_checkbox = tk.Checkbutton(jumps_window, text='Auto-focus comments textbox',
                                           command=lambda: window.after(1, lambda: comments_checkbox_callback()))
-        hack_checkbox.place(x=100, y=6)
-        comment_checkbox.place(x=294, y=6)
+        jumps_hack_checkbox.place(x=100, y=6)
+        jumps_comment_checkbox.place(x=294, y=6)
         if app_config['jumps_auto_focus_comments']:
-            comment_checkbox.select()
+            jumps_comment_checkbox.select()
         elif app_config['jumps_auto_focus_hack']:
-            hack_checkbox.select()
+            jumps_hack_checkbox.select()
 
         def function_list_callback():
-            global function_select
+            global function_select, function_curselect
             curselect = function_list_box.curselection()
             if not curselect:
                 return
+            function_curselect = curselect[0]
             apply_hack_changes()
             apply_comment_changes()
             key = function_list_box.get(curselect[0])
@@ -2148,7 +2379,8 @@ def find_jumps(just_window=False):
                 widget = comments_text_box
             elif app_config['jumps_auto_focus_hack']:
                 widget = hack_file_text_box
-            navigate_to(start_address + increment, center=True, widget=widget)
+            if_disasm = disasm.game_address_mode
+            navigate_to(start_address + increment, center=True, widget=widget, region_treatment=if_disasm, region_override=if_disasm)
             jump_list_box.delete(0, tk.END)
             for address in jumps_displaying[key]:
                 jump_list_box.insert(tk.END, address)
@@ -2167,9 +2399,11 @@ def find_jumps(just_window=False):
                         jump_list_box.delete(0, tk.END)
 
         def jump_list_callback():
+            global jumps_curselect
             curselect = jump_list_box.curselection()
             if not curselect:
                 return
+            jumps_curselect = curselect[0]
             apply_hack_changes()
             apply_comment_changes()
             increment = 0 if not disasm.game_address_mode else -(disasm.game_offset >> 2)
@@ -2181,7 +2415,8 @@ def find_jumps(just_window=False):
                 widget = comments_text_box
             elif app_config['jumps_auto_focus_hack']:
                 widget = hack_file_text_box
-            navigate_to(navi, center=True, widget=widget)
+            if_disasm = disasm.game_address_mode
+            navigate_to(navi, center=True, widget=widget, region_treatment=if_disasm, region_override=if_disasm)
             if widget:
                 widget.focus_force()
 
@@ -2190,10 +2425,11 @@ def find_jumps(just_window=False):
         function_list_box.bind('<Key>', function_list_key)
         for key in jumps_displaying:
             function_list_box.insert(tk.END,key)
-        tk.Label(jumps_window, text='Functions').place(x=6,y=5)
+        functions_label = tk.Label(jumps_window, text='Functions')
         jumps_label = tk.Label(jumps_window, text='Jumps to Function')
         function_list_box.place(x=func_list_x,y=func_list_y,width=func_list_w,height=func_list_h)
         jump_list_box.place(x=jumps_list_x,y=jumps_list_y,width=jumps_list_w,height=jumps_list_h)
+        functions_label.place(x=6,y=5)
         jumps_label.place(x=jumps_list_x,y=jumps_label_y)
         def jumps_window_equals_none():
             global jumps_window, function_select
@@ -2209,8 +2445,10 @@ def find_jumps(just_window=False):
         jumps_window.bind('<Control-s>', lambda e: save_changes_to_file())
         jumps_window.bind('<Control-S>', lambda e: save_changes_to_file())
         jumps_window.focus_force()
+        jumps_window.after(2, lambda: change_colours())
         jumps_window.after(1, lambda: jumps_window.mainloop())
     elif jumps or just_window:
+        jumps_window.deiconify()
         jumps_window.focus_force()
     if just_window:
         return
@@ -2249,42 +2487,48 @@ def find_jumps(just_window=False):
 
 
 comments_window = None
-comments_list = None
+comments_list_box = None
 filter_text = None
+comments_filter_label = None
+comments_hack_checkbox = None
+comments_comment_checkbox = None
+comments_curselection = 0
 def view_comments():
-    global comments_window, comments_list, filter_text
+    global comments_window, comments_list_box, filter_text, comments_filter_label, comments_hack_checkbox, \
+        comments_comment_checkbox, comments_curselection
     if not disassembler_loaded():
         return
     if comments_window:
+        comments_window.deiconify()
         filter_text.focus_force()
         return
     comments_window = tk.Tk()
     comments_window.title('Comments')
     comments_window.geometry('{}x{}'.format(comments_win_w,comments_win_h))
-    comments_list = tk.Listbox(comments_window, font=('Courier', main_font_size))
-    comments_list.place(x=comments_x,y=comments_y,width=comments_w,height=comments_h)
+    comments_list_box = tk.Listbox(comments_window, font=('Courier', main_font_size))
+    comments_list_box.place(x=comments_x,y=comments_y,width=comments_w,height=comments_h)
 
     # If this doesn't want to work the way the auto-copy checkbox does, then it will have to work by force
     def hack_checkbox_callback():
         if app_config['comments_auto_focus_hack']:
             app_config['comments_auto_focus_hack'] = False
-            hack_checkbox.deselect()
+            comments_hack_checkbox.deselect()
         else:
             app_config['comments_auto_focus_comments'] = False
             app_config['comments_auto_focus_hack'] = True
-            hack_checkbox.select()
-            comment_checkbox.deselect()
+            comments_hack_checkbox.select()
+            comments_comment_checkbox.deselect()
         save_config()
 
     def comments_checkbox_callback():
         if app_config['comments_auto_focus_comments']:
             app_config['comments_auto_focus_comments'] = False
-            comment_checkbox.deselect()
+            comments_comment_checkbox.deselect()
         else:
             app_config['comments_auto_focus_hack'] = False
             app_config['comments_auto_focus_comments'] = True
-            comment_checkbox.select()
-            hack_checkbox.deselect()
+            comments_comment_checkbox.select()
+            comments_hack_checkbox.deselect()
         save_config()
 
     def increment():
@@ -2294,37 +2538,43 @@ def view_comments():
 
     def populate_list():
         if comments_window:
-            comments_list.delete(0, tk.END)
+            comments_list_box.delete(0, tk.END)
             filtering = filter_text.get('1.0', tk.END).split('\n')[0].lower()
             for key in sorted([int(key) for key in disasm.comments
-                               if tags_in_text(filtering, disasm.comments[key].lower())]):
-                comments_list.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi((key << 2) + increment()), 8),
+                               if tags_in_text(filtering, disasm.comments[key].lower())][:5000]):
+                address = key << 2
+                if disasm.game_address_mode:
+                    address = disasm.region_align(address)
+                comments_list_box.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi(address + increment()), 8),
                                                              disasm.comments[str(key)]))
 
-    hack_checkbox = tk.Checkbutton(comments_window, text='Auto-focus hack textbox',
+    comments_hack_checkbox = tk.Checkbutton(comments_window, text='Auto-focus hack textbox',
                                    command=lambda: window.after(1, lambda: hack_checkbox_callback()))
-    comment_checkbox = tk.Checkbutton(comments_window, text='Auto-focus comments textbox',
+    comments_comment_checkbox = tk.Checkbutton(comments_window, text='Auto-focus comments textbox',
                                       command=lambda: window.after(1, lambda: comments_checkbox_callback()))
     filter_text = tk.Text(comments_window, font=('Courier', 10))
-    hack_checkbox.place(x=6, y=6)
-    comment_checkbox.place(x=175, y=6)
+    comments_hack_checkbox.place(x=6, y=6)
+    comments_comment_checkbox.place(x=175, y=6)
     filter_text.place(x=370, y=9, width=font_dimension(10)[0] * 20, height=20)
-    tk.Label(comments_window, text='Filter list').place(x=535,y=9)
+    comments_filter_label = tk.Label(comments_window, text='Filter list')
+    comments_filter_label.place(x=535,y=9)
     filter_text.bind('<Key>', lambda _: window.after(1, populate_list))
     if app_config['comments_auto_focus_comments']:
-        comment_checkbox.select()
+        comments_comment_checkbox.select()
     elif app_config['comments_auto_focus_hack']:
-        hack_checkbox.select()
+        comments_hack_checkbox.select()
 
     populate_list()
 
     def comments_list_callback(event):
-        curselect = comments_list.curselection()
+        global comments_curselection
+        curselect = comments_list_box.curselection()
         if not curselect:
             return
+        comments_curselection = curselect[0]
         apply_hack_changes()
         apply_comment_changes()
-        navi = deci(comments_list.get(curselect[0])[:8]) >> 2
+        navi = deci(comments_list_box.get(curselect[0])[:8]) >> 2
         if disasm.game_address_mode:
             navi -= disasm.game_offset >> 2
         reset_target()
@@ -2333,11 +2583,11 @@ def view_comments():
             widget = comments_text_box
         elif app_config['comments_auto_focus_hack']:
             widget = hack_file_text_box
-        navigate_to(navi, center=True, widget=widget)
+        navigate_to(navi, center=True, widget=widget, region_treatment=True, region_override=True)
         if widget:
             widget.focus_force()
 
-    comments_list.bind('<<ListboxSelect>>', comments_list_callback)
+    comments_list_box.bind('<<ListboxSelect>>', comments_list_callback)
 
     def comments_window_equals_none():
         global comments_window
@@ -2345,7 +2595,7 @@ def view_comments():
         comments_window = None
 
     def focus_in(event):
-        if not event.widget is comments_list:
+        if not event.widget is comments_list_box:
             filter_text.focus_force()
 
     comments_window.bind('<Escape>', lambda e: comments_window_equals_none())
@@ -2359,6 +2609,7 @@ def view_comments():
     comments_window.bind('<Control-S>', lambda e: save_changes_to_file())
     comments_window.protocol('WM_DELETE_WINDOW', comments_window_equals_none)
     filter_text.focus_force()
+    change_colours()
     comments_window.mainloop()
 
 
@@ -2373,7 +2624,7 @@ def follow_jump():
     navi += 1  # Address calculated based on address of delay slot
     address = 0
     if JUMP_INTS[opcode]:
-        address = disasm.solve_address(navi, int_word & 0x03FFFFFF) >> 2
+        address = disasm.region_align(disasm.solve_address(navi, int_word & 0x03FFFFFF)) >> 2
     elif BRANCH_INTS[opcode]:
         address = sign_16_bit_value(int_word & 0xFFFF) + navi
     if address:
@@ -2382,14 +2633,13 @@ def follow_jump():
         frame = hack_buffer[1][hack_buffer[0]]
         if frame[0] != navigation or frame[1] != cursor or frame[2] != text_box_contents:
             buffer_append(hack_buffer)
-        navigate_to(address, center=True)
+        navigate_to(address, center=True, region_treatment=True, region_override=True)
         buffer_append(hack_buffer)
 
 
-colours_window = None
-
+colours_window = change_colours_label = None
 def set_colour_scheme():
-    global colours_window
+    global colours_window, change_colours_label
     if colours_window:
         return
     if not disassembler_loaded():
@@ -2547,6 +2797,8 @@ def set_colour_scheme():
         [colour_buttons_callback(tag, colour_dict[tag]) for tag in colour_dict]
 
     y_offset = 0
+    change_colours_label = tk.Label(colours_window, text='Customise')
+    change_colours_label.place(x=85,y=10)
     for button in custom_buttons:
         if button in app_config['tag_config']:
             bg = app_config['tag_config'][button]
@@ -2558,7 +2810,6 @@ def set_colour_scheme():
             fg = '#FFFFFF'
         else:
             fg = '#000000'
-        tk.Label(colours_window, text='Customise').place(x=85,y=10)
         custom_buttons[button].config(text=button_text[button],
                                       bg=bg, activebackground=bg, fg=fg, activeforeground=fg)
         custom_buttons[button].place(x=5, y=35+y_offset, width=222)
@@ -2591,6 +2842,7 @@ def set_colour_scheme():
         colours_window = None
     colours_window.bind('<Escape>', lambda e: close_colours_win())
     colours_window.protocol('WM_DELETE_WINDOW', close_colours_win)
+    change_colours()
     colours_window.mainloop()
 
 
@@ -2744,8 +2996,8 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
     comments_win_h = comments_y + comments_h + 5
     if comments_window:
         _, __, comments_win_x, comments_win_y = geometry(comments_window.geometry())
-        comments_list.config(font=('Courier', main_font_size))
-        comments_list.place(x=comments_x, y=comments_y, width=comments_w, heigh=comments_h)
+        comments_list_box.config(font=('Courier', main_font_size))
+        comments_list_box.place(x=comments_x, y=comments_y, width=comments_w, heigh=comments_h)
         comments_window.geometry('{}x{}+{}+{}'.format(comments_win_w, comments_win_h, comments_win_x, comments_win_y))
     func_list_x = jumps_list_x = 6
     func_list_w = jumps_list_w = (font_w * 91) + 6
@@ -2774,10 +3026,11 @@ def toggle_status_bar():
     set_widget_sizes()
 
 
-dimension_window = None
+dimension_window = font_size_label = line_amount_label = None
 def change_win_dimensions():
-    global dimension_window
+    global dimension_window, font_size_label, line_amount_label
     if dimension_window:
+        dimension_window.deiconify()
         dimension_window.focus_force()
         return
     dimension_window = tk.Tk()
@@ -2804,9 +3057,9 @@ def change_win_dimensions():
         dimension_window.destroy()
         dimension_window = None
         save_config()
-    tk.Label(dimension_window, text='Font size').pack(side=tk.LEFT)
+    font_size_label = tk.Label(dimension_window, text='Font size').pack(side=tk.LEFT)
     scale_size.pack(side=tk.LEFT)
-    tk.Label(dimension_window, text='Line amount').pack(side=tk.RIGHT)
+    line_amount_label = tk.Label(dimension_window, text='Line amount').pack(side=tk.RIGHT)
     scale_lines.pack(side=tk.RIGHT)
     dimension_window.bind('<MouseWheel>', dimension_scroll_callback)
     dimension_window.bind('<Escape>', lambda e: dimension_window_equals_none())
@@ -2842,6 +3095,10 @@ def manual_cic():
     global manual_cic_win
     if not disassembler_loaded():
         return
+    if manual_cic_win:
+        manual_cic_win.deiconify()
+        manual_cic_win.focus_force()
+        return
     manual_cic_win = tk.Tk()
     texts = {
         str(0b00001): '6101',
@@ -2850,7 +3107,6 @@ def manual_cic():
         str(0b01000): '6105/7105',
         str(0b10000): '6106/7106'
     }
-
 
     def set_cic(num):
         for i in texts:
@@ -2864,7 +3120,6 @@ def manual_cic():
         app_config['CIC'][disasm.hack_file_name] = disasm.cic
         save_config()
         navigate_to(navigation)
-
 
     buttons = {}
     buttons[str(0b00001)] = tk.Checkbutton(manual_cic_win, text=texts[str(0b00001)], command=lambda: set_cic(0b00001))
@@ -2900,8 +3155,9 @@ def toggle_calc_crc():
 
 
 changes_win = changes_list_box = None
+changes_curselect = 0
 def scour_changes():
-    global changes_win, changes_list_box
+    global changes_win, changes_list_box, changes_curselect
     if not disassembler_loaded():
         return
     ch_ch_changes = []  # don't wanna be a richer man
@@ -2923,6 +3179,7 @@ def scour_changes():
             instruction = 'UNKNOWN/NOT AN INSTRUCTION'
         hex_of = hex_space(disasm.hack_file[i:i+4].hex().upper())
         if disasm.game_address_mode:
+            i = disasm.region_align(i)
             i += disasm.game_offset
         address = extend_zeroes(hexi(i), 8)
         the_text = '{}: {}    {}'.format(address,hex_of,instruction)
@@ -2945,16 +3202,18 @@ def scour_changes():
         [changes_list_box.insert(tk.END, i) for i in display_list]
 
         def list_callback():
+            global changes_curselect
             curselect = changes_list_box.curselection()
             if not curselect:
                 return
+            changes_curselect = curselect[0]
             apply_hack_changes()
             apply_comment_changes()
             entry = changes_list_box.get(curselect[0])
             increment = 0 if not disasm.game_address_mode else -(disasm.game_offset >> 2)
             address = deci(entry[:8]) >> 2
             reset_target()
-            navigate_to(address + increment, center=True, widget=None)
+            navigate_to(address + increment, center=True, widget=None, region_treatment=True, region_override=True)
 
         changes_list_box.bind('<<ListboxSelect>>', lambda _: list_callback())
         changes_list_box.place(x=5, y=5, width=890, height=490)
@@ -2967,23 +3226,29 @@ def scour_changes():
         changes_win.bind('<Control-s>', lambda e: save_changes_to_file())
         changes_win.bind('<Control-S>', lambda e: save_changes_to_file())
         changes_win.focus_force()
+        change_colours()
         changes_win.mainloop()
 
 
 
-script_win = None
+script_win = script_help_button = plus_button = out_file_button = view_test_button = save_template_button = \
+    load_template_button = group_list_box = groups_label = groups_refresh_button = batch_label = script_label = \
+    script_text_box = batch_text_box = None
 def generate_script():
-    global script_win
+    global script_win, script_help_button, plus_button, out_file_button, view_test_button, save_template_button, \
+        load_template_button, group_list_box, groups_label, groups_refresh_button, batch_label, script_label, \
+        script_text_box, batch_text_box
     if not disassembler_loaded():
         return
     if script_win:
+        script_win.deiconify()
         script_win.focus_force()
         return
     script_win = tk.Tk()
     script_win.title('Generate script')
     script_win.geometry('900x666+50+50')  # not intentional
     script_text_box = tk.Text(script_win, font=('Courier', 10))
-    batch_text = tk.Text(script_win, font=('Courier', 10))
+    batch_text_box = tk.Text(script_win, font=('Courier', 10))
 
     def scriptify(text):
         def replace_tags(line, iter_text, note_text):
@@ -3002,7 +3267,7 @@ def generate_script():
             return line.replace('{{iter}}', iter_text).replace('{{note}}', note_text)
 
         split_text = text.split('\n')
-        batch = batch_text.get('1.0', tk.END)
+        batch = batch_text_box.get('1.0', tk.END)
         if len(batch) == batch.count('\n'):
             simpledialog.messagebox._show('Error', 'You need items in the batch. Try grouping '
                                                    'some addresses by adding #groupname at the '
@@ -3127,17 +3392,18 @@ def generate_script():
         if not curselect:
             return
         group_select = groups[group_list_box.get(curselect[0])]
-        current_batch_text = batch_text.get('1.0', tk.END)
+        current_batch_text = batch_text_box.get('1.0', tk.END)
         if current_batch_text:
             if not current_batch_text.count('\n') == len(current_batch_text):
                 if current_batch_text[-1] != '\n':
-                    batch_text.insert(tk.END, '\n')
+                    batch_text_box.insert(tk.END, '\n')
         for address in group_select:
-            batch_text.insert(tk.END, address)
             comment_key = str((deci(address) - disasm.game_offset) >> 2)
+            address = disasm.region_align(address, game_offset=True)
+            batch_text_box.insert(tk.END, address)
             if comment_key in disasm.comments:
-                batch_text.insert(tk.END, ': ' + disasm.comments[comment_key])
-            batch_text.insert(tk.END, '\n')
+                batch_text_box.insert(tk.END, ': ' + disasm.comments[comment_key])
+            batch_text_box.insert(tk.END, '\n')
 
     def view_test_callback():
         scriptified = scriptify(script_text_box.get('1.0', tk.END))
@@ -3191,27 +3457,31 @@ def generate_script():
         [group_list_box.insert(tk.END, group) for group in groups]
 
 
-    help_button = tk.Button(script_win, text='?', command=help_button_callback)
+    script_help_button = tk.Button(script_win, text='?', command=help_button_callback)
     plus_button = tk.Button(script_win, text='+', command=plus_button_callback)
     out_file_button = tk.Button(script_win, text='Generate and save as', command=out_file_callback)
-    view_test = tk.Button(script_win, text='Generate and view script', command=view_test_callback)
-    save_template = tk.Button(script_win, text='Save script template', command=save_template_callback)
-    load_template = tk.Button(script_win, text='Load script template', command=load_template_callback)
+    view_test_button = tk.Button(script_win, text='Generate and view script', command=view_test_callback)
+    save_template_button = tk.Button(script_win, text='Save script template', command=save_template_callback)
+    load_template_button = tk.Button(script_win, text='Load script template', command=load_template_callback)
     group_list_box = tk.Listbox(script_win)
     populate_list()
 
-    tk.Label(script_win, text='Groups').place(x=5, y=8)
-    tk.Button(script_win, text='Refresh', command=populate_list).place(x=60, y=5)
-    tk.Label(script_win, text='Batch').place(x=191, y=8)
-    tk.Label(script_win, text='Script').place(x=5, y=280-34)
-    help_button.place(x=869, y=274-34, width=25, height=25)
+    groups_label = tk.Label(script_win, text='Groups')
+    groups_label.place(x=5, y=8)
+    groups_refresh_button = tk.Button(script_win, text='Refresh', command=populate_list)
+    groups_refresh_button.place(x=60, y=5)
+    batch_label = tk.Label(script_win, text='Batch')
+    batch_label.place(x=191, y=8)
+    script_label = tk.Label(script_win, text='Script')
+    script_label.place(x=5, y=280-34)
+    script_help_button.place(x=869, y=274-34, width=25, height=25)
     group_list_box.place(x=5, y=34, width=150, height=200)
     plus_button.place(x=160, y=34, width=25, height=200)
-    batch_text.place(x=191, y=34, width=704, height=200)
+    batch_text_box.place(x=191, y=34, width=704, height=200)
     out_file_button.place(x=100, y=274-34)
-    view_test.place(x=280, y=274-34)
-    save_template.place(x=460, y=274-34)
-    load_template.place(x=640, y=274-34)
+    view_test_button.place(x=280, y=274-34)
+    save_template_button.place(x=460, y=274-34)
+    load_template_button.place(x=640, y=274-34)
     script_text_box.place(x=5, y=305-34, width=890, height=390)
 
     def script_win_equals_none():
@@ -3220,22 +3490,271 @@ def generate_script():
         script_win = None
 
     script_win.protocol('WM_DELETE_WINDOW', script_win_equals_none)
+    change_colours()
     script_win.mainloop()
 
 
-def tst():
-    phrase = simpledialog.askstring('Find what','')
-    if not phrase:
+phrases_win = phrases_list_box = None
+phrases_curselect = 0
+def find_phrase():
+    global phrases_win, phrases_list_box, phrases_curselect
+    phrases = []
+    while True:
+        phrase = simpledialog.askstring('Find what'
+                                        if not phrases else
+                                        'Followed by',
+                                        'Leave blank/cancel to begin search\n'
+                                        'Input "-" to indicate this line does not matter\n'
+                                        'Use "*" as an AND phrase separator for this line\n'
+                                        'Use "\\" as an OR phrase separator for this line\n'
+                                        'ORs will be resolved before ANDs\n'
+                                        if phrases else
+                                        'Use "*" as an AND phrase separator for this line\n'
+                                        'Use "\\" as an OR phrase separator for this line\n'
+                                        'ORs will be resolved before ANDs\n')
+        if not phrase:
+            break
+        phrases.append(phrase.upper())
+    if not phrases:
         return
-    print('\n'*2)
-    checking = disasm.hack_file[disasm.header_items['Boot Code'][0]:disasm.header_items['Boot Code'][1]]
+    checking = disasm.hack_file
     ints = ints_of_4_byte_aligned_region(checking)
-    for j, i in enumerate(ints):
-        j += 0x400
-        decoded = disasm.decode(i, j)
-        if phrase in decoded:
-            print(hexi(j << 2) + ': ' + decoded)
+    display_list = []
+    percent = len(ints) // 100
+    found = []
 
+    for j, i in enumerate(ints):
+        if not j % percent:
+            status_text.set('Searching... ' + str(j // percent) + '%')
+            status_bar.update()
+        decoded = disasm.decode(i, j)
+        if phrases[len(found)] == '-':
+            found.append(i)
+        elif not decoded:
+            found[:] = []
+        elif '*' in phrases[len(found)]:
+            inner_phrases = phrases[len(found)].split('*')
+            passed = 0
+            for phrase in inner_phrases:
+                if '\\' in phrase:
+                    or_phrases = phrase.split('\\')
+                    for l in or_phrases:
+                        if l in decoded:
+                            passed += 1
+                            break
+                else:
+                    if phrase in decoded:
+                        passed += 1
+            if passed == len(inner_phrases):
+                found.append(i)
+            else:
+                found[:] = []
+        elif '\\' in phrases[len(found)]:
+            inner_phrases = phrases[len(found)].split('\\')
+            passed = False
+            for l in inner_phrases:
+                if l in decoded:
+                    found.append(i)
+                    passed = True
+                    break
+            if not passed:
+                found[:] = []
+        elif phrases[len(found)] in decoded:
+            found.append(i)
+        else:
+            found[:] = []
+        if len(found) == len(phrases):
+            for li, l in enumerate(found):
+                offset = j - (len(found) - (li + 1))
+                decoded = disasm.decode(l, offset)
+                offset <<= 2
+                if disasm.game_address_mode:
+                    offset = disasm.region_align(offset) + disasm.game_offset
+                display_list.append(extend_zeroes(hexi(offset), 8) + ': ' + decoded)
+            if len(found) > 1:
+                display_list.append('')
+            found[:] = []
+
+    def phrases_win_equals_none():
+        global phrases_win
+        phrases_win.destroy()
+        phrases_win = None
+
+    if phrases_win:
+        phrases_win_equals_none()
+    if display_list:
+        phrases_win = tk.Tk()
+        divide_by = (len(phrases) + 1) if len(phrases) > 1 else 1
+        phrases_win.title('{} Results'.format(len(display_list) // divide_by))
+        phrases_win.geometry('400x500+50+50')
+        phrases_list_box = tk.Listbox(phrases_win, font=('Courier', 10))
+        [phrases_list_box.insert(tk.END, i) for i in display_list]
+
+        def list_callback():
+            global phrases_curselect
+            curselect = phrases_list_box.curselection()
+            if not curselect:
+                return
+            phrases_curselect = curselect[0]
+            entry = phrases_list_box.get(curselect[0])
+            if not entry:
+                return
+            apply_hack_changes()
+            apply_comment_changes()
+            increment = 0 if not disasm.game_address_mode else -(disasm.game_offset >> 2)
+            address = deci(entry[:8]) >> 2
+            reset_target()
+            navigate_to(address + increment, center=True, widget=None, region_treatment=True)
+
+        phrases_list_box.bind('<<ListboxSelect>>', lambda _: list_callback())
+        phrases_list_box.place(x=5, y=5, width=390, height=490)
+        phrases_win.protocol('WM_DELETE_WINDOW', phrases_win_equals_none)
+        phrases_win.bind('<Escape>', lambda _: phrases_win_equals_none())
+        phrases_win.bind('<F1>', lambda e: view_comments())
+        phrases_win.bind('<F3>', lambda e: toggle_base_file())
+        phrases_win.bind('<F4>', lambda e: navigation_prompt(root=phrases_win))
+        phrases_win.bind('<F5>', lambda e: toggle_address_mode())
+        phrases_win.bind('<Control-s>', lambda e: save_changes_to_file())
+        phrases_win.bind('<Control-S>', lambda e: save_changes_to_file())
+        phrases_win.focus_force()
+        change_colours()
+        phrases_win.mainloop()
+    else:
+        simpledialog.messagebox._show('Oh no', 'No results for:\n\n' + '\n'.join(phrases))
+
+
+mem_regions_win = id_count_unique_name = None
+def set_memory_regions():
+    global mem_regions_win, id_count_unique_name
+    if not disassembler_loaded():
+        return
+    if mem_regions_win:
+        mem_regions_win.deiconify()
+        mem_regions_win.focus_force()
+        return
+    if not save_changes_to_file():
+        simpledialog.messagebox._show('Alert', 'This feature requires that you save your changes beforehand. '
+                                               'If you set the regions improperly, there is a possibility '
+                                               'that it will corrupt the session and then you will be unable'
+                                               ' to save thus you will lose your changes. You need to correct '
+                                               'all of your errors to save.\n\n'
+                                               'The application error which causes the session to corrupt is '
+                                               'thrown when your region parameters cause a ROM region to fall '
+                                               'under 0x00000000.')
+        return
+    mem_regions_win = tk.Tk()
+    mem_regions_win.title('Set memory regions')
+    widget_h = 22
+    widget_w = 150
+    sub_buttons = []
+    mem_start_inputs = []
+    mem_end_inputs = []
+    mem_offset_inputs = []
+    padding = 8
+    row_1 = padding
+    row_2 = row_1 + widget_w + padding
+    row_3 = row_2 + widget_w + padding
+    row_4 = row_3 + widget_w + padding
+    id_count_unique_name = 0
+    tk.Label(mem_regions_win, text='Virtual Address Start').place(x=row_1, y=padding)
+    tk.Label(mem_regions_win, text='Region Length').place(x=row_2, y=padding)
+    tk.Label(mem_regions_win, text='RAM minus ROM Offset').place(x=row_3, y=padding)
+
+    y_offset = lambda amt_columns: 30 + padding + (amt_columns * (widget_h + padding))
+
+    def resize_window():
+        win_w = (widget_w * 3) + (padding*5) + widget_h
+        win_h = y_offset(len(mem_start_inputs)) + 30
+        mem_regions_win.geometry('{}x{}'.format(win_w, win_h))
+
+    def add_field():
+        global id_count_unique_name
+        widget_y = y_offset(len(mem_start_inputs))
+
+        mem_start_inputs.append(tk.Text(mem_regions_win, font=('Courier', 10)))
+        mem_end_inputs.append(tk.Text(mem_regions_win, font=('Courier', 10)))
+        mem_offset_inputs.append(tk.Text(mem_regions_win, font=('Courier', 10)))
+        sub_buttons.append(tk.Button(mem_regions_win, text='-'))
+
+        removing = [mem_start_inputs[-1], mem_end_inputs[-1], mem_offset_inputs[-1], sub_buttons[-1]]
+
+        def sub_button_callback():
+            for j, widget in enumerate(mem_start_inputs):
+                if widget is removing[0]:
+                    mem_start_inputs.pop(j).destroy()
+                    mem_end_inputs.pop(j).destroy()
+                    mem_offset_inputs.pop(j).destroy()
+                    sub_buttons.pop(j).destroy()
+                    while j < len(mem_start_inputs):
+                        widget_y = y_offset(j)
+                        mem_start_inputs[j].place(x=row_1, y=widget_y, width=widget_w, height=widget_h)
+                        mem_end_inputs[j].place(x=row_2, y=widget_y, width=widget_w, height=widget_h)
+                        mem_offset_inputs[j].place(x=row_3, y=widget_y, width=widget_w, height=widget_h)
+                        sub_buttons[j].place(x=row_4, y=widget_y, width=widget_h, height=widget_h)
+                        j += 1
+                    add_button.place(x=row_4, y=y_offset(j), width=widget_h, height=widget_h)
+                    resize_window()
+                    break
+        sub_buttons[-1].config(command=sub_button_callback)
+
+        mem_start_inputs[-1].place(x=row_1, y=widget_y, width=widget_w, height=widget_h)
+        mem_end_inputs[-1].place(x=row_2, y=widget_y, width=widget_w, height=widget_h)
+        mem_offset_inputs[-1].place(x=row_3, y=widget_y, width=widget_w, height=widget_h)
+        sub_buttons[-1].place(x=row_4, y=widget_y, width=widget_h, height=widget_h)
+
+        add_button.place(x=row_4, y=y_offset(len(mem_start_inputs)), width=widget_h, height=widget_h)
+
+        resize_window()
+
+    def mem_regions_win_equals_none():
+        global mem_regions_win
+        del app_config['memory_regions'][disasm.hack_file_name]
+        app_config['memory_regions'][disasm.hack_file_name] = []
+        mem_regions = app_config['memory_regions'][disasm.hack_file_name]
+
+        def get_text(widget):
+            text = widget.get('1.0', tk.END)
+            text = text.replace('\n', '')
+            return text
+        try:
+            for i in range(len(mem_start_inputs)):
+                start = get_text(mem_start_inputs[i])
+                end = get_text(mem_end_inputs[i])
+                offset = get_text(mem_offset_inputs[i])
+                if start and end and offset:
+                    mem_regions.append([
+                        deci(start),
+                        deci(end),
+                        deci(offset)
+                    ])
+        except:
+            del app_config['memory_regions'][disasm.hack_file_name]
+            app_config['memory_regions'][disasm.hack_file_name] = []
+            simpledialog.messagebox._show('Error', 'Could not translate all inputs to decimal values', parent=mem_regions_win)
+            return
+        disasm.memory_regions = app_config['memory_regions'][disasm.hack_file_name].copy()
+        status_text.set('Saved memory region data.')
+        status_bar.update()
+        save_config()
+        navigate_to(navigation)
+        mem_regions_win.destroy()
+        mem_regions_win = None
+
+    add_button = tk.Button(mem_regions_win, text='+', command=add_field)
+    add_button.place(x=row_4, y=y_offset(len(mem_start_inputs)), width=widget_h, height=widget_h)
+    mem_regions = app_config['memory_regions'][disasm.hack_file_name]
+    if not mem_regions:
+        add_field()
+    else:
+        for i in mem_regions:
+            add_field()
+            mem_start_inputs[-1].insert('1.0', extend_zeroes(hexi(i[0]), 8))
+            mem_end_inputs[-1].insert('1.0', extend_zeroes(hexi(i[1]), 8))
+            mem_offset_inputs[-1].insert('1.0', extend_zeroes(hexi(i[2]), 8))
+    resize_window()
+    mem_regions_win.protocol('WM_DELETE_WINDOW', mem_regions_win_equals_none)
+    mem_regions_win.focus_force()
+    mem_regions_win.mainloop()
 
 
 menu_bar = tk.Menu(window)
@@ -3265,10 +3784,14 @@ tools_menu = tk.Menu(menu_bar, tearoff=0)
 tools_menu.add_command(label='Generate script for batch of addresses', command=generate_script)
 tools_menu.add_command(label='Set memory editor offset', command=set_mem_edit_offset)
 tools_menu.add_command(label='Scour hack for differences', command=scour_changes)
+tools_menu.add_separator()
+tools_menu.add_command(label='Set memory regions', command=set_memory_regions)
+tools_menu.add_command(label='Search assembly', command=find_phrase)
+# tools_menu.add_command(label='Re-map jumps', command=remap_jumps)
+tools_menu.add_separator()
 tools_menu.add_command(label='Bypass CRC', command=bypass_crc)
 tools_menu.add_command(label='Manually set CIC chip', command=manual_cic)
 tools_menu.add_checkbutton(label='Calculate checksum when saving', command=toggle_calc_crc, variable=calc_crc)
-# tools_menu.add_command(label='Test', command=tst)
 menu_bar.add_cascade(label='Tools', menu=tools_menu)
 
 opts_menu = tk.Menu(menu_bar, tearoff=0)
@@ -3335,6 +3858,7 @@ def text_box_callback(event):
                 status_text.set('Copied {} to clipboard'.format(new_clip))
         window.after(1, lambda: after_delay(event))
 
+
 [tbox.bind('<Button-1>', text_box_callback) for tbox in ALL_TEXT_BOXES]
 
 address_input = tk.Text(window, font=('Courier', 12))
@@ -3356,6 +3880,7 @@ auto_copy_checkbtn = tk.Checkbutton(window, text='Auto-copy to clipboard', var=a
 auto_copy_checkbtn.place(x=304, y=5)
 auto_copy_var.set(app_config['auto_copy'])
 
+
 def nav_button_callback():
     if not disassembler_loaded():
         return
@@ -3366,6 +3891,7 @@ def nav_button_callback():
         navigation_callback(clip_content)
     except:
         ''
+
 
 nav_button = tk.Button(window, text='Navigate to address in clipboard', command=nav_button_callback,
                        font=('Sans', 9))
@@ -3393,3 +3919,4 @@ if app_config['open_roms_automatically'] and app_config['previous_base_opened'] 
         window.after(1, open_files)
 
 window.mainloop()
+
