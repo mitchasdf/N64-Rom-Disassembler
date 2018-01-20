@@ -238,16 +238,16 @@ REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of registe
     'SP': 29,
     'S8': 30,
     'RA': 31,
-    'F00': 0,
-    'F01': 1,
-    'F02': 2,
-    'F03': 3,
-    'F04': 4,
-    'F05': 5,
-    'F06': 6,
-    'F07': 7,
-    'F08': 8,
-    'F09': 9,
+    'F0': 0,
+    'F1': 1,
+    'F2': 2,
+    'F3': 3,
+    'F4': 4,
+    'F5': 5,
+    'F6': 6,
+    'F7': 7,
+    'F8': 8,
+    'F9': 9,
     'F10': 10,
     'F11': 11,
     'F12': 12,
@@ -558,6 +558,8 @@ CIC = {
     '6105': 0xDF26F436,
     '6106': 0x1FEA617A
 }
+
+
 
 
 class Disassembler:
@@ -1135,6 +1137,7 @@ class Disassembler:
         self.encodes[mnemonic] = encoding
         self.appearances[mnemonic] = appearance
         self.identifying_bits[mnemonic] = int(identifying_bits, 2)
+
 
     def region_align(self, address, invert=False, game_offset=False):
         if game_offset:
