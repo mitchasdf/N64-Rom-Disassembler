@@ -2549,7 +2549,8 @@ def view_comments():
             widget = comments_text_box
         elif app_config['comments_auto_focus_hack']:
             widget = hack_file_text_box
-        navigate_to(navi, center=True, widget=widget, region_treatment=True, region_override=True)
+        ifdisasm = disasm.game_address_mode
+        navigate_to(navi, center=True, widget=widget, region_treatment=ifdisasm, region_override=ifdisasm)
         if widget:
             widget.focus_force()
 
