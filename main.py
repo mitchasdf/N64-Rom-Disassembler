@@ -644,7 +644,7 @@ def apply_hack_changes(ignore_slot = None):
     targets_upper = [deci(i[11:19]) >> 2 for i in jumps_displaying]
     def find_target_key(target):
         if disasm.game_address_mode:
-            # target = disasm.region_align(target << 2) >> 2
+            target = disasm.region_align(target << 2) >> 2
             target += disasm.game_offset >> 2
         i = 0
         target_key = ''
@@ -671,8 +671,9 @@ def apply_hack_changes(ignore_slot = None):
                 target_key = find_target_key(target << 2)
                 if unmapped_address and target_key:
                     offset_address = navi << 2
-                    # offset_address = disasm.region_align(offset_address)
-                    offset_address += disasm.game_offset if disasm.game_address_mode else 0
+                    if disasm.game_address_mode:
+                        offset_address = disasm.region_align(offset_address)
+                        offset_address += disasm.game_offset
                     address = extend_zeroes(hexi(offset_address), 8)
                     cut_jumps = [i[:8] for i in jumps_displaying[target_key]]
                     if address in cut_jumps:
@@ -704,7 +705,7 @@ def apply_hack_changes(ignore_slot = None):
                     address = deci(text[immid_in + 1:])
                     if text[:space_in] in ['J', 'JAL'] and not disasm.game_address_mode:
                         address = disasm.region_align(address)
-                    else:
+                    elif text[:space_in] in BRANCH_FUNCTIONS and disasm.game_address_mode:
                         address = disasm.region_unalign(address)
                     new_text = text[:immid_in + 1] + extend_zeroes(hexi(address), 8)
                     split_text[i] = new_text
@@ -781,8 +782,8 @@ def apply_hack_changes(ignore_slot = None):
                             target_key = find_target_key(target >> 2)
                             if target_key:
                                 address = navi << 2
-                                # if disasm.game_offset:
-                                #     address = disasm.region_align(address) + disasm.game_offset
+                                if disasm.game_offset:
+                                    address = disasm.region_align(address) + disasm.game_offset
                                 address = extend_zeroes(hexi(address), 8)
                                 if address not in jumps_displaying[target_key]:
                                     jumps_displaying[target_key].append(address)
@@ -1443,7 +1444,7 @@ def navigate_to(index, center=False, widget=None, region_treatment=False, region
                         address = deci(text[immid_in + 1:])
                         if text[:space_in] in ['J', 'JAL'] and not disasm.game_address_mode:
                             address = disasm.region_unalign(address, game_offset=True)
-                        else:
+                        elif text[:space_in] in BRANCH_FUNCTIONS and disasm.game_address_mode:
                             address = disasm.region_align(address, game_offset=True)
                         new_text = text[:immid_in + 1] + extend_zeroes(hexi(address), 8)
                         disassembly[i] = new_text
@@ -2001,13 +2002,18 @@ def toggle_address_mode(buffering=True):
         list_contents = listbox.get(0, tk.END)
         list_addresses = [deci(i[:8]) if i else 0 for i in list_contents]
         realigned_addresses = [0 if not i else (disasm.region_align(i) if toggle_to else disasm.region_unalign(i)) for i in list_addresses]
-        addresses = [extend_zeroes(hexi(i + increment), 8) if i else '' for i in realigned_addresses]
+        if listbox is phrases_list_box:
+            addresses = [extend_zeroes(hexi(i + increment), 8) if i else '' for i in realigned_addresses]
+        else:
+            addresses = [extend_zeroes(hexi(i + increment), 8) for i in realigned_addresses]
         listbox.delete(0, tk.END)
         for i, address in enumerate(addresses):
-            if address:
+            if address or not listbox is phrases_list_box:
                 listbox.insert(tk.END, '{}{}'.format(address, list_contents[i][8:]))
             else:
-                listbox.insert(tk.END, '')
+                if phrases_win:
+                    if listbox is phrases_list_box:
+                        listbox.insert(tk.END, '')
         listbox.see(see)
 
     if comments_window:
@@ -2058,7 +2064,6 @@ def toggle_address_mode(buffering=True):
             function_list_box.see(function_curselect)
         if jumps_curselect:
             jump_list_box.see(jumps_curselect)
-
 
 
 def toggle_hex_mode():
@@ -2321,10 +2326,11 @@ def find_jumps(just_window=False):
             jumps_hack_checkbox.select()
 
         def function_list_callback():
-            global function_select, function_curselect
+            global function_select, function_curselect, jumps_curselect
             curselect = function_list_box.curselection()
             if not curselect:
                 return
+            jumps_curselect = 0
             function_curselect = curselect[0]
             apply_hack_changes()
             apply_comment_changes()
@@ -2391,7 +2397,8 @@ def find_jumps(just_window=False):
         functions_label.place(x=6,y=5)
         jumps_label.place(x=jumps_list_x,y=jumps_label_y)
         def jumps_window_equals_none():
-            global jumps_window, function_select
+            global jumps_window, function_select, jumps_curselect, function_curselect
+            jumps_curselect = function_curselect = 0
             jumps_window.destroy()
             function_select = ''
             jumps_window = None
@@ -2416,7 +2423,7 @@ def find_jumps(just_window=False):
     config = jumps_displaying.copy()
     increment = -disasm.game_offset if disasm.game_address_mode else 0
     try:
-        comment_key = str((deci(key[:8]) + increment) >> 2)
+        comment_key = str((deci(key[:8]) if not disasm.game_address_mode else (disasm.region_unalign(deci(key[:8])) + increment)) >> 2)
     except ValueError as e:
         # User attempting to get jumps from the top of the header
         return
@@ -2441,7 +2448,7 @@ def find_jumps(just_window=False):
                 jumps[i] += ' ' + disasm.comments[comment_key]
         jumps_displaying[key] = jumps
         save_config()
-        if function_list_box:
+        if jumps_window:
             function_list_box.insert(tk.END, key)
 
 
@@ -2549,7 +2556,8 @@ def view_comments():
     comments_list_box.bind('<<ListboxSelect>>', comments_list_callback)
 
     def comments_window_equals_none():
-        global comments_window
+        global comments_window, comments_curselection
+        comments_curselection = 0
         comments_window.destroy()
         comments_window = None
 
@@ -3147,7 +3155,8 @@ def scour_changes():
         display_list.append(the_text)
 
     def changes_win_equals_none():
-        global changes_win
+        global changes_win, changes_curselect
+        changes_curselect = 0
         changes_win.destroy()
         changes_win = None
 
@@ -3535,7 +3544,8 @@ def find_phrase():
             found[:] = []
 
     def phrases_win_equals_none():
-        global phrases_win
+        global phrases_win, phrases_curselect
+        phrases_curselect = 0
         phrases_win.destroy()
         phrases_win = None
 

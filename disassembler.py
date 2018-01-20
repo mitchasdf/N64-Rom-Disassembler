@@ -1421,7 +1421,7 @@ class Disassembler:
             instruction = self.decode(int_word, index + i)
             this_function.append(index + i)
             i += 1
-            if instruction[:5] == 'JR RA':
+            if instruction[:2] == 'JR':
                 break
         end_of_function = i + index
         jumps = []
@@ -1430,7 +1430,7 @@ class Disassembler:
             key = str(function_offset)
             if key in self.jumps_to:
                 offsetting = 0 if not self.game_address_mode else self.game_offset
-                [jumps.append(extend_zeroes(hexi((self.region_align(j << 2) if self.game_address_mode else j << 2) + offsetting), 8))
+                [jumps.append(extend_zeroes(hexi((self.region_align(j << 2) if self.game_address_mode else (j << 2)) + offsetting), 8))
                  for j in self.jumps_to[key]]
         if self.game_address_mode:
             start_of_function = self.region_align(start_of_function << 2) >> 2
@@ -1463,7 +1463,7 @@ class Disassembler:
         if address not in dict[target]:
             i = 0
             while i < len(dict[target]) - 2:
-                if target == keep_within(target, dict[target][i], dict[target][i+1]):
+                if target in range(dict[target][i], dict[target][i+1]):
                     break
                 i += 1
             dict[target].insert(i, address)

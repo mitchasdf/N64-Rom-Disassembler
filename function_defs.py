@@ -119,3 +119,11 @@ def timer_get():
     last_time = time.time()
     str_time = str(this_time)
     return float(str_time[:str_time.find('.') + 4])
+
+
+def nice_time(_t=None):
+    if not _t:
+        _t = time.time()
+    days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    t = time.localtime(_t)
+    return '{}:{}:{} - {} {}/{}/{}'.format(t.tm_hour, t.tm_min, t.tm_sec, days[t.tm_wday], t.tm_mday, t.tm_mon, t.tm_year)
