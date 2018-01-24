@@ -551,6 +551,217 @@ DOCUMENTATION = {
     'TRUNC.W.D': 'Float Truncate Double to Word Fixed',
 }
 
+DOC_SYNTAX = {
+    'LB': '',
+    'LBU': '',
+    'LD': '',
+    'LDL': '',
+    'LDR': '',
+    'LH': '',
+    'LHU': '',
+    'LL': '',
+    'LLD': '',
+    'LW': '',
+    'LWL': '',
+    'LWR': '',
+    'LWU': '',
+    'SB': '',
+    'SC': '',
+    'SCD': '',
+    'SD': '',
+    'SDL': '',
+    'SDR': '',
+    'SH': '',
+    'SW': '',
+    'SWL': '',
+    'SWR': '',
+    'SYNC': '',
+    'ADD': '',
+    'ADDI': '',
+    'ADDIU': '',
+    'ADDU': '',
+    'AND': '',
+    'ANDI': '',
+    'DADD': '',
+    'DADDI': '',
+    'DADDIU': '',
+    'DADDU': '',
+    'DDIV': '',
+    'DDIVU': '',
+    'DIV': '',
+    'DIVU': '',
+    'DMULT': '',
+    'DMULTU': '',
+    'DSLL': '',
+    'DSLL32': '',
+    'DSLLV': '',
+    'DSRA': '',
+    'DSRA32': '',
+    'DSRAV': '',
+    'DSRL': '',
+    'DSRL32': '',
+    'DSRLV': '',
+    'DSUB': '',
+    'DSUBU': '',
+    'LUI': '',
+    'MFHI': '',
+    'MFLO': '',
+    'MTHI': '',
+    'MTLO': '',
+    'MULT': '',
+    'MULTU': '',
+    'NOR': '',
+    'OR': '',
+    'ORI': '',
+    'SLL': '',
+    'SLLV': '',
+    'SLT': '',
+    'SLTI': '',
+    'SLTIU': '',
+    'SLTU': '',
+    'SRA': '',
+    'SRAV': '',
+    'SRL': '',
+    'SRLV': '',
+    'SUB': '',
+    'SUBU': '',
+    'XOR': '',
+    'XORI': '',
+    'BEQ': '',
+    'BEQL': '',
+    'BGEZ': '',
+    'BGEZAL': '',
+    'BGEZALL': '',
+    'BGEZL': '',
+    'BGTZ': '',
+    'BGTZL': '',
+    'BLEZ': '',
+    'BLEZL': '',
+    'BLTZ': '',
+    'BLTZAL': '',
+    'BLTZALL': '',
+    'BLTZL': '',
+    'BNEZ': '',
+    'BNEL': '',
+    'BNE': '',
+    'J': '',
+    'JAL': '',
+    'JALR': '',
+    'JR': '',
+    'BREAK': '',
+    'SYSCALL': '',
+    'TEQ': '',
+    'TEQI': '',
+    'TGE': '',
+    'TGEI': '',
+    'TGEIU': '',
+    'TGEU': '',
+    'TLT': '',
+    'TLTI': '',
+    'TLTIU': '',
+    'TLTU': '',
+    'TNE': '',
+    'TNEI': '',
+    'CACHE': '',
+    'DMFC0': '',
+    'DMTC0': '',
+    'ERET': '',
+    'MFC0': '',
+    'MTC0': '',
+    'TLBP': '',
+    'TLBR': '',
+    'TLBWI': '',
+    'TLBWR': '',
+    'C.F.S': '',
+    'C.UN.S': '',
+    'C.EQ.S': '',
+    'C.UEQ.S': '',
+    'C.OLT.S': '',
+    'C.ULT.S': '',
+    'C.OLE.S': '',
+    'C.ULE.S': '',
+    'C.SF.S': '',
+    'C.NGLE.S': '',
+    'C.SEQ.S': '',
+    'C.NGL.S': '',
+    'C.LT.S': '',
+    'C.NGE.S': '',
+    'C.LE.S': '',
+    'C.NGT.S': '',
+    'C.F.D': '',
+    'C.UN.D': '',
+    'C.EQ.D': '',
+    'C.UEQ.D': '',
+    'C.OLT.D': '',
+    'C.ULT.D': '',
+    'C.OLE.D': '',
+    'C.ULE.D': '',
+    'C.SF.D': '',
+    'C.NGLE.D': '',
+    'C.SEQ.D': '',
+    'C.NGL.D': '',
+    'C.LT.D': '',
+    'C.NGE.D': '',
+    'C.LE.D': '',
+    'C.NGT.D': '',
+    'ABS.S': '',
+    'ABS.D': '',
+    'ADD.S': '',
+    'ADD.D': '',
+    'BC1F': '',
+    'BC1FL': '',
+    'BC1T': '',
+    'BC1TL': '',
+    'CEIL.L.S': '',
+    'CEIL.L.D': '',
+    'CEIL.W.S': '',
+    'CEIL.W.D': '',
+    'CFC1': '',
+    'CTC1': '',
+    'CVT.D.S': '',
+    'CVT.D.W': '',
+    'CVT.D.L': '',
+    'CVT.L.S': '',
+    'CVT.L.D': '',
+    'CVT.S.D': '',
+    'CVT.S.W': '',
+    'CVT.S.L': '',
+    'CVT.W.S': '',
+    'CVT.W.D': '',
+    'DIV.S': '',
+    'DIV.D': '',
+    'DMFC1': '',
+    'DMTC1': '',
+    'FLOOR.L.S': '',
+    'FLOOR.L.D': '',
+    'FLOOR.W.S': '',
+    'FLOOR.W.D': '',
+    'LDC1': '',
+    'LWC1': '',
+    'MFC1': '',
+    'MOV.S': '',
+    'MOV.D': '',
+    'MTC1': '',
+    'MUL.S': '',
+    'MUL.D': '',
+    'NEG.S': '',
+    'NEG.D': '',
+    'ROUND.L.S': '',
+    'ROUND.L.D': '',
+    'ROUND.W.S': '',
+    'ROUND.W.D': '',
+    'SDC1': '',
+    'SQRT.S': '',
+    'SQRT.D': '',
+    'SUB.S': '',
+    'SUB.D': '',
+    'SWC1': '',
+    'TRUNC.L.S': '',
+    'TRUNC.L.D': '',
+    'TRUNC.W.S': '',
+    'TRUNC.W.D': ''
+}
+
 CIC = {
     '6101': 0x00000000, # nope
     '6102': 0xF8CA4DDC,
@@ -700,7 +911,8 @@ class Disassembler:
         self.identifying_bits = {}
         # stack pointer reaches 12078 with the current amount of fitted instructions
         # each stacked layer is 66 long
-        self.opcode_matrix = [0] * (12078 + 66)
+        # self.opcode_matrix = [0] * (12078 + 66)
+        self.opcode_matrix = [0] * 20000
         self.matrix_stack = 0
         self.jumps_to = {}
         self.branches_to = {}
@@ -745,7 +957,16 @@ class Disassembler:
             For performance and 100% reliable decoding process, all Pseudo Opcodes are omitted.
         '''
 
-        # Missing 0th to 5th bit OPCODES:  19, 28, 29, 30, 31, 54, 58, 59, 62
+        # Missing 0th to 5th bit OPCODES:  19, 28, 29, 59
+        '''
+        30 = LQ
+        31 = SQ
+        54 = LV.Q
+        58 = SV.S
+        62 = SV.Q
+        mtsab = [[OPCODE, 1], RS, [FMT, 0x18], OFFSET]
+        mtsah = [[OPCODE, 1], RS, [FMT, 0x19], OFFSET]
+        '''
 
         # So my IDE will allow me to collapse this section
         if True:
@@ -977,49 +1198,48 @@ class Disassembler:
 
             # Vector Load/Store
             # Opcode 50 and 51 may or may not need swapping
-            # self.fit('LBV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('LSV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('LLV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('LDV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('LQV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('LRV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('LPV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('LUV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('LHV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('LFV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('LWV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('LTV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('SBV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('SSV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('SLV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('SDV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('SQV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('SRV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('SPV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('SUV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('SHV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('SFV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('SWV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
-            # self.fit('STV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LBV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LSV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LLV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LDV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LQV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LRV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LPV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LUV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LHV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LFV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LWV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('LTV', [[OPCODE, 50], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('SBV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 0], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('SSV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 1], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('SLV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 2], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('SDV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 3], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('SQV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 4], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('SRV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 5], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('SPV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 6], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('SUV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 7], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('SHV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 8], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('SFV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 9], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('SWV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 10], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
+            self.fit('STV', [[OPCODE, 51], BASE, VD, [EX_OPCODE, 11], MOD, 1, VOFFSET], [VD, MOD, VOFFSET, BASE])
 
             # Vector Math
-            # self.fit('VMULF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 0]], [VD, VT, VS, MOD])
-            # self.fit('VMULU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 1]], [VD, VT, VS, MOD])
-            # self.fit('VRNDP', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 2]], [VD, VT, VS, MOD])
-            # self.fit('VMULQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 3]], [VD, VT, VS, MOD])
-            # self.fit('VMUDL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 4]], [VD, VT, VS, MOD])
-            # self.fit('VMUDM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 5]], [VD, VT, VS, MOD])
-            # self.fit('VMUDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 6]], [VD, VT, VS, MOD])
-            # self.fit('VMUDH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 7]], [VD, VT, VS, MOD])
-            # self.fit('VMACF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 8]], [VD, VT, VS, MOD])
-            # self.fit('VMACU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 9]], [VD, VT, VS, MOD])
-            # self.fit('VRNDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 10]], [VD, VT, VS, MOD])
-            # self.fit('VMACQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 11]], [VD, VT, VS, MOD])
-            # self.fit('VMADL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 12]], [VD, VT, VS, MOD])
-            # self.fit('VMADM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 13]], [VD, VT, VS, MOD])
-            # self.fit('VMADN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 14]], [VD, VT, VS, MOD])
-            # self.fit('VMADH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 15]], [VD, VT, VS, MOD])
-            # print(self.branches)
+            self.fit('VMULF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 0]], [VD, VT, VS, MOD])
+            self.fit('VMULU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 1]], [VD, VT, VS, MOD])
+            self.fit('VRNDP', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 2]], [VD, VT, VS, MOD])
+            self.fit('VMULQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 3]], [VD, VT, VS, MOD])
+            self.fit('VMUDL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 4]], [VD, VT, VS, MOD])
+            self.fit('VMUDM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 5]], [VD, VT, VS, MOD])
+            self.fit('VMUDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 6]], [VD, VT, VS, MOD])
+            self.fit('VMUDH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 7]], [VD, VT, VS, MOD])
+            self.fit('VMACF', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 8]], [VD, VT, VS, MOD])
+            self.fit('VMACU', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 9]], [VD, VT, VS, MOD])
+            self.fit('VRNDN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 10]], [VD, VT, VS, MOD])
+            self.fit('VMACQ', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 11]], [VD, VT, VS, MOD])
+            self.fit('VMADL', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 12]], [VD, VT, VS, MOD])
+            self.fit('VMADM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 13]], [VD, VT, VS, MOD])
+            self.fit('VMADN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 14]], [VD, VT, VS, MOD])
+            self.fit('VMADH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 15]], [VD, VT, VS, MOD])
             # Unfinished
         decoder_fitted = True
 
@@ -1345,7 +1565,7 @@ class Disassembler:
         for i in range(4):
             self.hack_file[index + i] = ints[i]
 
-    def map_jumps(self, text_box, skip_loading=False):
+    def map_jumps(self, text_box, skip_loading=False, cut=1000):
         if not skip_loading:
             try:
                 if exists(self.jumps_file):
@@ -1360,10 +1580,20 @@ class Disassembler:
             del self.branches_to
             self.jumps_to = {}
             self.branches_to = {}
+
+        def buffer_handle():
+            popped = buffer.pop(0)
+            if not popped is None:
+                key = str(popped[1])
+                if not key in popped[0]:
+                    popped[0][key] = []
+                #  popped[0][key] is a pointer to either self.branches_to or self.jumps_to
+                popped[0][key].append(popped[2])
+
         percent = (self.file_length >> 2) // 100
-        cut = 300
         undercut = cut - 1
         buffer = [None] * (undercut)
+        flowing_over = True
         for i in range(0x40, self.file_length, 4):
             j = i >> 2
             int_word = int_of_4_byte_aligned_region(self.hack_file[i:i+4])
@@ -1373,7 +1603,12 @@ class Disassembler:
                 text_box.insert('1.0', str(j // percent) + '%')
                 text_box.update()
             if not decoded:
-                buffer[:] = []
+                if flowing_over:
+                    while buffer:
+                        buffer_handle()
+                else:
+                    buffer[:] = []
+                flowing_over = False
                 continue
             opcode = (int_word & 0xFC000000) >> 26
             if JUMP_INTS[opcode]:
@@ -1383,19 +1618,15 @@ class Disassembler:
                     subtract = self.jumps_offset_div_4
                 address = ((int_word & 0x03FFFFFF) + ((j + 1) & 0x3C000000)) - subtract
                 if address > 0:
-                    buffer.insert(0, (self.jumps_to, address, j))
+                    buffer.append((self.jumps_to, address, j))
             elif BRANCH_INTS[opcode] or decoded[:2] == 'BC':
                 address = sign_16_bit_value(int_word & 0xFFFF) + j + 1
-                buffer.insert(0, (self.branches_to, address, j))
+                buffer.append((self.branches_to, address, j))
             else:
-                buffer.insert(0, None)
+                buffer.append(None)
             if len(buffer) == cut:
-                popped = buffer.pop(0)
-                if not popped is None:
-                    key = str(popped[1])
-                    if not key in popped[0]:
-                        popped[0][key] = []
-                    popped[0][key].append(popped[2])
+                flowing_over = True
+                buffer_handle()
         with open(self.jumps_file, 'wb') as jumps_file:
             dump((self.jumps_to, self.branches_to), jumps_file)
         return
