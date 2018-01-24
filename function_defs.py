@@ -2,6 +2,7 @@
 from os.path import exists
 from pickle import dump, load
 import time
+import struct
 
 
 def pickle_data(object, name):
@@ -127,3 +128,21 @@ def nice_time(_t=None):
     days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     t = time.localtime(_t)
     return '{}:{}:{} - {} {}/{}/{}'.format(t.tm_hour, t.tm_min, t.tm_sec, days[t.tm_wday], t.tm_mday, t.tm_mon, t.tm_year)
+
+
+def float_to_hex(f):
+    return extend_zeroes(hexi(struct.unpack('I', struct.pack('f', f))[0]), 8)
+
+
+def hex_to_float(h):
+    return struct.unpack('f', struct.pack('I', deci(h)))[0]
+
+
+def double_to_hex(d):
+    h = extend_zeroes(hexi(struct.unpack('q', struct.pack('d', d))[0]), 16)
+    return ' '.join([h[:8], h[8:]])
+
+
+def hex_to_double(h):
+    return struct.unpack('d', struct.pack('q', deci(h)))[0]
+
