@@ -3,9 +3,9 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import simpledialog, filedialog, colorchooser
 import os
+import webbrowser
 from function_defs import *
 from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS, CIC, DOCUMENTATION
-import webbrowser
 
 
 CONFIG_FILE = 'rom disassembler.config'
@@ -242,6 +242,11 @@ def change_colours():
     if phrases_win:
         backgrounds.append(phrases_win)
         listboxes.append(phrases_list_box)
+    if hex_win:
+        backgrounds.append(hex_win)
+        check_buttons.append(hex_win_double_chkbx)
+        [textboxes.append(i) for i in [hex_win_float_tbox, hex_win_hex_tbox]]
+        [labels.append(i) for i in [hex_win_float_label, hex_win_hex_label]]
     if colours_window:
         backgrounds.append(colours_window)
         labels.append(change_colours_label)
@@ -640,12 +645,13 @@ def apply_hack_changes(ignore_slot = None):
     if not disassembler_loaded():
         return
 
-    targets_lower = [deci(i[:8]) >> 2 for i in jumps_displaying]
-    targets_upper = [deci(i[11:19]) >> 2 for i in jumps_displaying]
+    targets_lower = [deci(i[:8]) for i in jumps_displaying]
+    targets_upper = [deci(i[11:19]) for i in jumps_displaying]
     def find_target_key(target):
-        if disasm.game_address_mode:
-            target = disasm.region_align(target << 2) >> 2
-            target += disasm.game_offset >> 2
+        if not disasm.game_address_mode:
+            target = disasm.region_unalign(target, game_offset=True)
+        else:
+            target += disasm.game_offset
         i = 0
         target_key = ''
         while i < len(jumps_displaying):
@@ -671,9 +677,11 @@ def apply_hack_changes(ignore_slot = None):
                 target_key = find_target_key(target << 2)
                 if unmapped_address and target_key:
                     offset_address = navi << 2
+                    # offset_address = disasm.region_align(offset_address)
                     if disasm.game_address_mode:
                         offset_address = disasm.region_align(offset_address)
                         offset_address += disasm.game_offset
+                    # else:
                     address = extend_zeroes(hexi(offset_address), 8)
                     cut_jumps = [i[:8] for i in jumps_displaying[target_key]]
                     if address in cut_jumps:
@@ -691,7 +699,8 @@ def apply_hack_changes(ignore_slot = None):
                             try:
                                 place = jump_list_box.get(0, tk.END).index(address)
                                 jump_list_box.delete(place)
-                            except:
+                            except Exception as e:
+                                # print(e)
                                 ''
 
     current_text = get_text_content(hack_file_text_box).upper()
@@ -770,20 +779,29 @@ def apply_hack_changes(ignore_slot = None):
                             raise Exception()
                         target = split_text[i][found + 1:]
                         target = deci(target)
+                        # target = disasm.region_unalign(target, game_offset=not disasm.game_address_mode)
                         if disasm.game_address_mode:
                             target -= disasm.game_offset
-                        str_target = str(target >> 2)
+                            str_target = str(target >> 2)
+                        else:
+                            str_target = str(target >> 2)
+                            target = disasm.region_unalign(target, game_offset=True)
+                        # print(hexi(target))
+                        # print(hexi(int(str_target) << 2))
                         if this_word in ['J', 'JAL']:
                             dic = disasm.jumps_to
                         else:
                             dic = disasm.branches_to
                         mapped_target, mapped_address = disasm.map(dic, navi, str_target)
                         if mapped_address:
-                            target_key = find_target_key(target >> 2)
+                            target_key = find_target_key(target)
                             if target_key:
                                 address = navi << 2
-                                if disasm.game_offset:
-                                    address = disasm.region_align(address) + disasm.game_offset
+                                # print(hexi(address))
+                                if disasm.game_address_mode:
+                                    address = disasm.region_align(address)
+                                    address += disasm.game_offset
+                                # else:
                                 address = extend_zeroes(hexi(address), 8)
                                 if address not in jumps_displaying[target_key]:
                                     jumps_displaying[target_key].append(address)
@@ -819,7 +837,10 @@ def apply_comment_changes():
     for i in range(lines):
         navi = navigation + i
         string_key = '{}'.format(navi)
-        hex_navi = extend_zeroes(hexi((navi << 2) + increment), 8)
+        if not increment:
+            hex_navi = extend_zeroes(hexi(navi << 2), 8)
+        else:
+            hex_navi = extend_zeroes(hexi(disasm.region_align(navi << 2) + increment), 8)
         if not split_text[i] and string_key in disasm.comments:
             del disasm.comments[string_key]
             if comments_window:
@@ -1083,9 +1104,9 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             # if sel_start_column == len(split_text[sel_start_line - 1]):
             #     selection_line_mod = True
             #     selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 1, 0, split_text)
-            if sel_end_column == 0:
-                selection_line_mod = True
-                selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, -1, 0, split_text)
+            # if sel_end_column == 0:
+            #     selection_line_mod = True
+            #     selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, -1, 0, split_text)
             selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 0, 'min', split_text)
             selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, 0, 'max', split_text)
     except:
@@ -1150,7 +1171,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         try:
             winnie_clip = window.clipboard_get()
             clipboard = winnie_clip
-            window.clipboard_clear()
         except:
             winnie_clip = clipboard
         if winnie_clip:
@@ -1168,7 +1188,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                     handle.delete(min_del, max_del)
                     lines_diff = 0
             paste_text = winnie_clip
-            window.after(1, lambda: (window.clipboard_clear(), window.clipboard_append(winnie_clip)))
+            # window.after(1, lambda: (window.clipboard_clear(), window.clipboard_append(winnie_clip)))
 
     # Either clear lines which would be excess lines after the paste
     # Or add new lines to fill in what would be the gaps after the paste
@@ -1184,7 +1204,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             temp_cursor, _, __ = modify_cursor(handle.index(tk.INSERT), 0, 'max', get_text_content(handle))
             handle.mark_set(tk.INSERT, temp_cursor)
         handle.insert(insertion_place, paste_text)
-        if not selection_line_mod or is_pasting:
+        if is_pasting:
             window.after(1, lambda: (apply_hack_changes(),
                                      apply_comment_changes(),
                                      move_next(handle),
@@ -1639,13 +1659,10 @@ def save_changes_to_file(save_as=False):
 
 def destroy_them(not_main=False):
     global colours_window, jumps_window, comments_window, dimension_window, manual_cic_win
-    global changes_win, opcodes_win, script_win, phrases_win, mem_regions_win
+    global changes_win, opcodes_win, script_win, phrases_win, mem_regions_win, hex_win
     if changes_win:
         changes_win.destroy()
         changes_win = None
-    if colours_window:
-        colours_window.destroy()
-        colours_window = None
     if jumps_window:
         jumps_window.destroy()
         jumps_window = None
@@ -1658,9 +1675,6 @@ def destroy_them(not_main=False):
     if manual_cic_win:
         manual_cic_win.destroy()
         manual_cic_win = None
-    if opcodes_win:
-        opcodes_win.destroy()
-        opcodes_win = None
     if script_win:
         script_win.destroy()
         script_win = None
@@ -1671,6 +1685,15 @@ def destroy_them(not_main=False):
         mem_regions_win.destroy()
         mem_regions_win = None
     if not not_main:
+        if hex_win:
+            hex_win.destroy()
+            hex_win = None
+        if colours_window:
+            colours_window.destroy()
+            colours_window = None
+        if opcodes_win:
+            opcodes_win.destroy()
+            opcodes_win = None
         window.destroy()
 
 
@@ -2231,6 +2254,10 @@ def opcodes_list():
         opcodes_win.deiconify()
         opcodes_win.focus_force()
         return
+    def opcodes_win_equals_none():
+        global opcodes_win
+        opcodes_win.destroy()
+        opcodes_win = None
     opcodes_win = tk.Tk()
     opcodes_win.title('Opcodes list')
     opcodes_win.geometry('650x800+50+50')
@@ -2239,6 +2266,7 @@ def opcodes_list():
     codes_list_box.place(x=5, y=5, width=640, height=790)
     opcodes_win.bind('<Escape>', lambda _: opcodes_win.destroy())
     change_colours()
+    opcodes_win.protocol('WM_DELETE_WINDOW', opcodes_win_equals_none)
     opcodes_win.mainloop()
 
 
@@ -2512,7 +2540,7 @@ def view_comments():
                 if disasm.game_address_mode:
                     address = disasm.region_align(address)
                 comments_list_box.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi(address + increment()), 8),
-                                                             disasm.comments[str(key)]))
+                                                                 disasm.comments[str(key)]))
 
     comments_hack_checkbox = tk.Checkbutton(comments_window, text='Auto-focus hack textbox',
                                    command=lambda: window.after(1, lambda: hack_checkbox_callback()))
@@ -3368,8 +3396,8 @@ def generate_script():
                     batch_text_box.insert(tk.END, '\n')
         for address in group_select:
             comment_key = str((deci(address) - disasm.game_offset) >> 2)
-            address = disasm.region_align(address, game_offset=True)
-            batch_text_box.insert(tk.END, address)
+            address = disasm.region_align(deci(address), game_offset=True)
+            batch_text_box.insert(tk.END, extend_zeroes(hexi(address), 8))
             if comment_key in disasm.comments:
                 batch_text_box.insert(tk.END, ': ' + disasm.comments[comment_key])
             batch_text_box.insert(tk.END, '\n')
@@ -3727,6 +3755,81 @@ def set_memory_regions():
     mem_regions_win.mainloop()
 
 
+hex_win = hex_win_float_label = hex_win_hex_label = hex_win_float_tbox = hex_win_hex_tbox = hex_win_double_chkbx = None
+def float_to_hex_converter():
+    global hex_win, hex_win_float_label, hex_win_hex_label, hex_win_float_tbox, hex_win_hex_tbox, hex_win_double_chkbx
+    if hex_win:
+        hex_win.deiconify()
+        hex_win.focus_force()
+        return
+
+    def hex_win_equals_none():
+        global hex_win
+        hex_win.destroy()
+        hex_win = None
+
+    def float_text_callback():
+        current_text = hex_win_float_tbox.get('1.0', tk.END).replace('\n','')
+        try:
+            if check_var.get():
+                output_text = double_to_hex(float(current_text))
+            else:
+                output_text = float_to_hex(float(current_text))
+        except:
+            return
+        hex_win_hex_tbox.delete('1.0', tk.END)
+        hex_win_hex_tbox.insert('1.0', output_text)
+
+    def hex_text_callback():
+        current_text = hex_win_hex_tbox.get('1.0', tk.END).replace('\n','').replace(' ','')
+        try:
+            if check_var.get():
+                output_text = hex_to_double(current_text)
+            else:
+                output_text = hex_to_float(current_text)
+        except:
+            return
+        hex_win_float_tbox.delete('1.0', tk.END)
+        hex_win_float_tbox.insert('1.0', output_text)
+
+    def check_command_callback():
+        widget = hex_win.focus_get()
+        if widget is hex_win_hex_tbox:
+            hex_win.after(1, hex_text_callback)
+        elif widget is hex_win_float_tbox:
+            hex_win.after(1, float_text_callback)
+
+    hex_win = tk.Tk()
+    hex_win.title('Float <--> Hex')
+    hex_win.geometry('433x58')
+
+    check_var = tk.IntVar(hex_win)
+    check_var.set(0)
+    hex_win_float_label = tk.Label(hex_win, text='Float')
+    hex_win_hex_label = tk.Label(hex_win, text='Hex')
+    hex_win_double_chkbx = tk.Checkbutton(hex_win, text='Double', var=check_var, command=check_command_callback)
+
+    hex_win_float_label.place(x=5, y=4)
+    hex_win_hex_label.place(x=250, y=4)
+    hex_win_double_chkbx.place(x=50, y=2)
+
+    hex_win_float_tbox = tk.Text(hex_win, font=('Courier', 12))
+    hex_win_hex_tbox = tk.Text(hex_win, font=('Courier', 12))
+
+    hex_win_float_tbox.place(x=5, y=30, width=240, height=24)
+    hex_win_hex_tbox.place(x=250, y=30, width=178, height=24)
+
+    hex_win_float_tbox.bind('<Key>', lambda e: hex_win.after(1, lambda: float_text_callback()))
+    hex_win_hex_tbox.bind('<Key>', lambda e: hex_win.after(1, lambda: hex_text_callback()))
+    hex_win_float_tbox.bind('<Button-1>', lambda e: float_text_callback())
+    hex_win_hex_tbox.bind('<Button-1>', lambda e: hex_text_callback())
+
+    hex_win.protocol('WM_DELETE_WINDOW', hex_win_equals_none)
+    change_colours()
+    hex_win_float_tbox.focus_force()
+    hex_win.mainloop()
+
+
 menu_bar = tk.Menu(window)
 auto_open = tk.BooleanVar()
 calc_crc = tk.BooleanVar()
@@ -3754,6 +3857,7 @@ tools_menu = tk.Menu(menu_bar, tearoff=0)
 tools_menu.add_command(label='Generate script for batch of addresses', command=generate_script)
 tools_menu.add_command(label='Set memory editor offset', command=set_mem_edit_offset)
 tools_menu.add_command(label='Scour hack for differences', command=scour_changes)
+tools_menu.add_command(label='Float <--> Hex', command=float_to_hex_converter)
 tools_menu.add_separator()
 tools_menu.add_command(label='Set memory regions', command=set_memory_regions)
 tools_menu.add_command(label='Search assembly', command=find_phrase)
@@ -3794,6 +3898,7 @@ window.bind('<F4>', lambda e: navigation_prompt())
 window.bind('<F5>', lambda e: toggle_address_mode())
 window.bind('<F6>', lambda e: toggle_hex_mode())
 window.bind('<F7>', lambda e: toggle_hex_space())
+# window.bind('<F8>', lambda e: float_to_hex_converter())
 window.bind('<Control-s>', lambda e: save_changes_to_file())
 window.bind('<Control-S>', lambda e: save_changes_to_file())
 window.bind('<MouseWheel>', scroll_callback)
