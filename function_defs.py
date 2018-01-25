@@ -139,10 +139,10 @@ def hex_to_float(h):
 
 
 def double_to_hex(d):
-    h = extend_zeroes(hexi(struct.unpack('q', struct.pack('d', d))[0]), 16)
+    h = extend_zeroes(hexi(struct.unpack('Q', struct.pack('d', d))[0]), 16)
     return ' '.join([h[:8], h[8:]])
 
 
 def hex_to_double(h):
-    return struct.unpack('d', struct.pack('q', deci(h)))[0]
+    return struct.unpack('d', struct.pack('Q', deci(h)))[0]
 
