@@ -968,20 +968,20 @@ def buffer_append(buffer):
 
 
 # Puts the windows clipboard back when the user leaves focus
-def replace_clipboard():
-    global clipboard
-    try:
-        window.clipboard_get()
-        clipboard = ''
-    except:
-        if clipboard:
-            window.clipboard_append(clipboard)
+# def replace_clipboard():
+#     global clipboard
+#     try:
+#         window.clipboard_get()
+#         clipboard = ''
+#     except:
+#         if clipboard:
+#             window.clipboard_append(clipboard)
 
 
 # Textbox behaviour upon key presses
-clipboard = ''
+# clipboard = ''
 def keyboard_events(handle, max_char, event, buffer = None, hack_function = False):
-    global clipboard
+    # global clipboard
     if not disassembler_loaded():
         return
     joined_text = get_text_content(handle)
@@ -1119,6 +1119,11 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             selection_start, sel_start_line, sel_start_column = '1.0', 0, 0
             selection_end, sel_end_line, sel_end_column = '1.0', 0, 0
 
+    try:
+        clipboard = window.clipboard_get()
+    except:
+        clipboard = ''
+
     has_selection = selection_start != selection_end
     selection_lines = sel_end_line - sel_start_line
     selection_function = has_selection and (selection_removable or is_copying)
@@ -1141,7 +1146,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
 
     # Because using mark_set() on SEL_FIRST or SEL_LAST seems to corrupt the widgets beyond repair at a windows level,
-    # A work around with a custom clipboard is required in order for the code to be able to serve it's intended purpose
+    # A work around is required in order for the code to be able to serve it's intended purpose
     if has_selection and not selection_lines:
         if is_pasting and pasting_newlines:
             selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 0, 'min', split_text)
@@ -1155,9 +1160,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         selection_text = handle.get(selection_start, selection_end)
 
         if is_copying or is_cutting:
-            clipboard = selection_text
-            # So that when user pastes, window clipboard won't override clipboard
-            window.after(0, window.clipboard_clear)
+            # clipboard = selection_text
+            window.after(0, lambda: window.clipboard_clear())
             window.after(0, lambda: window.clipboard_append(selection_text))
 
         if selection_removable:
@@ -1169,25 +1173,24 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         # If window clipboard has contents, contents to be drawn from there, else draw from clipboard
         # window clipboard having contents means user has copied data from an external source
         try:
-            winnie_clip = window.clipboard_get()
-            clipboard = winnie_clip
+            clipboard = window.clipboard_get()
         except:
-            winnie_clip = clipboard
-        if winnie_clip:
-            if '\n' in winnie_clip:
+            clipboard = ''
+        if clipboard:
+            if '\n' in clipboard:
                 # Ensure the text has within the maximum amount of lines and columns
-                split_clip = winnie_clip.split('\n')
+                split_clip = clipboard.split('\n')
                 line_boundary = max_lines - (sel_start_line if has_selection else line)
                 split_clip = split_clip[:line_boundary + 1]
                 split_clip = [i[:max_char] for i in split_clip]
                 lines_diff -= len(split_clip) - 1
-                winnie_clip = '\n'.join(split_clip)
+                clipboard = '\n'.join(split_clip)
                 if not selection_function:
                     min_del, _, __ = modify_cursor(cursor, 0, 'min', split_text)
                     max_del, _, __ = modify_cursor(cursor, -lines_diff, 'max', split_text)
                     handle.delete(min_del, max_del)
                     lines_diff = 0
-            paste_text = winnie_clip
+            paste_text = clipboard
             # window.after(1, lambda: (window.clipboard_clear(), window.clipboard_append(winnie_clip)))
 
     # Either clear lines which would be excess lines after the paste
@@ -1203,6 +1206,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         def move_next(handle):
             temp_cursor, _, __ = modify_cursor(handle.index(tk.INSERT), 0, 'max', get_text_content(handle))
             handle.mark_set(tk.INSERT, temp_cursor)
+            window.clipboard_append(paste_text)
+        window.clipboard_clear()
         handle.insert(insertion_place, paste_text)
         if is_pasting:
             window.after(1, lambda: (apply_hack_changes(),
@@ -1736,6 +1741,7 @@ def close_window(side = 'right'):
     close_win.protocol('WM_DELETE_WINDOW', cancel_close_win)
     close_win.bind('<FocusOut>', lambda _: close_win.destroy())
     close_win.focus_force()
+    close_win.resizable(False, False)
     close_win.mainloop()
 
 
@@ -2000,6 +2006,7 @@ def remap_jumps():
 #
 #     sects_list.bind('<<ListboxSelect>>', lambda _: list_box_callback())
 #     sects_list.place(x=5, y=5, width=490, height=790)
+#     remap_win.resizable(False, False)
 #     remap_win.mainloop()
 
 
@@ -2267,6 +2274,7 @@ def opcodes_list():
     opcodes_win.bind('<Escape>', lambda _: opcodes_win.destroy())
     change_colours()
     opcodes_win.protocol('WM_DELETE_WINDOW', opcodes_win_equals_none)
+    opcodes_win.resizable(False, False)
     opcodes_win.mainloop()
 
 
@@ -2285,6 +2293,7 @@ def about_box():
     link.bind("<Button-1>", callback)
     about.focus_force()
     about.bind('<FocusOut>', lambda e: about.destroy())
+    about.resizable(False, False)
     about.mainloop()
 
 
@@ -2439,6 +2448,7 @@ def find_jumps(just_window=False):
         jumps_window.bind('<Control-s>', lambda e: save_changes_to_file())
         jumps_window.bind('<Control-S>', lambda e: save_changes_to_file())
         jumps_window.focus_force()
+        jumps_window.resizable(False, False)
         jumps_window.after(2, lambda: change_colours())
         jumps_window.after(1, lambda: jumps_window.mainloop())
     elif jumps or just_window:
@@ -2581,6 +2591,8 @@ def view_comments():
         navigate_to(navi, center=True, widget=widget, region_treatment=ifdisasm, region_override=ifdisasm)
         if widget:
             widget.focus_force()
+        else:
+            filter_text.focus_force()
 
     comments_list_box.bind('<<ListboxSelect>>', comments_list_callback)
 
@@ -2606,6 +2618,7 @@ def view_comments():
     comments_window.protocol('WM_DELETE_WINDOW', comments_window_equals_none)
     filter_text.focus_force()
     change_colours()
+    comments_window.resizable(False, False)
     comments_window.mainloop()
 
 
@@ -2839,6 +2852,7 @@ def set_colour_scheme():
     colours_window.bind('<Escape>', lambda e: close_colours_win())
     colours_window.protocol('WM_DELETE_WINDOW', close_colours_win)
     change_colours()
+    colours_window.resizable(False, False)
     colours_window.mainloop()
 
 
@@ -3061,6 +3075,7 @@ def change_win_dimensions():
     dimension_window.bind('<Escape>', lambda e: dimension_window_equals_none())
     dimension_window.protocol('WM_DELETE_WINDOW', dimension_window_equals_none)
     dimension_window.focus_force()
+    dimension_window.resizable(False, False)
     dimension_window.mainloop()
 
 
@@ -3140,6 +3155,7 @@ def manual_cic():
     manual_cic_win.protocol('WM_DELETE_WINDOW', manual_cic_win_equals_none)
     manual_cic_win.bind('<Escape>', lambda _: manual_cic_win_equals_none())
     manual_cic_win.bind('<FocusOut>', lambda _: manual_cic_win_equals_none())
+    manual_cic_win.resizable(False, False)
     manual_cic_win.mainloop()
 
 
@@ -3224,6 +3240,7 @@ def scour_changes():
         changes_win.bind('<Control-S>', lambda e: save_changes_to_file())
         changes_win.focus_force()
         change_colours()
+        changes_win.resizable(False, False)
         changes_win.mainloop()
 
 
@@ -3488,6 +3505,7 @@ def generate_script():
 
     script_win.protocol('WM_DELETE_WINDOW', script_win_equals_none)
     change_colours()
+    script_win.resizable(False, False)
     script_win.mainloop()
 
 
@@ -3502,6 +3520,8 @@ def find_phrase():
                                         'Followed by',
                                         'Leave blank/cancel to begin search\n'
                                         'Input "-" to indicate this line does not matter\n'
+                                        'Use "-*x" where x is any number to indicate x amount of lines which don\'t matter\n'
+                                        'Use "-**" to indicate any amount of lines don\'t matter until we run into the next phrase, or leave the current function\n'
                                         'Use "*" as an AND phrase separator for this line\n'
                                         'Use "\\" as an OR phrase separator for this line\n'
                                         'ORs will be resolved before ANDs\n'
@@ -3515,22 +3535,58 @@ def find_phrase():
     if not phrases:
         return
     checking = disasm.hack_file
-    ints = ints_of_4_byte_aligned_region(checking)
+    # ints = ints_of_4_byte_aligned_region(checking)
     display_list = []
-    percent = len(ints) // 100
+    percent = len(checking) // 400
     found = []
+    i = 0
+    wildcards = 0
+    function_end = -1
+    len_flounder = 0
 
-    for j, i in enumerate(ints):
+    while i < len(checking):
+        j = i >> 2
         if not j % percent:
             status_text.set('Searching... ' + str(j // percent) + '%')
             status_bar.update()
-        decoded = disasm.decode(i, j)
-        if phrases[len(found)] == '-':
-            found.append(i)
+        if wildcards:
+            wildcards -= 1
+            i += 4
+            continue
+        if j > function_end and function_end != -1:
+            function_end = -1
+            found[:] = []
+            len_flounder = 0
+
+        len_found = len(found) + len_flounder
+        decoded = disasm.decode(int_of_4_byte_aligned_region(checking[i:i+4]), j)
+        if function_end < 0:
+            if len(phrases[len_found]) > 2:
+                if phrases[len_found][:2] == '-*':
+                    try:
+                        wildcards = int(phrases[len_found][2:])
+                        len_flounder += 1
+                        i += 4
+                        continue
+                    except:
+                        if phrases[len_found][2] == '*':
+                            function_end = disasm.find_jumps(j, only_return_function_end=True)
+                            len_found += 1
+                            len_flounder += 1
+                            if function_end < 0:
+                                len_flounder = 0
+                                len_found = 0
+                                found[:] = []
+
+        if phrases[len_found] == '-':
+            found.append(j)
+            len_found += 1
         elif not decoded:
             found[:] = []
-        elif '*' in phrases[len(found)]:
-            inner_phrases = phrases[len(found)].split('*')
+            len_flounder = 0
+            function_end = -1
+        elif '*' in phrases[len_found]:
+            inner_phrases = phrases[len_found].split('*')
             passed = 0
             for phrase in inner_phrases:
                 if '\\' in phrase:
@@ -3543,27 +3599,39 @@ def find_phrase():
                     if phrase in decoded:
                         passed += 1
             if passed == len(inner_phrases):
-                found.append(i)
-            else:
+                # if function_end < 0:
+                found.append(j)
+                len_found += 1
+                function_end = -1
+            elif function_end < 0:
                 found[:] = []
-        elif '\\' in phrases[len(found)]:
-            inner_phrases = phrases[len(found)].split('\\')
+                len_flounder = 0
+        elif '\\' in phrases[len_found]:
+            inner_phrases = phrases[len_found].split('\\')
             passed = False
             for l in inner_phrases:
                 if l in decoded:
-                    found.append(i)
+                    # if function_end < 0:
+                    found.append(j)
+                    function_end = -1
+                    len_found += 1
                     passed = True
                     break
-            if not passed:
+            if not passed and function_end < 0:
                 found[:] = []
-        elif phrases[len(found)] in decoded:
-            found.append(i)
-        else:
+                len_flounder = 0
+        elif phrases[len_found] in decoded:
+            # if function_end:
+            found.append(j)
+            len_found += 1
+            function_end = -1
+        elif function_end < 0:
             found[:] = []
-        if len(found) == len(phrases):
-            for li, l in enumerate(found):
-                offset = j - (len(found) - (li + 1))
-                decoded = disasm.decode(l, offset)
+            len_flounder = 0
+        # print(len(found))
+        if len_found == len(phrases):
+            for offset in found:
+                decoded = disasm.decode(int_of_4_byte_aligned_region(checking[offset<<2:(offset<<2)+4]), offset)
                 offset <<= 2
                 if disasm.game_address_mode:
                     offset = disasm.region_align(offset) + disasm.game_offset
@@ -3571,6 +3639,8 @@ def find_phrase():
             if len(found) > 1:
                 display_list.append('')
             found[:] = []
+            len_flounder = 0
+        i += 4
 
     def phrases_win_equals_none():
         global phrases_win, phrases_curselect
@@ -3616,6 +3686,7 @@ def find_phrase():
         phrases_win.bind('<Control-S>', lambda e: save_changes_to_file())
         phrases_win.focus_force()
         change_colours()
+        phrases_win.resizable(False, False)
         phrases_win.mainloop()
     else:
         simpledialog.messagebox._show('Oh no', 'No results for:\n\n' + '\n'.join(phrases))
@@ -3752,6 +3823,7 @@ def set_memory_regions():
     resize_window()
     mem_regions_win.protocol('WM_DELETE_WINDOW', mem_regions_win_equals_none)
     mem_regions_win.focus_force()
+    mem_regions_win.resizable(False, False)
     mem_regions_win.mainloop()
 
 
@@ -3827,6 +3899,7 @@ def float_to_hex_converter():
     hex_win.protocol('WM_DELETE_WINDOW', hex_win_equals_none)
     change_colours()
     hex_win_float_tbox.focus_force()
+    hex_win.resizable(False, False)
     hex_win.mainloop()
 
 
@@ -3902,7 +3975,7 @@ window.bind('<F7>', lambda e: toggle_hex_space())
 window.bind('<Control-s>', lambda e: save_changes_to_file())
 window.bind('<Control-S>', lambda e: save_changes_to_file())
 window.bind('<MouseWheel>', scroll_callback)
-window.bind('<FocusOut>', lambda e: replace_clipboard())
+# window.bind('<FocusOut>', lambda e: replace_clipboard())
 hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-G>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-f>', lambda e: follow_jump())
@@ -3993,5 +4066,6 @@ if app_config['open_roms_automatically'] and app_config['previous_base_opened'] 
     if exists(app_config['previous_base_opened']) and exists(app_config['previous_hack_opened']):
         window.after(1, open_files)
 
+window.resizable(False, False)
 window.mainloop()
 
