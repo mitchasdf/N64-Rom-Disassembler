@@ -1631,7 +1631,7 @@ class Disassembler:
             dump((self.jumps_to, self.branches_to), jumps_file)
         return
 
-    def find_jumps(self, index):
+    def find_jumps(self, index, only_return_function_end=False):
         this_function = []
         i = 0
         # Locate the top of the function
@@ -1658,6 +1658,8 @@ class Disassembler:
             if instruction[:2] == 'JR':
                 break
         end_of_function = i + index
+        if only_return_function_end:
+            return end_of_function
         jumps = []
         for i in this_function:
             function_offset = self.region_align(i << 2) >> 2
@@ -1666,7 +1668,7 @@ class Disassembler:
                 offsetting = 0 if not self.game_address_mode else self.game_offset
                 [jumps.append(extend_zeroes(hexi((self.region_align(j << 2) if self.game_address_mode else (j << 2)) + offsetting), 8))
                  for j in self.jumps_to[key]]
-        if self.game_address_mode:
+        if self.game_address_mode and not only_return_function_end:
             start_of_function = self.region_align(start_of_function << 2) >> 2
             end_of_function = self.region_align(end_of_function << 2) >> 2
             start_of_function += self.game_offset >> 2
