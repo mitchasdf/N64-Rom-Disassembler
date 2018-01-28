@@ -1636,23 +1636,26 @@ class Disassembler:
         i = 0
         # Locate the top of the function
         # We can't really start mapping here, because it needs to find the bottom of the previous function first
-        while i + index >= 0:
-            navi = (index + i) << 2
-            if navi < 0:
-                return []
-            int_word = int_of_4_byte_aligned_region(self.hack_file[navi:navi + 4])
-            instruction = self.decode(int_word, index + i)
-            if instruction[:5] == 'JR RA':
-                # Skip the delay slot
-                i += 2
-                break
-            i -= 1
+        if not only_return_function_end:
+            while i + index >= 0:
+                navi = (index + i) << 2
+                if navi < 0:
+                    return []
+                int_word = int_of_4_byte_aligned_region(self.hack_file[navi:navi + 4])
+                instruction = self.decode(int_word, index + i)
+                if instruction[:5] == 'JR RA':
+                    # Skip the delay slot
+                    i += 2
+                    break
+                i -= 1
         start_of_function = i + index
         # Map to the bottom of the function
         while i + index < len(self.hack_file) >> 2:
             navi = (index + i) << 2
             int_word = int_of_4_byte_aligned_region(self.hack_file[navi:navi + 4])
             instruction = self.decode(int_word, index + i)
+            if not instruction and only_return_function_end:
+                return -1
             this_function.append(index + i)
             i += 1
             if instruction[:2] == 'JR':
