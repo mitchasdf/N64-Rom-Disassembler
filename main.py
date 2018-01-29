@@ -27,6 +27,8 @@ FRESH_APP_CONFIG = {
     'script_output_dir': working_dir,
     'previous_base_opened': '',
     'previous_hack_opened': '',
+    'remember_script': {},
+    'remember_batch': {},
     'open_roms_automatically': False,
     'window_geometry': '1133x609',
     'hack_of_base': {},
@@ -1613,6 +1615,8 @@ def save_changes_to_file(save_as=False):
         app_config['hack_of_base'][new_file_name] = app_config['hack_of_base'][disasm.hack_file_name]
         app_config['calc_crc'][new_file_name] = app_config['calc_crc'][disasm.hack_file_name]
         app_config['memory_regions'][new_file_name] = app_config['memory_regions'][disasm.hack_file_name].copy()
+        app_config['remember_batch'][new_file_name] = app_config['remember_batch'][disasm.hack_file_name]
+        app_config['remember_script'][new_file_name] = app_config['remember_script'][disasm.hack_file_name]
         disasm.hack_file_name = new_file_name
         disasm.comments_file = new_file_path + ' comments.txt'
         disasm.jumps_file = new_file_path + ' jumps.data'
@@ -1923,6 +1927,10 @@ def open_files(mode = ''):
         buffer_append(comments_buffer)
         if disasm.hack_file_name not in app_config['jumps_displaying']:
             app_config['jumps_displaying'][disasm.hack_file_name] = {}
+        if disasm.hack_file_name not in app_config['remember_script']:
+            app_config['remember_script'][disasm.hack_file_name] = ''
+        if disasm.hack_file_name not in app_config['remember_batch']:
+            app_config['remember_batch'][disasm.hack_file_name] = ''
         jumps_displaying = app_config['jumps_displaying'][disasm.hack_file_name].copy()
         time_taken = timer_get()
 
@@ -2944,7 +2952,7 @@ def toggle_base_file():
     navigate_to(navigation)
     save_config()
     set_widget_sizes()
-# 80300D74
+
 
 def set_widget_sizes(new_size=0, new_max_lines=0):
     global main_font_size, max_lines, top_label_x, top_label_w, bot_label_x, bot_label_w
@@ -3502,8 +3510,26 @@ def generate_script():
 
     def script_win_equals_none():
         global script_win
+        batch_text = batch_text_box.get('1.0', tk.END)
+        if batch_text.count('\n') == len(batch_text):
+            remember_batch = ''
+        else:
+            remember_batch = batch_text
+        script_text = script_text_box.get('1.0', tk.END)
+        if script_text.count('\n') == len(script_text):
+            remember_script = ''
+        else:
+            remember_script = script_text
+        app_config['remember_script'][disasm.hack_file_name] = remember_script
+        app_config['remember_batch'][disasm.hack_file_name] = remember_batch
+        save_config()
         script_win.destroy()
         script_win = None
+
+    if app_config['remember_script'][disasm.hack_file_name]:
+        script_text_box.insert('1.0', app_config['remember_script'][disasm.hack_file_name])
+    if app_config['remember_batch'][disasm.hack_file_name]:
+        batch_text_box.insert('1.0', app_config['remember_batch'][disasm.hack_file_name])
 
     script_win.protocol('WM_DELETE_WINDOW', script_win_equals_none)
     change_colours()
@@ -3926,6 +3952,8 @@ nav_menu = tk.Menu(menu_bar, tearoff=0)
 nav_menu.add_command(label='Browse Comments (F1)', command=view_comments)
 nav_menu.add_command(label='Browse Jumps (F2)', command= lambda: find_jumps(just_window=True))
 nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
+nav_menu.add_separator()
+nav_menu.add_command(label='Search assembly', command=find_phrase)
 menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 
 tools_menu = tk.Menu(menu_bar, tearoff=0)
@@ -3935,8 +3963,7 @@ tools_menu.add_command(label='Scour hack for differences', command=scour_changes
 tools_menu.add_command(label='Float <--> Hex', command=float_to_hex_converter)
 tools_menu.add_separator()
 tools_menu.add_command(label='Set memory regions', command=set_memory_regions)
-tools_menu.add_command(label='Search assembly', command=find_phrase)
-# tools_menu.add_command(label='Re-map jumps', command=remap_jumps)
+tools_menu.add_command(label='Re-map jumps', command=remap_jumps)
 tools_menu.add_separator()
 tools_menu.add_command(label='Bypass CRC', command=bypass_crc)
 tools_menu.add_command(label='Manually set CIC chip', command=manual_cic)
