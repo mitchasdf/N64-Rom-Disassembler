@@ -2944,9 +2944,9 @@ def toggle_base_file():
     navigate_to(navigation)
     save_config()
     set_widget_sizes()
+# 80300D74
 
-
-def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
+def set_widget_sizes(new_size=0, new_max_lines=0):
     global main_font_size, max_lines, top_label_x, top_label_w, bot_label_x, bot_label_w
     global top_label_y, bot_label_y, comments_win_h, comments_x, comments_y, comments_w
     global comments_h, jumps_win_w, jumps_win_h, func_list_w, func_list_y, func_list_x
@@ -2957,8 +2957,10 @@ def set_widget_sizes(new_size=main_font_size, new_max_lines=max_lines):
         apply_comment_changes()
         apply_hack_changes()
     window.update_idletasks()
-    main_font_size = new_size
-    max_lines = new_max_lines
+    if new_size:
+        main_font_size = new_size
+    if new_max_lines:
+        max_lines = new_max_lines
     font_w, font_h = font_dimension(main_font_size)
     widget_y = 35
     widget_h = (max_lines * font_h) + 4
