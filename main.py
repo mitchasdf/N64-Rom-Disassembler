@@ -3285,7 +3285,7 @@ def generate_script():
                 msg = 'Unable to translate the address within the first 8 characters on this line: \n'\
                       '{}'.format(iter_text + note_text)
                 simpledialog.messagebox._show('Error', msg, parent=script_win)
-                return
+                raise
             if not note_text:
                 note_text = '0x' + iter_text
             return line.replace('{{iter}}', iter_text).replace('{{note}}', note_text)
@@ -3330,7 +3330,10 @@ def generate_script():
                 for b in batch:
                     if not b:
                         continue
-                    replaced = replace_tags(script, b[:8], b[10:])
+                    try:
+                        replaced = replace_tags(script, b[:8], b[10:])
+                    except:
+                        return
                     if not replaced:
                         continue
                     return_script += replaced + '\n'
@@ -3341,7 +3344,10 @@ def generate_script():
             if not b:
                 continue
             for script in split_text:
-                replaced = replace_tags(script, b[:8], b[10:])
+                try:
+                    replaced = replace_tags(script, b[:8], b[10:])
+                except:
+                    return
                 if not replaced:
                     continue
                 return_script += replaced + '\n'
@@ -3515,11 +3521,15 @@ def generate_script():
             remember_batch = ''
         else:
             remember_batch = batch_text
+            if remember_batch[-1] == '\n':
+                remember_batch = remember_batch[:-1]
         script_text = script_text_box.get('1.0', tk.END)
         if script_text.count('\n') == len(script_text):
             remember_script = ''
         else:
             remember_script = script_text
+            if remember_script[-1] == '\n':
+                remember_script = remember_script[:-1]
         app_config['remember_script'][disasm.hack_file_name] = remember_script
         app_config['remember_batch'][disasm.hack_file_name] = remember_batch
         save_config()
@@ -3954,15 +3964,14 @@ nav_menu.add_command(label='Browse Jumps (F2)', command= lambda: find_jumps(just
 nav_menu.add_command(label='Navigate (F4)', command=navigation_prompt)
 nav_menu.add_separator()
 nav_menu.add_command(label='Search assembly', command=find_phrase)
+nav_menu.add_separator()
+nav_menu.add_command(label='Scour hack for all changes', command=scour_changes)
 menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 
 tools_menu = tk.Menu(menu_bar, tearoff=0)
-tools_menu.add_command(label='Generate script for batch of addresses', command=generate_script)
-tools_menu.add_command(label='Set memory editor offset', command=set_mem_edit_offset)
-tools_menu.add_command(label='Scour hack for differences', command=scour_changes)
 tools_menu.add_command(label='Float <--> Hex', command=float_to_hex_converter)
+tools_menu.add_command(label='Generate script for batch of addresses', command=generate_script)
 tools_menu.add_separator()
-tools_menu.add_command(label='Set memory regions', command=set_memory_regions)
 tools_menu.add_command(label='Re-map jumps', command=remap_jumps)
 tools_menu.add_separator()
 tools_menu.add_command(label='Bypass CRC', command=bypass_crc)
@@ -3971,11 +3980,15 @@ tools_menu.add_checkbutton(label='Calculate checksum when saving', command=toggl
 menu_bar.add_cascade(label='Tools', menu=tools_menu)
 
 opts_menu = tk.Menu(menu_bar, tearoff=0)
+opts_menu.add_command(label='Set scroll amount', command=set_scroll_amount)
+opts_menu.add_command(label='Set immediate value identifier', command=change_immediate_id)
+opts_menu.add_separator()
+opts_menu.add_command(label='Set memory editor offset', command=set_mem_edit_offset)
+opts_menu.add_command(label='Set memory regions', command=set_memory_regions)
+opts_menu.add_separator()
 opts_menu.add_command(label='Toggle "game entry point" mode (F5)', command=toggle_address_mode)
 opts_menu.add_command(label='Toggle hex mode (F6)', command=toggle_hex_mode)
 opts_menu.add_command(label='Toggle hex space separation (F7)', command=toggle_hex_space)
-opts_menu.add_command(label='Set immediate value identifier', command=change_immediate_id)
-opts_menu.add_command(label='Set scroll amount', command=set_scroll_amount)
 menu_bar.add_cascade(label='Options', menu=opts_menu)
 
 win_menu = tk.Menu(menu_bar, tearoff=0)
