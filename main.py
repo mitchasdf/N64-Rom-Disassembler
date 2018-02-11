@@ -6,6 +6,7 @@ import os
 import webbrowser
 from function_defs import *
 from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS, CIC, DOCUMENTATION
+from math import sqrt
 
 
 CONFIG_FILE = 'rom disassembler.config'
@@ -38,6 +39,7 @@ FRESH_APP_CONFIG = {
     'toggle_base_file': True,
     'immediate_identifier': '$',
     'hex_mode': False,
+    'bin_mode': False,
     'hex_space_separation': True,
     'game_address_mode': {},
     'CIC': {},
@@ -55,6 +57,7 @@ FRESH_APP_CONFIG = {
     'window_background_colour': '#606060',
     'text_bg_colour': '#454545',
     'text_fg_colour': '#D0D0D0',
+    'differ_colour': '#E6E000',
     'tag_config': {
           'jump_to': '#1d6152',
           'branch_to': '#1f5d11',
@@ -135,7 +138,7 @@ else:
 
 app_config['window_geometry'] = FRESH_APP_CONFIG['window_geometry']
 window.title('ROM Disassembler')
-window.geometry('{}+5+5'.format(app_config['window_geometry']))
+window.geometry(app_config['window_geometry'] + '+0+0')
 try:
     window.tk.call('wm', 'iconbitmap', window._w, working_dir + 'n64_disassembler.ico')
 except:
@@ -177,6 +180,9 @@ ALL_TEXT_BOXES = [address_text_box,
                   hack_file_text_box,
                   comments_text_box]
 [text_box.config(state=tk.DISABLED) for text_box in ALL_TEXT_BOXES]
+
+disassembly_max_chars = 35
+comments_max_chars = 70
 
 # [current_buffer_position, [(navigation, cursor_location, text_box_content
 # , immediate_id, game_address_mode, hex_mode), ...]]
@@ -289,6 +295,7 @@ def change_colours():
 
     [label.config(bg=new_tag_config['target']) for label in [target_down_label, target_up_label]]
     [label.config(bg=new_tag_config['jump_from']) for label in [target_of_down_label, target_of_up_label]]
+    [label[0].config(bg=app_config['differ_colour']) for label in differ_labels]
     if change_rom_name_button:
         change_rom_name_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg, activeforeground=text_fg)
     highlight_stuff(skip_moving_cursor=True)
@@ -328,6 +335,12 @@ def hex_space(string):
     if not app_config['hex_space_separation']:
         return string
     return ' '.join([string[i:i+2] for i in range(0, len(string), 2)])
+
+
+def space_bindies(bindie):
+    if not app_config['hex_space_separation']:
+        return bindie
+    return ' '.join([bindie[i:i+8] for i in range(0, len(bindie), 8)])
 
 
 def clear_error(key):
@@ -481,11 +494,20 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
     if prev_address_target or not column:
         c_line = 0
 
+    # differ_labels[i][0].place(x=dif_label_x, y=y_pos, width=2, height=font_h - 6)
+    font_w, font_h = font_dimension(main_font_size)
+    for i in range(max_lines):
+        navi = (navigation + i) << 2
+        if int_of_4_byte_aligned_region(disasm.base_file[navi:navi+4]) != int_of_4_byte_aligned_region(disasm.hack_file[navi:navi+4]):
+            differ_labels[i][0].place(x=dif_label_x, y=differ_labels[i][1], width=2, height=font_h - 6)
+        else:
+            differ_labels[i][0].place_forget()
+
     address = None if c_line else prev_address_target
     for i in range(len(text)):
         navi = navigation + i
         key = str(navi)
-        if not app_config['hex_mode']:
+        if not app_config['hex_mode'] and not app_config['bin_mode']:
             line = i + 1
             line_text = text[i]
             this_word = line_text[:line_text.find(' ')]
@@ -747,19 +769,20 @@ def apply_hack_changes(ignore_slot = None):
             decoded = 'widdley scuds boi'
         if decoded == split_text[i]:
             clear_error(string_key)
-        elif is_hex_part or app_config['hex_mode']:
+        elif is_hex_part or app_config['hex_mode'] or app_config['bin_mode']:
             without_spaces = split_text[i].replace(' ', '')
             try:
-                if len(without_spaces) not in range(0, 9):
+                if (len(without_spaces) not in range(0, 9) and app_config['hex_mode']) or \
+                        (len(without_spaces) not in range(0, 33) and app_config['bin_mode']):
                     raise Exception()
-                int_of = deci(without_spaces)
+                int_of = deci(without_spaces) if app_config['hex_mode'] or is_hex_part else dinbies(without_spaces)
             except:
                 user_errors[string_key] = (-1, split_text[i])
                 continue
 
-            disasm.split_and_store_bytes(int_of, navi)
             clear_error(string_key)
-            if not is_hex_part:
+            if not is_hex_part and int_of != int_word:
+                disasm.split_and_store_bytes(int_of, navi)
                 unmap(decoded_word, navi, int_word)
 
         elif not split_text[i]:
@@ -944,7 +967,8 @@ def buffer_append(buffer):
                  max_lines,
                  app_config['immediate_identifier'],
                  disasm.game_address_mode,
-                 app_config['hex_mode'])
+                 app_config['hex_mode'],
+                 app_config['bin_mode'])
     else:
         tuple = (navigation, get_cursor(comments_text_box)[0], get_text_content(comments_text_box), max_lines)
 
@@ -1064,6 +1088,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                 immediate_id = buffer[1][place][4]
                 game_address_mode = buffer[1][place][5]
                 hex_mode = buffer[1][place][6]
+                bin_mode = buffer[1][place][7]
                 if immediate_id != app_config['immediate_identifier']:
                     app_config['immediate_identifier'] = immediate_id
                     save_config()
@@ -1076,7 +1101,10 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                 if hex_mode != app_config['hex_mode']:
                     app_config['hex_mode'] = hex_mode
                     save_config()
-                    disasm.game_address_mode = game_address_mode
+                elif bin_mode != app_config['bin_mode']:
+                    app_config['bin_mode'] = bin_mode
+                    save_config()
+
             if max_lines != buffer[1][place][3]:
                 set_widget_sizes(new_max_lines=buffer[1][place][3])
                 app_config['max_lines'] = max_lines
@@ -1362,13 +1390,13 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
 
 base_file_text_box.bind('<Key>', lambda event:
-    keyboard_events(base_file_text_box, 30, event, buffer=False))
+    keyboard_events(base_file_text_box, disassembly_max_chars, event, buffer=False))
 
 hack_file_text_box.bind('<Key>', lambda event:
-    keyboard_events(hack_file_text_box, 30, event, buffer=hack_buffer, hack_function=True))
+    keyboard_events(hack_file_text_box, disassembly_max_chars, event, buffer=hack_buffer, hack_function=True))
 
 comments_text_box.bind('<Key>', lambda event:
-    keyboard_events(comments_text_box, 70, event, buffer=comments_buffer))
+    keyboard_events(comments_text_box, comments_max_chars, event, buffer=comments_buffer))
 
 
 # The button is destroyed and remade every time the user scrolls within it's view
@@ -1452,16 +1480,33 @@ def navigate_to(index, center=False, widget=None, region_treatment=False, region
                 addresses[i] += disasm.game_offset
     address_range = [extend_zeroes(hexi(i), 8) for i in addresses]
 
-    # Disassemble ints into instructions, display header section as hex
-    base_disassembled = [disasm.decode(ints_in_base_sample[i], navigation + i)
-                         if navigation + i > 15 and not app_config['hex_mode'] else
-                         hex_space(extend_zeroes(hexi(ints_in_base_sample[i]), 8))
-                         for i in range(len(ints_in_base_sample))]
-    hack_disassembled = [disasm.decode(ints_in_hack_sample[i], navigation + i)
-                         if navigation + i > 15 and not app_config['hex_mode'] else
-                         hex_space(extend_zeroes(hexi(ints_in_hack_sample[i]), 8))
-                         for i in range(len(ints_in_hack_sample))]
-    for disassembly in [base_disassembled, hack_disassembled]:
+    hex_or_bin = app_config['hex_mode'] or app_config['bin_mode']
+
+    # Disassemble ints into instructions, or display as hex or bin
+    base_disassembled = []
+    hack_disassembled = []
+    for i in range(len(ints_in_base_sample)):
+        if navigation + i < 16 or app_config['hex_mode']:
+            base_disassembled.append(hex_space(extend_zeroes(hexi(ints_in_base_sample[i]), 8)))
+            hack_disassembled.append(hex_space(extend_zeroes(hexi(ints_in_hack_sample[i]), 8)))
+        elif app_config['bin_mode']:
+            base_disassembled.append(space_bindies(extend_zeroes(bindies(ints_in_base_sample[i]), 32)))
+            hack_disassembled.append(space_bindies(extend_zeroes(bindies(ints_in_hack_sample[i]), 32)))
+        else:
+            base_disassembled.append(disasm.decode(ints_in_base_sample[i], navigation + i))
+            hack_disassembled.append(disasm.decode(ints_in_hack_sample[i], navigation + i))
+
+    # base_disassembled = [disasm.decode(ints_in_base_sample[i], navigation + i)
+    #                      if navigation + i > 15 and not hex_or_bin else
+    #                      hex_space(extend_zeroes(hexi(ints_in_base_sample[i]), 8))
+    #                      for i in range(len(ints_in_base_sample))]
+    # hack_disassembled = [disasm.decode(ints_in_hack_sample[i], navigation + i)
+    #                      if navigation + i > 15 and not hex_or_bin else
+    #                      hex_space(extend_zeroes(hexi(ints_in_hack_sample[i]), 8))
+    #                      for i in range(len(ints_in_hack_sample))]
+
+    # Adjust branches or jumps to offset to custom regions
+    for disassembly in [base_disassembled, hack_disassembled] if not hex_or_bin else []:
         for i, text in enumerate(disassembly):
             try:
                 space_in = text.find(' ')
@@ -1899,7 +1944,10 @@ def open_files(mode = ''):
                                                              'Rom may get stuck in infinite loop '
                                                              'while booting. If the rom won\'t boot, '
                                                              'try bypassing the CRC with "Tools->'
-                                                             'Bypass CRC".')
+                                                             'Bypass CRC". If that doesn\'t work and '
+                                                             'fiddling around with manually setting the '
+                                                             'CIC chip also doesn\'t work, then I\'m sorry, '
+                                                             'I dunno man.')
         app_config['CIC'][disasm.hack_file_name] = CIC[new_cic]
         app_config['calc_crc'][disasm.hack_file_name] = True
     calc_crc.set(app_config['calc_crc'][disasm.hack_file_name])
@@ -2029,7 +2077,9 @@ def toggle_address_mode(buffering=True):
         buffer_append(hack_buffer)
     toggle_to = not disasm.game_address_mode
     disasm.game_address_mode = toggle_to
-    save_config()
+    # This causes bugs, have it only save when user saves
+    # app_config['game_address_mode'][disasm.hack_file_name] = toggle_to
+    # save_config()
     navigate_to(navigation)
     hack_file_text_box.mark_set(tk.INSERT, cursor)
     highlight_stuff(skip_moving_cursor=True)
@@ -2104,15 +2154,33 @@ def toggle_address_mode(buffering=True):
             jump_list_box.see(jumps_curselect)
 
 
-def toggle_hex_mode():
+def toggle_hex_mode(buffering=True):
     apply_hack_changes()
     apply_comment_changes()
     cursor, line, column = get_cursor(hack_file_text_box)
-    buffer_append(hack_buffer)
+    if buffering:
+        buffer_append(hack_buffer)
     app_config['hex_mode'] = not app_config['hex_mode']
+    if app_config['hex_mode']:
+        app_config['bin_mode'] = False
     save_config()
     navigate_to(navigation)
-    hack_file_text_box.mark_set(tk.INSERT, cursor)
+    hack_file_text_box.mark_set(tk.INSERT, modify_cursor(cursor, 0, 'max', get_text_content(hack_file_text_box))[0])
+    highlight_stuff(skip_moving_cursor=True)
+
+
+def toggle_bin_mode(buffering=True):
+    apply_hack_changes()
+    apply_comment_changes()
+    cursor, line, column = get_cursor(hack_file_text_box)
+    if buffering:
+        buffer_append(hack_buffer)
+    app_config['bin_mode'] = not app_config['bin_mode']
+    if app_config['bin_mode']:
+        app_config['hex_mode'] = False
+    save_config()
+    navigate_to(navigation)
+    hack_file_text_box.mark_set(tk.INSERT, modify_cursor(cursor, 0, 'max', get_text_content(hack_file_text_box))[0])
     highlight_stuff(skip_moving_cursor=True)
 
 
@@ -2664,7 +2732,7 @@ def set_colour_scheme():
                                                      'colour changes.')
     colours_window = tk.Tk()
     colours_window.title('Colour scheme')
-    colours_window.geometry('{}x{}'.format(458, 486))
+    colours_window.geometry('{}x{}'.format(458, 516))
 
     def colour_buttons_callback(which, with_colour=''):
         if not with_colour:
@@ -2672,11 +2740,12 @@ def set_colour_scheme():
                 start_colour = app_config['tag_config'][which]
             else:
                 start_colour = app_config[which]
-            new_colour = colorchooser.askcolor(color=start_colour)
+            new_colour = colorchooser.askcolor(color=start_colour, parent=colours_window)
+            print(new_colour)
         else:
             r, g, b = get_colours_of_hex(with_colour)
             new_colour = ((r, g, b), with_colour)
-        if not new_colour[0]:
+        if new_colour[0] is None:
             return
         if which in app_config['tag_config']:
             app_config['tag_config'][which] = new_colour[1]
@@ -2693,6 +2762,7 @@ def set_colour_scheme():
         save_config()
 
     button_text = {
+        'differ_colour': 'Modified code labels',
         'text_bg_colour': 'Textbox background',
         'text_fg_colour': 'Text colour',
         'window_background_colour': 'Window background',
@@ -2722,6 +2792,7 @@ def set_colour_scheme():
         else:
             dark_colours[i] = FRESH_APP_CONFIG[i]
     bright_colours = {
+        'differ_colour': '#ff8d1c',
         'text_bg_colour': '#ffffff',
         'text_fg_colour': '#000000',
         'window_background_colour': '#e8e8e8',
@@ -2749,6 +2820,7 @@ def set_colour_scheme():
         default_dark_buttons[tag] = tk.Button(colours_window)
 
     # For some reason, I cannot set the command inside a loop. It sets all callbacks with 'out_of_range', the final iteration
+    custom_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour'))
     custom_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour'))
     custom_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour'))
     custom_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour'))
@@ -2764,6 +2836,7 @@ def set_colour_scheme():
     custom_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end'))
     custom_buttons['bad'].config(command=lambda: colour_buttons_callback('bad'))
     custom_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range'))
+    previous_setting_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour',current_colours['differ_colour']))
     previous_setting_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',current_colours['text_bg_colour']))
     previous_setting_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',current_colours['text_fg_colour']))
     previous_setting_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour',current_colours['window_background_colour']))
@@ -2779,6 +2852,7 @@ def set_colour_scheme():
     previous_setting_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end',current_colours['function_end']))
     previous_setting_buttons['bad'].config(command=lambda: colour_buttons_callback('bad',current_colours['bad']))
     previous_setting_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range',current_colours['out_of_range']))
+    default_dark_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour',dark_colours['differ_colour']))
     default_dark_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',dark_colours['text_bg_colour']))
     default_dark_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',dark_colours['text_fg_colour']))
     default_dark_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour',dark_colours['window_background_colour']))
@@ -2794,6 +2868,7 @@ def set_colour_scheme():
     default_dark_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end',dark_colours['function_end']))
     default_dark_buttons['bad'].config(command=lambda: colour_buttons_callback('bad',dark_colours['bad']))
     default_dark_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range',dark_colours['out_of_range']))
+    default_bright_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour',bright_colours['differ_colour']))
     default_bright_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',bright_colours['text_bg_colour']))
     default_bright_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',bright_colours['text_fg_colour']))
     default_bright_buttons['window_background_colour'].config(command=lambda: colour_buttons_callback('window_background_colour',bright_colours['window_background_colour']))
@@ -2960,11 +3035,12 @@ def set_widget_sizes(new_size=0, new_max_lines=0):
     global comments_h, jumps_win_w, jumps_win_h, func_list_w, func_list_y, func_list_x
     global func_list_h, jumps_list_x, jumps_list_y, jumps_list_w, jumps_list_h, jumps_label
     global jumps_label_y, comments_win_w, targ_top_label_x, targ_top_label_y, targ_top_label_w
-    global targ_bot_label_x, targ_bot_label_y, targ_bot_label_w
-    if disassembler_loaded():
-        apply_comment_changes()
-        apply_hack_changes()
+    global targ_bot_label_x, targ_bot_label_y, targ_bot_label_w, dif_label_x
+    # if disassembler_loaded():
+    #     apply_comment_changes()
+    #     apply_hack_changes()
     window.update_idletasks()
+    old_max_lines = max_lines
     if new_size:
         main_font_size = new_size
     if new_max_lines:
@@ -2975,19 +3051,32 @@ def set_widget_sizes(new_size=0, new_max_lines=0):
     win_w, win_h, win_x, win_y = geometry(window.geometry())
     x_1 = 6
     w_1 = (font_w * 8) + 6
-    w_2 = (font_w * 30) + 6
+    w_2 = (font_w * disassembly_max_chars) + 6
     if app_config['toggle_base_file']:
         x_2 = x_1 + w_1 + 4
         x_3 = x_2 + w_2 + 4
     else:
         x_2 = 0
         x_3 = x_1 + w_1 + 4
+
+    if old_max_lines > max_lines:
+        [differ_labels.pop()[0].destroy() for _ in range(old_max_lines - max_lines)]
+    elif max_lines > old_max_lines:
+        [differ_labels.append([tk.Label(window), 0]) for _ in range(max_lines - old_max_lines)]
+    dif_label_x = x_3 - 3
+    for i in range(max_lines):
+        y_pos = widget_y + (i * font_h) + 5
+        differ_labels[i][0].config(bg=app_config['differ_colour'])
+        # differ_labels[i][0].place(x=dif_label_x, y=y_pos, width=2, height=font_h - 6)
+        differ_labels[i][1] = y_pos
+
     x_4 = x_3 + w_2 + 4
-    w_4 = (font_w * 70) + 6
+    w_4 = (font_w * comments_max_chars) + 6
     if app_config['status_bar']:
         status_bar_size = font_h + 8
     else:
         status_bar_size = 0
+
     win_w = x_4 + w_4 + 5
     win_h = status_bar_size + widget_h + widget_y + 5
     top_label_x = bot_label_x = x_3 + 2
@@ -3006,12 +3095,11 @@ def set_widget_sizes(new_size=0, new_max_lines=0):
     comments_text_box.place(x=x_4, y=widget_y, width=w_4, height=widget_h)
     window.geometry('{}x{}+{}+{}'.format(win_w, win_h, win_x, win_y))
     if disassembler_loaded():
-        # Or the clumsy change rom name button's placement suffers a race condition and uses previous settings
         window.after(1, lambda: navigate_to(navigation))
     comments_x = 6
     comments_y = 35
-    comments_w = (font_w * 80) + 6
-    comments_h = font_h * 25
+    comments_w = (font_w * (10 + comments_max_chars)) + 6
+    comments_h = (font_h * 25) + 4
     comments_win_w = comments_x + comments_w + 5
     comments_win_h = comments_y + comments_h + 5
     if comments_window:
@@ -3020,8 +3108,8 @@ def set_widget_sizes(new_size=0, new_max_lines=0):
         comments_list_box.place(x=comments_x, y=comments_y, width=comments_w, heigh=comments_h)
         comments_window.geometry('{}x{}+{}+{}'.format(comments_win_w, comments_win_h, comments_win_x, comments_win_y))
     func_list_x = jumps_list_x = 6
-    func_list_w = jumps_list_w = (font_w * 91) + 6
-    func_list_h = jumps_list_h = font_h * 10
+    func_list_w = jumps_list_w = (font_w * (21 + comments_max_chars)) + 6
+    func_list_h = jumps_list_h = (font_h * 14) + 4
     func_list_y = 35
     jumps_label_y = func_list_y + func_list_h + 5
     jumps_list_y = jumps_label_y + 30
@@ -3055,11 +3143,15 @@ def change_win_dimensions():
         return
     dimension_window = tk.Tk()
     dimension_window.title('Change window dimensions')
-    def scale_callback():
-        new_size, new_lines = scale_size.get(), scale_lines.get()
-        set_widget_sizes(new_size, new_lines)
-    scale_size = tk.Scale(dimension_window, from_=4, to=30, command=lambda _: scale_callback())
-    scale_lines = tk.Scale(dimension_window, from_=1, to=80, command=lambda _: scale_callback())
+    def scale_callback(amt, which):
+        # new_size, new_lines = scale_size.get(), scale_lines.get()
+        amt = int(amt)
+        if which == 'size':
+            set_widget_sizes(new_size=amt)
+        elif which == 'lines':
+            set_widget_sizes(new_max_lines=amt)
+    scale_size = tk.Scale(dimension_window, from_=4, to=30, command=lambda amt: scale_callback(amt, 'size'))
+    scale_lines = tk.Scale(dimension_window, from_=1, to=150, command=lambda amt: scale_callback(amt, 'lines'))
     [scale.config(orient=tk.HORIZONTAL) for scale in [scale_size, scale_lines]]
     scale_size.set(app_config['font_size'])
     scale_lines.set(app_config['max_lines'])
@@ -3941,6 +4033,138 @@ def float_to_hex_converter():
     hex_win.mainloop()
 
 
+def generate_live_patch_script():
+    out_script = ''
+    i = 0x1000
+    percent = disasm.file_length // 100
+    while i < disasm.file_length:
+        cont = True
+        if not i % percent:
+            status_text.set('Scanning changes: {}%'.format(i // percent))
+            status_bar.update()
+        for j in range(4):
+            if disasm.base_file[i+j] != disasm.hack_file[i+j]:
+                cont = False
+                break
+        if not cont:
+            address = disasm.region_align(i) + disasm.game_offset
+            val = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
+            address, val = extend_zeroes(hexi(address), 8), extend_zeroes(hexi(val), 8)
+            out_script += '\n'
+            if str(i >> 2) in disasm.comments:
+                out_script += '//' + disasm.comments[str(i >> 2)] + '\n'
+            out_script += 'mem.u32[0x{}] = 0x{};'.format(address, val)
+            decoded = disasm.decode(deci(val), i >> 2)
+            if not decoded:
+                decoded = 'NOP'
+            out_script += ' //{}\n'.format(decoded)
+        i += 4
+    if app_config['script_output_dir'] == working_dir:
+        out_dir = filedialog.askdirectory(title='Target your scripts dir within PJ64d')
+        if not out_dir:
+            return
+        out_dir = os.path.realpath(out_dir) + '\\'
+        app_config['script_output_dir'] = out_dir
+        save_config()
+    else:
+        out_dir = app_config['script_output_dir']
+    file_path = out_dir + disasm.hack_file_name[:disasm.hack_file_name.rfind('.')] + ' patch.js'
+    with open(file_path, 'w') as file:
+        file.write(out_script)
+    status_text.set('Wrote patch script. Use by starting script. It will stop automatically.')
+
+
+def test():
+    # max_size = 1
+    # # min_size = 2
+    # hex_list = []
+    # i = 0x40
+    # percent = disasm.file_length // 400
+    # while i < disasm.file_length:
+    #     if not (i >> 2) % percent:
+    #         status_text.set('Populating hex_list: {}%'.format((i >> 2) // percent))
+    #         status_bar.update()
+    #     intie = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
+    #     hex_list.append(extend_zeroes(hexi(intie), 8))
+    #     i += 4
+    # i = max_size
+    # percent = len(hex_list) // 100
+    # patterns = {}
+    # while i < len(hex_list):
+    #     if not i % percent:
+    #         status_text.set('Detecting patterns: {}%'.format(i // percent))
+    #         status_bar.update()
+    #     j = -1
+    #     while j >= -max_size:
+    #         this_pattern = ''.join(hex_list[i+j:i])
+    #         if this_pattern not in patterns:
+    #             patterns[this_pattern] = [i+j+0x10]
+    #         else:
+    #             patterns[this_pattern].append(i+j+0x10)
+    #         j -= 1
+    #     i += 1
+    # mio0 = ''.join([extend_zeroes(hexi(ord(i)), 2) for i in 'MIO0'])
+    # print(mio0)
+    # [print(extend_zeroes(hexi(i << 2), 8)) for i in patterns[mio0]]
+    # i = 0
+    # percent = len(patterns) // 100
+    # occurances = {}
+    # for key in patterns:
+    #     if not i & percent:
+    #         status_text.set('Sorting highest occurances: {}%'.format(i // percent))
+    #         status_bar.update()
+    #     i += 1
+    #     occ_key = str(len(patterns[key]))
+    #     if occ_key not in occurances:
+    #         occurances[occ_key] = [key]
+    #     else:
+    #         occurances[occ_key].append(key)
+
+    # [print(i) for i in reversed(sorted([int(j) for j in occurances]))]
+
+    layout_bits = 0x00114760
+    high_bit = 1 << 31
+
+    # Handles getting next bit from layout bits
+    class layout_ticker():
+        def __init__(self, layout_bits_start):
+            self.current_bit = high_bit
+            self.layout_bits_start = layout_bits_start
+            self.offset = 0
+            self.int_operating = 0
+        def tick(self):
+            if self.current_bit == high_bit:
+                off = self.layout_bits_start + self.offset
+                self.int_operating = int_of_4_byte_aligned_region(disasm.hack_file[off:off+4])
+            is_compressed = not bool(self.int_operating & self.current_bit)
+            if self.current_bit == 1:
+                self.current_bit <<= 31
+                self.offset += 4
+            else:
+                self.current_bit >>= 1
+            return is_compressed
+
+    layout = layout_ticker(layout_bits)
+    decompressed = []
+    decompressed_len = 0x35378
+    compressed_offset = (0x19D4 + layout_bits) - 0x10
+    uncompressed_offset = (0xAED0 + layout_bits) - 0x10
+    while len(decompressed) < decompressed_len:
+        is_compressed = layout.tick()
+        if is_compressed:
+            b1, b2 = disasm.hack_file[compressed_offset:compressed_offset + 2]
+            length = ((b1 & 0b11110000) >> 4) + 3
+            offset = ((b1 & 0b1111) << 8) + b2 + 1
+            while length:
+                decompressed.append(disasm.hack_file[uncompressed_offset - offset])
+                offset -= 1
+                length -= 1
+            compressed_offset += 2
+        else:
+            decompressed.append(disasm.hack_file[uncompressed_offset])
+            uncompressed_offset += 1
+
+
 menu_bar = tk.Menu(window)
 auto_open = tk.BooleanVar()
 calc_crc = tk.BooleanVar()
@@ -3971,8 +4195,12 @@ menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 tools_menu = tk.Menu(menu_bar, tearoff=0)
 tools_menu.add_command(label='Float <--> Hex', command=float_to_hex_converter)
 tools_menu.add_command(label='Generate script for batch of addresses', command=generate_script)
+# tools_menu.add_separator()
+# tools_menu.add_command(label='Generate run-time patch script for PJ64D', command=generate_live_patch_script)
 tools_menu.add_separator()
 tools_menu.add_command(label='Re-map jumps', command=remap_jumps)
+# tools_menu.add_separator()
+# tools_menu.add_command(label='Test', command=test)
 tools_menu.add_separator()
 tools_menu.add_command(label='Bypass CRC', command=bypass_crc)
 tools_menu.add_command(label='Manually set CIC chip', command=manual_cic)
@@ -3988,7 +4216,8 @@ opts_menu.add_command(label='Set memory regions', command=set_memory_regions)
 opts_menu.add_separator()
 opts_menu.add_command(label='Toggle "game entry point" mode (F5)', command=toggle_address_mode)
 opts_menu.add_command(label='Toggle hex mode (F6)', command=toggle_hex_mode)
-opts_menu.add_command(label='Toggle hex space separation (F7)', command=toggle_hex_space)
+opts_menu.add_command(label='Toggle hex/bin space separation (F7)', command=toggle_hex_space)
+opts_menu.add_command(label='Toggle bin mode (F8)', command=toggle_bin_mode)
 menu_bar.add_cascade(label='Options', menu=opts_menu)
 
 win_menu = tk.Menu(menu_bar, tearoff=0)
@@ -4013,6 +4242,7 @@ window.bind('<F4>', lambda e: navigation_prompt())
 window.bind('<F5>', lambda e: toggle_address_mode())
 window.bind('<F6>', lambda e: toggle_hex_mode())
 window.bind('<F7>', lambda e: toggle_hex_space())
+window.bind('<F8>', lambda e: toggle_bin_mode())
 # window.bind('<F8>', lambda e: float_to_hex_converter())
 window.bind('<Control-s>', lambda e: save_changes_to_file())
 window.bind('<Control-S>', lambda e: save_changes_to_file())
@@ -4092,6 +4322,7 @@ target_up_label = tk.Label(window)
 target_down_label = tk.Label(window)
 target_of_up_label = tk.Label(window)
 target_of_down_label = tk.Label(window)
+dif_label_x = 0
 
 status_text = tk.StringVar()
 status_text.set('Welcome!')
@@ -4099,6 +4330,8 @@ status_bar = tk.Label(window, relief=tk.SUNKEN, bd=3, textvariable=status_text, 
 
 if app_config['status_bar']:
     status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=3)
+
+differ_labels = [[tk.Label(window), 0] for _ in range(max_lines)]
 
 set_widget_sizes()
 window.protocol('WM_DELETE_WINDOW', close_window)
