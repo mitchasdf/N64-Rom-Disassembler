@@ -48,4 +48,12 @@ Moving your mouse to the far-right of any text box and double-clicking that line
     seems to corrupt the text boxes beyond repair so much that restarting the program is the only way to fix them.
     Because of that, this has become part of the "too hard" pile.
 
+Very rarely, "Calculate checksum when saving" will un-check itself. I really am stumped over what causes this.
+  For all I know, it's only happening to me during debugging. This is easy to notice when it has become un-checked,
+  as your rom will fail to boot if you have edited any part of the ROM between 0x1000 and 0xF5240.
+
+Very rarely, something will cause any of the sub-windows such as comments navigator and script generation to not be
+  coloured properly when opening them, also throw a bunch of tkinter errors in the command prompt.
+  I have not been able to find the cause of this. It can be resolved by saving your work and restarting the program.
+
 '''
