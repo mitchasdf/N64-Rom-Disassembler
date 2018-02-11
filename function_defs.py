@@ -22,11 +22,19 @@ def unpickle_data(name):
 def deci(hex_num):
     if not hex_num:
         return 0
-    return int('0x' + hex_num if '0x' not in hex_num else hex_num,16)
+    return int('0x' + hex_num if '0x' not in hex_num else hex_num, 16)
 
 
 def hexi(dec_num):
     return hex(dec_num)[2:].upper()
+
+
+def dinbies(bin_num):
+    return int('0b' + bin_num if '0b' not in bin_num else bin_num, 2)
+
+
+def bindies(dec_num):
+    return bin(dec_num)[2:]
 
 
 def extend_zeroes(str,amount):
