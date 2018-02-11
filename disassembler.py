@@ -8,7 +8,7 @@ import tkinter
 try:
     from decoder import PyDecoder
     decoder = PyDecoder()
-except ImportError:
+except:
     decoder = None
 
 
@@ -883,6 +883,7 @@ class Disassembler:
                 messagebox._show('Error', 'The comments file cannot be loaded - so this rom cannot be loaded until this is fixed.\n'
                                  'This is only necessary because if we went ahead and loaded, your comments file would'
                                  ' be erased and overwritten with fresh data.')
+                err_tk.destroy()
                 raise Exception('"{}"\n\n'.format(self.comments_file) + str(e))
 
         # Display the rom name in a user-readable format
