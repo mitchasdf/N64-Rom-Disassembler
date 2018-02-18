@@ -6,7 +6,6 @@ import os
 import webbrowser
 from function_defs import *
 from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS, CIC, DOCUMENTATION
-from math import sqrt
 
 
 CONFIG_FILE = 'rom disassembler.config'
@@ -956,7 +955,7 @@ def apply_comment_changes():
                     break
             if breaking:
                 break
-    save_config()
+    # save_config()  Dont know why this was here
 
 
 def buffer_append(buffer):
@@ -1029,7 +1028,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     alt_held = bool(event.state & 0b100000000000000000)
     up_keysym = event.keysym.upper()
     ctrl_d = ctrl_held and up_keysym == 'D'
-    bad_bad_hotkey = ctrl_held and up_keysym in ['Z', 'T']
+    bad_bad_hotkey = ctrl_held and up_keysym in ['Z', 'T', 'O']
     if bad_bad_hotkey:
         # Messes with custom behaviour, so wait until after changes are made
         #   by bad hotkey, then restore text box to how it was before the hotkey
@@ -1037,8 +1036,9 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                                  handle.insert('1.0', joined_text),
                                  handle.mark_set(tk.INSERT, cursor),
                                  highlight_stuff()))
+        if up_keysym == 'O' and hack_function:
+            optimise_function()
         return
-
     has_char = bool(event.char) and event.keysym != 'Escape' and not ctrl_held
     just_function_key = event.keysym in ['Alt_L', 'Alt_R', 'Shift_L', 'Shift_R', 'Control_L', 'Control_R']
     if not just_function_key:
@@ -1520,8 +1520,8 @@ def navigate_to(index, center=False, widget=None, region_treatment=False, region
                             address = disasm.region_align(address, game_offset=True)
                         new_text = text[:immid_in + 1] + extend_zeroes(hexi(address), 8)
                         disassembly[i] = new_text
-            except:
-                ''
+            except Exception as e:
+                print(e)
 
     # Replace disassembled data in the hack file with any errors the user has made
     for i in range(len(hack_disassembled)):
@@ -1673,7 +1673,7 @@ def save_changes_to_file(save_as=False):
     app_config['game_address_mode'][disasm.hack_file_name] = disasm.game_address_mode
     save_config()
     with open(disasm.jumps_file, 'wb') as jumps_file:
-        dump((disasm.jumps_to, disasm.branches_to), jumps_file)
+        dump((disasm.jumps_to, disasm.branches_to, disasm.jalr_list), jumps_file)
 
     with open(disasm.hack_folder + disasm.hack_file_name, 'wb') as file:
         file.write(disasm.hack_file)
@@ -4165,6 +4165,129 @@ def test():
             uncompressed_offset += 1
 
 
+def optimise_function():
+    # This is just in testing phase. Such complex, very confuse
+    return
+    if not disassembler_loaded():
+        return
+    m_index = (navigation + get_cursor(hack_file_text_box)[1]) - 1
+    _, start, end = disasm.find_jumps(m_index, apply_offsets=False)
+    if start < 0x40 or end >= disasm.file_length:
+        status_text.set('Attempt to find function bounds failed')
+        return
+    func_ints = ints_of_4_byte_aligned_region(disasm.hack_file[start:end+4])
+    func = [[disasm.decode(i, (start >> 2) + j), (start >> 2) + j] for j, i in enumerate(func_ints)]
+    branches = [[i[0], i[1], deci(i[0][i[0].rfind(app_config['immediate_identifier']) + 1:])]
+                for i in func if i[0][:i[0].find(' ')] in BRANCH_FUNCTIONS]
+    func_dict = {}
+    for i in func:
+        func_dict[str(i[1] << 2)] = i[0]
+    jumps = [i for i in func if i[0][:i[0].find(' ')] in JUMP_FUNCTIONS]
+    prev_end_start = end
+    prev_branch_point = 0
+    branches_to = [i[2] for i in branches]
+    slots_freed = 0
+    moved = func[-1][0] == 'NOP'
+    thingo = False
+    # Tidy up the footer's branches
+    for i, ii in enumerate(reversed(func[:-2])):
+        inst, index = ii
+        if inst[:inst.find(' ')] in BRANCH_FUNCTIONS:
+            branch_to = deci(inst[inst.rfind(app_config['immediate_identifier']) + 1:])
+            _end = prev_end_start if not prev_branch_point else prev_branch_point
+            if branch_to == _end and 'BEQ R0, R0' in inst:
+                func[-2 - i][0] = 'NOP'
+                slots_freed += 1
+                for j, b in enumerate(branches):
+                    binst, bindex, b_to = b
+                    if b_to == index << 2:
+                        binst = binst[:-8]
+                        binst += extend_zeroes(hexi(_end), 8)
+                        f_index = bindex - (start >> 2)
+                        func[f_index][0] = binst
+                prev_branch_point = func[-2 - i][1] << 2
+                thingo = False
+            if thingo:
+                break
+        elif not moved and inst != 'NOP':
+            func[-1][0] = inst
+            func[-2 - i][0] = 'NOP'
+            moved = True
+        elif moved and inst != 'NOP' and 'LW RA' not in inst and 'ADDIU SP' not in inst and not thingo:
+            thingo = True
+        elif thingo:
+            break
+        if 'LW RA' in inst or 'ADDIU SP' in inst:
+            prev_end_start = func[-2 - i][1] << 2
+
+    def wipe_reg():
+        if buffer[-1]:
+            buffer.append([])
+
+    def get_opcode(inst):
+        if not ' ' in inst:
+            return inst
+        return inst[:inst.find(' ')]
+
+    buffer = [[]]
+    continuing = 0
+
+    for j, i in enumerate(func):
+        if continuing:
+            continuing -= 1
+            continue
+        inst = i[0]
+        word = get_opcode(inst)
+        if word in ['JALR', 'JAL'] + BRANCH_FUNCTIONS:
+            wipe_reg()
+            continuing = 1
+            continue
+        if 'SP' in inst:
+            wipe_reg()
+            continue
+        if i[1] in branches_to:
+            wipe_reg()
+        words = inst.replace(',', '').replace('(', '').replace(')', '').replace(app_config['immediate_identifier'], '').split(' ')
+        buffer[-1].append([words, i[1]])
+
+
+    load_instructions = ['LB','LBU','LD','LDL','LDR','LH','LHU','LL','LLD','LW','LWL','LWR','LWU','LWC1','LDC1']
+    store_instructions = ['SB','SC','SCD','SD','SDL','SDR','SH','SW','SWL','SWR','SWC1','SDC1']
+
+    new_func = [i[0] for i in func]
+
+    def find_reg(words):
+        asdf = []
+        for i in scratch_registers:
+            if i in words[1:]:
+                asdf.append(i)
+        return asdf
+
+    scratch_registers = ['T' + str(i) for i in range(10)] + ['AT', 'A0', 'A1', 'A2', 'A3']
+
+    for b in buffer:
+        reg_usage_map = []
+        all_reg_use = {}
+        for r in scratch_registers:
+            all_reg_use[r] = False
+        for words, index in b:
+            inst = words[0]
+            if inst in load_instructions:
+                ''
+            elif inst in store_instructions:
+                ''
+            elif inst == 'LUI':
+                ''
+
+
+
+    '''
+    
+    group LUIs into immediate value used
+    
+    '''
+
+
 menu_bar = tk.Menu(window)
 auto_open = tk.BooleanVar()
 calc_crc = tk.BooleanVar()
@@ -4243,15 +4366,15 @@ window.bind('<F5>', lambda e: toggle_address_mode())
 window.bind('<F6>', lambda e: toggle_hex_mode())
 window.bind('<F7>', lambda e: toggle_hex_space())
 window.bind('<F8>', lambda e: toggle_bin_mode())
-# window.bind('<F8>', lambda e: float_to_hex_converter())
 window.bind('<Control-s>', lambda e: save_changes_to_file())
 window.bind('<Control-S>', lambda e: save_changes_to_file())
 window.bind('<MouseWheel>', scroll_callback)
-# window.bind('<FocusOut>', lambda e: replace_clipboard())
 hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-G>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-f>', lambda e: follow_jump())
 hack_file_text_box.bind('<Control-F>', lambda e: follow_jump())
+# hack_file_text_box.bind('<Control-o>', lambda e: optimise_function())
+# hack_file_text_box.bind('<Control-O>', lambda e: optimise_function())
 
 
 def text_box_callback(event):
@@ -4340,6 +4463,7 @@ change_colours()
 if app_config['open_roms_automatically'] and app_config['previous_base_opened'] and app_config['previous_hack_opened']:
     if exists(app_config['previous_base_opened']) and exists(app_config['previous_hack_opened']):
         window.after(1, open_files)
+
 
 window.resizable(False, False)
 window.mainloop()
