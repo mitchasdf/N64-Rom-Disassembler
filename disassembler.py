@@ -917,6 +917,7 @@ class Disassembler:
         self.matrix_stack = 0
         self.jumps_to = {}
         self.branches_to = {}
+        self.jalr_list = {}
         self.jumps_file = '{}{} jumps.data'.format(self.hack_folder, self.hack_file_name)
         self.documentation = {}
         self.loaded = False
@@ -1571,7 +1572,12 @@ class Disassembler:
             try:
                 if exists(self.jumps_file):
                     with open(self.jumps_file, 'rb') as jumps_file:
-                        self.jumps_to, self.branches_to = load(jumps_file)
+                        obj_in_file = load(jumps_file)
+                    # jalr_list was a late addition. This will stop old jumps.data from throwing errors
+                    if len(obj_in_file) == 2:
+                        self.jumps_to, self.branches_to = obj_in_file
+                    elif len(obj_in_file) == 3:
+                        self.jumps_to, self.branches_to, self.jalr_list = obj_in_file
                     return
             except:
                 # If we can't load the file, map the jumps again. No biggie.
@@ -1579,17 +1585,22 @@ class Disassembler:
         else:
             del self.jumps_to
             del self.branches_to
+            del self.jalr_list
             self.jumps_to = {}
             self.branches_to = {}
+            self.jalr_list = {}
 
         def buffer_handle():
             popped = buffer.pop(0)
             if not popped is None:
-                key = str(popped[1])
-                if not key in popped[0]:
-                    popped[0][key] = []
-                #  popped[0][key] is a pointer to either self.branches_to or self.jumps_to
-                popped[0][key].append(popped[2])
+                if popped[0] is self.jalr_list:
+                    self.jalr_list[extend_zeroes(hexi(popped[1]), 8)] = popped[2]
+                else:
+                    key = str(popped[1])
+                    if not key in popped[0]:
+                        popped[0][key] = []
+                    # popped[0] is a pointer to either self.branches_to or self.jumps_to
+                    popped[0][key].append(popped[2])
 
         percent = (self.file_length >> 2) // 100
         undercut = cut - 1
@@ -1618,21 +1629,22 @@ class Disassembler:
                 else:
                     subtract = self.jumps_offset_div_4
                 address = ((int_word & 0x03FFFFFF) + ((j + 1) & 0x3C000000)) - subtract
-                if address > 0:
-                    buffer.append((self.jumps_to, address, j))
+                buffer.append((self.jumps_to, address, j))
             elif BRANCH_INTS[opcode] or decoded[:2] == 'BC':
                 address = sign_16_bit_value(int_word & 0xFFFF) + j + 1
                 buffer.append((self.branches_to, address, j))
+            elif decoded[:7] == 'JALR RA':
+                buffer.append((self.jalr_list, i, decoded[-2:]))
             else:
                 buffer.append(None)
             if len(buffer) == cut:
                 flowing_over = True
                 buffer_handle()
         with open(self.jumps_file, 'wb') as jumps_file:
-            dump((self.jumps_to, self.branches_to), jumps_file)
+            dump((self.jumps_to, self.branches_to, self.jalr_list), jumps_file)
         return
 
-    def find_jumps(self, index, only_return_function_end=False):
+    def find_jumps(self, index, only_return_function_end=False, apply_offsets=True):
         this_function = []
         i = 0
         # Locate the top of the function
@@ -1644,6 +1656,8 @@ class Disassembler:
                     return []
                 int_word = int_of_4_byte_aligned_region(self.hack_file[navi:navi + 4])
                 instruction = self.decode(int_word, index + i)
+                if not instruction:
+                    return [], 0, 0
                 if instruction[:5] == 'JR RA':
                     # Skip the delay slot
                     i += 2
@@ -1655,6 +1669,8 @@ class Disassembler:
             navi = (index + i) << 2
             int_word = int_of_4_byte_aligned_region(self.hack_file[navi:navi + 4])
             instruction = self.decode(int_word, index + i)
+            if not instruction:
+                return [], 0, 0
             if not start_of_function and instruction != 'NOP':
                 start_of_function = i + index
             if not instruction and only_return_function_end:
@@ -1678,11 +1694,14 @@ class Disassembler:
                 offsetting = 0 if not self.game_address_mode else self.game_offset
                 [jumps.append(extend_zeroes(hexi((self.region_align(j << 2) if self.game_address_mode else (j << 2)) + offsetting), 8))
                  for j in self.jumps_to[key]]
-        if self.game_address_mode and not only_return_function_end:
+        if self.game_address_mode and apply_offsets:
             start_of_function = self.region_align(start_of_function << 2) >> 2
             end_of_function = self.region_align(end_of_function << 2) >> 2
             start_of_function += self.game_offset >> 2
             end_of_function += self.game_offset >> 2
+        elif not apply_offsets:
+            start_of_function <<= 2
+            end_of_function <<= 2
         return jumps, start_of_function, end_of_function
 
     def unmap(self, dict, address, target):
