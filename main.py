@@ -1,4 +1,3 @@
-
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import simpledialog, filedialog, colorchooser
@@ -197,6 +196,7 @@ max_lines = app_config['max_lines']
 main_font_size = app_config['font_size']
 navigation = 0
 
+scrollBarWidth = 14 # width that must be added to a window geometry to make sufficient room for a scrollbar
 
 def font_dimension(size):
     fonty = tkfont.Font(family='Courier', size=size, weight='normal')
@@ -2343,7 +2343,7 @@ def opcodes_list():
         opcodes_win = None
     opcodes_win = tk.Tk()
     opcodes_win.title('Opcodes list')
-    opcodes_win.geometry('664x800+50+50')
+    opcodes_win.geometry('{0}x800+50+50'.format(650+scrollBarWidth))
     scrollbar = tk.Scrollbar(opcodes_win)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     codes_list_box = tk.Listbox(opcodes_win, font=('Courier', 10),yscrollcommand=scrollbar.set)
@@ -2587,9 +2587,13 @@ def view_comments():
         return
     comments_window = tk.Tk()
     comments_window.title('Comments')
-    comments_window.geometry('{}x{}'.format(comments_win_w,comments_win_h))
-    comments_list_box = tk.Listbox(comments_window, font=('Courier', main_font_size))
+    comments_window.geometry('{}x{}'.format(comments_win_w + scrollBarWidth,comments_win_h))
+    scrollbar = tk.Scrollbar(comments_window)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    comments_list_box = tk.Listbox(comments_window, font=('Courier', main_font_size), yscrollcommand=scrollbar.set)
     comments_list_box.place(x=comments_x,y=comments_y,width=comments_w,height=comments_h)
+    scrollbar.config(command=comments_list_box.yview)
+
 
     # If this doesn't want to work the way the auto-copy checkbox does, then it will have to work by force
     def hack_checkbox_callback():
@@ -3787,8 +3791,11 @@ def find_phrase():
         phrases_win = tk.Tk()
         divide_by = (len(phrases) + 1) if len(phrases) > 1 else 1
         phrases_win.title('{} Results'.format(len(display_list) // divide_by))
-        phrases_win.geometry('400x500+50+50')
-        phrases_list_box = tk.Listbox(phrases_win, font=('Courier', 10))
+        phrases_win.geometry('{0}x500+50+50'.format(400+scrollBarWidth))
+        scrollbar = tk.Scrollbar(phrases_win)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        phrases_list_box = tk.Listbox(phrases_win, font=('Courier', 10),yscrollcommand=scrollbar.set)
+        scrollbar.config(command=phrases_list_box.yview)
         [phrases_list_box.insert(tk.END, i) for i in display_list]
 
         def list_callback():
