@@ -183,20 +183,19 @@ def setWindowScrollbar(scrollType, a, b=None):
         #determine how much we need to scroll to meet the scrollbar position
         amount_words = disasm.file_length >> 2
         firstLine = navigation
-        midLine = navigation + app_config["max_lines"]//2
-        lastLine = navigation + app_config["max_lines"]
         scrolledLine = float(a)*int(amount_words)
-        print(scrolledLine)
-        evnt.delta = -1 if scrolledLine < midLine else 1
-        scrollTicks = int(abs(scrolledLine - midLine) // app_config['scroll_amount'])
-        print('ticks:',scrollTicks)
+        evnt.delta = -1 if scrolledLine < firstLine else 1
+        
+        scrollTicks = int(abs(scrolledLine - firstLine) // app_config['scroll_amount'])
         if (scrollTicks != 0):
+            if (abs(scrollTicks) < 1):
+                scrollTicks = 1 if scrollTicks > 0 else -1
             scroll_callback(evnt,-scrollTicks)
 
 def updateWindowScrollbarPos():
     amount_words = disasm.file_length >> 2
-    lastLine = navigation + app_config["max_lines"]
     firstLine = navigation
+    lastLine = navigation + app_config["max_lines"]
     windowScrollbar.set(firstLine/amount_words,lastLine/amount_words)
 
 windowScrollbar = tk.Scrollbar(window)
@@ -1608,6 +1607,7 @@ def navigate_to(index, center=False, widget=None, region_treatment=False, region
 
     highlight_stuff(widget, skip_moving_cursor=center)
 
+    updateWindowScrollbarPos()
 
 def navigation_callback(address):
     widget = check_widget(window.focus_get())
@@ -1647,8 +1647,6 @@ def scroll_callback(event,numUnits=1):
     apply_comment_changes()
     direction = -app_config['scroll_amount'] if event.delta > 0 else app_config['scroll_amount']
     navigate_to(navigation + direction * numUnits, widget=check_widget(window.focus_get()))
-    updateWindowScrollbarPos()
-
 
 def save_changes_to_file(save_as=False):
     if not disassembler_loaded():
