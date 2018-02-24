@@ -2343,14 +2343,17 @@ def opcodes_list():
         opcodes_win = None
     opcodes_win = tk.Tk()
     opcodes_win.title('Opcodes list')
-    opcodes_win.geometry('650x800+50+50')
-    codes_list_box = tk.Listbox(opcodes_win, font=('Courier', 10))
+    opcodes_win.geometry('664x800+50+50')
+    scrollbar = tk.Scrollbar(opcodes_win)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    codes_list_box = tk.Listbox(opcodes_win, font=('Courier', 10),yscrollcommand=scrollbar.set)
     [codes_list_box.insert(tk.END, i + ': ' + DOCUMENTATION[i]) for i in DOCUMENTATION]
     codes_list_box.place(x=5, y=5, width=640, height=790)
     opcodes_win.bind('<Escape>', lambda _: opcodes_win.destroy())
     change_colours()
     opcodes_win.protocol('WM_DELETE_WINDOW', opcodes_win_equals_none)
     opcodes_win.resizable(False, False)
+    scrollbar.config(command=codes_list_box.yview)
     opcodes_win.mainloop()
 
 
