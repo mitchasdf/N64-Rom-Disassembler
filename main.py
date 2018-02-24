@@ -37,6 +37,7 @@ FRESH_APP_CONFIG = {
     'max_lines': 40,
     'scroll_amount': 8,
     'toggle_base_file': True,
+    'prompt_save_on_exit':True,
     'immediate_identifier': '$',
     'hex_mode': False,
     'bin_mode': False,
@@ -1782,7 +1783,7 @@ def destroy_them(not_main=False):
 
 
 def close_window(side = 'right'):
-    if not disassembler_loaded():
+    if (not app_config['prompt_save_on_exit'] or not disassembler_loaded()):
         destroy_them()
         return
 
@@ -1919,6 +1920,7 @@ def open_files(mode = ''):
             app_config['game_address_mode'][disasm.hack_file_name] = False
         disasm.game_address_mode = app_config['game_address_mode'][disasm.hack_file_name]
         disasm.immediate_identifier = app_config['immediate_identifier']
+        updateToggleAddressLabel()
 
     except Exception as e:
         simpledialog.messagebox._show('Error', e)
@@ -2095,6 +2097,25 @@ def remap_jumps():
 #     remap_win.resizable(False, False)
 #     remap_win.mainloop()
 
+def toggle_save_prompt():
+    app_config["prompt_save_on_exit"] = not app_config["prompt_save_on_exit"]
+    save_config()
+    updateSavePromptLabel()
+
+def updateToggleAddressLabel(noValue = False): 
+    opts_menu.entryconfigure(6, label='Toggle "game entry point" mode (F5) {0}'.format('' if noValue else ('☑' if disasm.game_address_mode else '☐')))
+
+def updateToggleHexLabel():
+    opts_menu.entryconfigure(7, label='Toggle hex mode (F6) {0}'.format('☑' if app_config['hex_mode'] else '☐'))
+
+def updateToggleBinLabel():
+    opts_menu.entryconfigure(9, label='Toggle bin mode (F8) {0}'.format('☑' if app_config['bin_mode'] else '☐'))
+
+def updateToggleHexSpaceLabel():
+    opts_menu.entryconfigure(8, label='Toggle hex/bin space separation (F7) {0}'.format('☑' if app_config['hex_space_separation'] else '☐'))
+
+def updateSavePromptLabel():
+    opts_menu.entryconfigure(11, label='Prompt Save on Exit? {0}'.format('☑' if app_config["prompt_save_on_exit"] else '☐'))
 
 def toggle_address_mode(buffering=True):
     global function_select
@@ -2110,6 +2131,7 @@ def toggle_address_mode(buffering=True):
     # This causes bugs, have it only save when user saves
     # app_config['game_address_mode'][disasm.hack_file_name] = toggle_to
     # save_config()
+    updateToggleAddressLabel()
     navigate_to(navigation)
     hack_file_text_box.mark_set(tk.INSERT, cursor)
     highlight_stuff(skip_moving_cursor=True)
@@ -2194,6 +2216,8 @@ def toggle_hex_mode(buffering=True):
     if app_config['hex_mode']:
         app_config['bin_mode'] = False
     save_config()
+    updateToggleHexLabel()
+    updateToggleBinLabel()
     navigate_to(navigation)
     hack_file_text_box.mark_set(tk.INSERT, modify_cursor(cursor, 0, 'max', get_text_content(hack_file_text_box))[0])
     highlight_stuff(skip_moving_cursor=True)
@@ -2209,6 +2233,8 @@ def toggle_bin_mode(buffering=True):
     if app_config['bin_mode']:
         app_config['hex_mode'] = False
     save_config()
+    updateToggleHexLabel()
+    updateToggleBinLabel()
     navigate_to(navigation)
     hack_file_text_box.mark_set(tk.INSERT, modify_cursor(cursor, 0, 'max', get_text_content(hack_file_text_box))[0])
     highlight_stuff(skip_moving_cursor=True)
@@ -2218,6 +2244,7 @@ def toggle_hex_space():
     cursor, line, column = get_cursor(hack_file_text_box)
     app_config['hex_space_separation'] = not app_config['hex_space_separation']
     save_config()
+    updateToggleHexSpaceLabel()
     navigate_to(navigation)
     hack_file_text_box.mark_set(tk.INSERT, cursor)
     highlight_stuff(skip_moving_cursor=True)
@@ -4380,10 +4407,17 @@ opts_menu.add_separator()
 opts_menu.add_command(label='Set memory editor offset', command=set_mem_edit_offset)
 opts_menu.add_command(label='Set memory regions', command=set_memory_regions)
 opts_menu.add_separator()
-opts_menu.add_command(label='Toggle "game entry point" mode (F5)', command=toggle_address_mode)
-opts_menu.add_command(label='Toggle hex mode (F6)', command=toggle_hex_mode)
-opts_menu.add_command(label='Toggle hex/bin space separation (F7)', command=toggle_hex_space)
-opts_menu.add_command(label='Toggle bin mode (F8)', command=toggle_bin_mode)
+opts_menu.add_command(label='', command=toggle_address_mode)
+updateToggleAddressLabel(True)
+opts_menu.add_command(label='', command=toggle_hex_mode)
+updateToggleHexLabel()
+opts_menu.add_command(label='', command=toggle_hex_space)
+updateToggleHexSpaceLabel()
+opts_menu.add_command(label='', command=toggle_bin_mode)
+updateToggleBinLabel()
+opts_menu.add_separator()
+opts_menu.add_command(label='', command=toggle_save_prompt)
+updateSavePromptLabel()
 menu_bar.add_cascade(label='Options', menu=opts_menu)
 
 win_menu = tk.Menu(menu_bar, tearoff=0)
