@@ -22,10 +22,14 @@ def unpickle_data(name):
 def deci(hex_num):
     if not hex_num:
         return 0
+    if hex_num[0] == '-':
+        return int('-0x' + hex_num[1:] if '0x' not in hex_num else hex_num, 16)
     return int('0x' + hex_num if '0x' not in hex_num else hex_num, 16)
 
 
 def hexi(dec_num):
+    if dec_num < 0:
+        return '-' + hex(dec_num)[3:].upper()
     return hex(dec_num)[2:].upper()
 
 
@@ -38,6 +42,8 @@ def bindies(dec_num):
 
 
 def extend_zeroes(str,amount):
+    if str[0] == '-':
+        return '-' + ('0' * (amount - (len(str) - 1)) + str[1:])
     return '0' * (amount - len(str)) + str
 
 
