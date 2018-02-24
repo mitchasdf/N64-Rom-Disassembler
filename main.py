@@ -2102,6 +2102,12 @@ def toggle_save_prompt():
     save_config()
     updateSavePromptLabel()
 
+def updateToggleBaseFileLabel():
+    win_menu.entryconfigure(2, label='Toggle Base Textbox (F3) {0}'.format('☑' if app_config['toggle_base_file'] else '☐'))
+
+def updateToggleStatusBarLabel():
+    win_menu.entryconfigure(3, label='Toggle Status Bar {0}'.format('☑' if app_config['status_bar'] else '☐'))
+
 def updateToggleAddressLabel(noValue = False): 
     opts_menu.entryconfigure(6, label='Toggle "game entry point" mode (F5) {0}'.format('' if noValue else ('☑' if disasm.game_address_mode else '☐')))
 
@@ -3090,6 +3096,7 @@ def toggle_base_file():
     apply_hack_changes()
     navigate_to(navigation)
     save_config()
+    updateToggleBaseFileLabel()
     set_widget_sizes()
 
 
@@ -3191,6 +3198,7 @@ def set_widget_sizes(new_size=0, new_max_lines=0):
 def toggle_status_bar():
     app_config['status_bar'] = not app_config['status_bar']
     save_config()
+    updateToggleStatusBarLabel()
     if app_config['status_bar']:
         status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=3)
     else:
@@ -4423,8 +4431,10 @@ menu_bar.add_cascade(label='Options', menu=opts_menu)
 win_menu = tk.Menu(menu_bar, tearoff=0)
 win_menu.add_command(label='Change colour scheme', command=set_colour_scheme)
 win_menu.add_command(label='Change window dimensions', command=change_win_dimensions)
-win_menu.add_command(label='Toggle Base Textbox (F3)', command=toggle_base_file)
-win_menu.add_command(label='Toggle Status Bar', command=toggle_status_bar)
+win_menu.add_command(label='', command=toggle_base_file)
+updateToggleBaseFileLabel()
+win_menu.add_command(label='', command=toggle_status_bar)
+updateToggleStatusBarLabel()
 menu_bar.add_cascade(label='Window', menu=win_menu)
 
 help_menu = tk.Menu(menu_bar,tearoff=0)
