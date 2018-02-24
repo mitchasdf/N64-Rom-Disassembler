@@ -14,6 +14,8 @@ BRANCH_FUNCTIONS = ['BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL', 'BGEZL', 'BGTZ',
 
 JUMP_FUNCTIONS = ['J', 'JR', 'JAL', 'JALR']
 
+scrollBarWidth = 14 # width that must be added to a window geometry to make sufficient room for a scrollbar
+
 # Disassembler, created when opening files
 disasm = None
 
@@ -136,7 +138,11 @@ else:
 
 app_config['window_geometry'] = FRESH_APP_CONFIG['window_geometry']
 window.title('ROM Disassembler')
-window.geometry(app_config['window_geometry'] + '+0+0')
+
+# rebuild window geometry string with scrollBarWidth horizontal padding
+splitGeom = app_config['window_geometry'].split('x')
+scrollBarExtendedGeom = str(int(splitGeom[0]) + scrollBarWidth) + 'x' + "".join(splitGeom[1:])
+window.geometry(scrollBarExtendedGeom + '+0+0')
 try:
     window.tk.call('wm', 'iconbitmap', window._w, working_dir + 'n64_disassembler.ico')
 except:
@@ -167,7 +173,16 @@ window.config(bg=app_config['window_background_colour'])
     Conditional management of each keypress is required to stop all of those problems from happening.
 '''
 
+def setWindowScrollbar(scrollType, a, b):
+    if (scrollType == tk.SCROLL):
+        evnt = tk.Event()
+        evnt.delta = -int(a)
+		#scroll by 1 unit if the user pressed the scrollbar arrow button, and 4 units if they clicked on the scrollbar free area
+        scroll_callback(evnt,1 if b == tk.UNITS else 4)
 
+windowScrollbar = tk.Scrollbar(window)
+windowScrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+windowScrollbar.config(command=setWindowScrollbar)
 address_text_box = tk.Text(window)
 base_file_text_box = tk.Text(window)
 hack_file_text_box = tk.Text(window)
@@ -195,8 +210,6 @@ user_errors = {}
 max_lines = app_config['max_lines']
 main_font_size = app_config['font_size']
 navigation = 0
-
-scrollBarWidth = 14 # width that must be added to a window geometry to make sufficient room for a scrollbar
 
 def font_dimension(size):
     fonty = tkfont.Font(family='Courier', size=size, weight='normal')
@@ -1479,7 +1492,6 @@ def navigate_to(index, center=False, widget=None, region_treatment=False, region
             if not in_region:
                 addresses[i] += disasm.game_offset
     address_range = [extend_zeroes(hexi(i), 8) for i in addresses]
-
     hex_or_bin = app_config['hex_mode'] or app_config['bin_mode']
 
     # Disassemble ints into instructions, or display as hex or bin
@@ -1609,13 +1621,13 @@ def navigation_prompt(root=window):
     navigation_callback(address)
 
 
-def scroll_callback(event):
+def scroll_callback(event,numUnits=1):
     if not disassembler_loaded():
         return
     apply_hack_changes()
     apply_comment_changes()
     direction = -app_config['scroll_amount'] if event.delta > 0 else app_config['scroll_amount']
-    navigate_to(navigation + direction, widget=check_widget(window.focus_get()))
+    navigate_to(navigation + direction * numUnits, widget=check_widget(window.focus_get()))
 
 
 def save_changes_to_file(save_as=False):
@@ -3100,7 +3112,7 @@ def set_widget_sizes(new_size=0, new_max_lines=0):
         base_file_text_box.place_forget()
     hack_file_text_box.place(x=x_3, y=widget_y, width=w_2, height=widget_h)
     comments_text_box.place(x=x_4, y=widget_y, width=w_4, height=widget_h)
-    window.geometry('{}x{}+{}+{}'.format(win_w, win_h, win_x, win_y))
+    window.geometry('{}x{}+{}+{}'.format(win_w + scrollBarWidth, win_h, win_x, win_y))
     if disassembler_loaded():
         window.after(1, lambda: navigate_to(navigation))
     comments_x = 6
@@ -3319,8 +3331,11 @@ def scour_changes():
     if display_list:
         changes_win = tk.Tk()
         changes_win.title('{} Differences'.format(len(display_list)))
-        changes_win.geometry('900x500+50+50')
-        changes_list_box = tk.Listbox(changes_win, font=('Courier', 10))
+        changes_win.geometry('{0}x500+50+50'.format(900+scrollBarWidth))
+        scrollbar = tk.Scrollbar(changes_win)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        changes_list_box = tk.Listbox(changes_win, font=('Courier', 10),yscrollcommand=scrollbar.set)
+        scrollbar.config(command=changes_list_box.yview)
         [changes_list_box.insert(tk.END, i) for i in display_list]
 
         def list_callback():
