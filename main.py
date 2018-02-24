@@ -173,12 +173,31 @@ window.config(bg=app_config['window_background_colour'])
     Conditional management of each keypress is required to stop all of those problems from happening.
 '''
 
-def setWindowScrollbar(scrollType, a, b):
+def setWindowScrollbar(scrollType, a, b=None):
+    evnt = tk.Event()
     if (scrollType == tk.SCROLL):
-        evnt = tk.Event()
         evnt.delta = -int(a)
-		#scroll by 1 unit if the user pressed the scrollbar arrow button, and 4 units if they clicked on the scrollbar free area
+        #scroll by 1 unit if the user pressed the scrollbar arrow button, and 4 units if they clicked on the scrollbar free area
         scroll_callback(evnt,1 if b == tk.UNITS else 4)
+    elif (scrollType == tk.MOVETO):
+        #determine how much we need to scroll to meet the scrollbar position
+        amount_words = disasm.file_length >> 2
+        firstLine = navigation
+        midLine = navigation + app_config["max_lines"]//2
+        lastLine = navigation + app_config["max_lines"]
+        scrolledLine = float(a)*int(amount_words)
+        print(scrolledLine)
+        evnt.delta = -1 if scrolledLine < midLine else 1
+        scrollTicks = int(abs(scrolledLine - midLine) // app_config['scroll_amount'])
+        print('ticks:',scrollTicks)
+        if (scrollTicks != 0):
+            scroll_callback(evnt,-scrollTicks)
+
+def updateWindowScrollbarPos():
+    amount_words = disasm.file_length >> 2
+    lastLine = navigation + app_config["max_lines"]
+    firstLine = navigation
+    windowScrollbar.set(firstLine/amount_words,lastLine/amount_words)
 
 windowScrollbar = tk.Scrollbar(window)
 windowScrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -1628,6 +1647,7 @@ def scroll_callback(event,numUnits=1):
     apply_comment_changes()
     direction = -app_config['scroll_amount'] if event.delta > 0 else app_config['scroll_amount']
     navigate_to(navigation + direction * numUnits, widget=check_widget(window.focus_get()))
+    updateWindowScrollbarPos()
 
 
 def save_changes_to_file(save_as=False):
