@@ -2101,28 +2101,7 @@ def toggle_save_prompt():
     app_config["prompt_save_on_exit"] = not app_config["prompt_save_on_exit"]
     save_config()
     updateSavePromptLabel()
-
-def updateToggleBaseFileLabel():
-    win_menu.entryconfigure(2, label='Toggle Base Textbox (F3) {0}'.format('☑' if app_config['toggle_base_file'] else '☐'))
-
-def updateToggleStatusBarLabel():
-    win_menu.entryconfigure(3, label='Toggle Status Bar {0}'.format('☑' if app_config['status_bar'] else '☐'))
-
-def updateToggleAddressLabel(noValue = False): 
-    opts_menu.entryconfigure(6, label='Toggle "game entry point" mode (F5) {0}'.format('' if noValue else ('☑' if disasm.game_address_mode else '☐')))
-
-def updateToggleHexLabel():
-    opts_menu.entryconfigure(7, label='Toggle hex mode (F6) {0}'.format('☑' if app_config['hex_mode'] else '☐'))
-
-def updateToggleBinLabel():
-    opts_menu.entryconfigure(9, label='Toggle bin mode (F8) {0}'.format('☑' if app_config['bin_mode'] else '☐'))
-
-def updateToggleHexSpaceLabel():
-    opts_menu.entryconfigure(8, label='Toggle hex/bin space separation (F7) {0}'.format('☑' if app_config['hex_space_separation'] else '☐'))
-
-def updateSavePromptLabel():
-    opts_menu.entryconfigure(11, label='Prompt Save on Exit? {0}'.format('☑' if app_config["prompt_save_on_exit"] else '☐'))
-
+    
 def toggle_address_mode(buffering=True):
     global function_select
     if not disassembler_loaded():
@@ -4371,6 +4350,38 @@ auto_open = tk.BooleanVar()
 calc_crc = tk.BooleanVar()
 auto_open.set(app_config['open_roms_automatically'])
 
+#toggle-button state vars
+buttonStates = {}
+for i in ["baseFile","statusBar","savePrompt","address","hex","bin","hexSpace"]:
+    buttonStates[i] = tk.BooleanVar()
+
+def checkFlipStateValues(varName,configName,menu, itemNum):
+    if (buttonStates[varName].get() != app_config[configName]):
+        menu.entryconfigure(itemNum, offvalue=1, onvalue=0)
+    else:
+        menu.entryconfigure(itemNum, offvalue=0, onvalue=1)
+
+def updateToggleBaseFileLabel():
+    checkFlipStateValues("baseFile","toggle_base_file",win_menu, 2)
+    
+def updateToggleStatusBarLabel():
+    checkFlipStateValues("statusBar","status_bar",win_menu,3)
+   
+def updateToggleAddressLabel(noValue = False):
+    checkFlipStateValues("address","game_address_mode",opts_menu,6)
+
+def updateToggleHexLabel():
+    checkFlipStateValues("hex","hex_mode",opts_menu,7)
+
+def updateToggleBinLabel():
+    checkFlipStateValues("bin","bin_mode",opts_menu,9)
+
+def updateToggleHexSpaceLabel():
+    checkFlipStateValues("hexSpace","hex_space_separation",opts_menu,8)
+
+def updateSavePromptLabel():
+    checkFlipStateValues("savePrompt","prompt_save_on_exit",opts_menu,11)
+
 file_menu = tk.Menu(menu_bar, tearoff=0)
 file_menu.add_command(label='Start new', command=lambda: open_files('new'))
 file_menu.add_command(label='Open existing', command=lambda: open_files('existing'))
@@ -4415,25 +4426,25 @@ opts_menu.add_separator()
 opts_menu.add_command(label='Set memory editor offset', command=set_mem_edit_offset)
 opts_menu.add_command(label='Set memory regions', command=set_memory_regions)
 opts_menu.add_separator()
-opts_menu.add_command(label='', command=toggle_address_mode)
+opts_menu.add_checkbutton(label='Toggle "game entry point" mode (F5)', command=toggle_address_mode, variable = buttonStates["address"])
 updateToggleAddressLabel(True)
-opts_menu.add_command(label='', command=toggle_hex_mode)
+opts_menu.add_checkbutton(label='Toggle hex mode (F6)', command=toggle_hex_mode, variable = buttonStates["hex"])
 updateToggleHexLabel()
-opts_menu.add_command(label='', command=toggle_hex_space)
+opts_menu.add_checkbutton(label='Toggle hex/bin space separation (F7)', command=toggle_hex_space, variable = buttonStates["hexSpace"])
 updateToggleHexSpaceLabel()
-opts_menu.add_command(label='', command=toggle_bin_mode)
+opts_menu.add_checkbutton(label='Toggle bin mode (F8)', command=toggle_bin_mode, variable = buttonStates["bin"])
 updateToggleBinLabel()
 opts_menu.add_separator()
-opts_menu.add_command(label='', command=toggle_save_prompt)
+opts_menu.add_checkbutton(label='Prompt Save on Exit', command=toggle_save_prompt, variable = buttonStates["savePrompt"])
 updateSavePromptLabel()
 menu_bar.add_cascade(label='Options', menu=opts_menu)
 
 win_menu = tk.Menu(menu_bar, tearoff=0)
 win_menu.add_command(label='Change colour scheme', command=set_colour_scheme)
 win_menu.add_command(label='Change window dimensions', command=change_win_dimensions)
-win_menu.add_command(label='', command=toggle_base_file)
+win_menu.add_checkbutton(label='Toggle Base Textbox (F3)', command=toggle_base_file,variable = buttonStates["baseFile"])
 updateToggleBaseFileLabel()
-win_menu.add_command(label='', command=toggle_status_bar)
+win_menu.add_checkbutton(label='Toggle Status Bar', command=toggle_status_bar,variable = buttonStates["statusBar"])
 updateToggleStatusBarLabel()
 menu_bar.add_cascade(label='Window', menu=win_menu)
 
