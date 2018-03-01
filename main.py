@@ -4355,32 +4355,29 @@ buttonStates = {}
 for i in ["baseFile","statusBar","savePrompt","address","hex","bin","hexSpace"]:
     buttonStates[i] = tk.BooleanVar()
 
-def checkFlipStateValues(varName,configName,menu, itemNum):
-    if (buttonStates[varName].get() != app_config[configName]):
-        menu.entryconfigure(itemNum, offvalue=1, onvalue=0)
-    else:
-        menu.entryconfigure(itemNum, offvalue=0, onvalue=1)
-
 def updateToggleBaseFileLabel():
-    checkFlipStateValues("baseFile","toggle_base_file",win_menu, 2)
+    buttonStates["baseFile"].set(app_config["toggle_base_file"])
     
 def updateToggleStatusBarLabel():
-    checkFlipStateValues("statusBar","status_bar",win_menu,3)
-   
+    buttonStates["statusBar"].set(app_config["status_bar"])
+    
 def updateToggleAddressLabel(noValue = False):
-    checkFlipStateValues("address","game_address_mode",opts_menu,6)
-
+    if (noValue):
+        buttonStates["address"].set(next (iter (app_config["game_address_mode"].values())))
+    else:
+         buttonStates["address"].set(disasm.game_address_mode)
+    
 def updateToggleHexLabel():
-    checkFlipStateValues("hex","hex_mode",opts_menu,7)
-
+    buttonStates["hex"].set(app_config["hex_mode"])
+    
 def updateToggleBinLabel():
-    checkFlipStateValues("bin","bin_mode",opts_menu,9)
-
+    buttonStates["bin"].set(app_config["bin_mode"])
+    
 def updateToggleHexSpaceLabel():
-    checkFlipStateValues("hexSpace","hex_space_separation",opts_menu,8)
-
+    buttonStates["hexSpace"].set(app_config["hex_space_separation"])
+    
 def updateSavePromptLabel():
-    checkFlipStateValues("savePrompt","prompt_save_on_exit",opts_menu,11)
+    buttonStates["savePrompt"].set(app_config["prompt_save_on_exit"])
 
 file_menu = tk.Menu(menu_bar, tearoff=0)
 file_menu.add_command(label='Start new', command=lambda: open_files('new'))
