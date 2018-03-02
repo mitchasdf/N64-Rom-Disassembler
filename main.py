@@ -1,4 +1,3 @@
-
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import simpledialog, filedialog, colorchooser
@@ -14,6 +13,8 @@ BRANCH_FUNCTIONS = ['BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL', 'BGEZL', 'BGTZ',
                     'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL', 'BNEZ', 'BNEL', 'BNE', 'BC1F', 'BC1FL', 'BC1T', 'BC1TL']
 
 JUMP_FUNCTIONS = ['J', 'JR', 'JAL', 'JALR']
+
+scrollBarWidth = 14 # width that must be added to a window geometry to make sufficient room for a scrollbar
 
 # Disassembler, created when opening files
 disasm = None
@@ -36,6 +37,7 @@ FRESH_APP_CONFIG = {
     'max_lines': 40,
     'scroll_amount': 8,
     'toggle_base_file': True,
+    'prompt_save_on_exit':True,
     'immediate_identifier': '$',
     'hex_mode': False,
     'bin_mode': False,
@@ -137,7 +139,11 @@ else:
 
 app_config['window_geometry'] = FRESH_APP_CONFIG['window_geometry']
 window.title('ROM Disassembler')
-window.geometry(app_config['window_geometry'] + '+0+0')
+
+# rebuild window geometry string with scrollBarWidth horizontal padding
+splitGeom = app_config['window_geometry'].split('x')
+scrollBarExtendedGeom = str(int(splitGeom[0]) + scrollBarWidth) + 'x' + "".join(splitGeom[1:])
+window.geometry(scrollBarExtendedGeom + '+0+0')
 try:
     window.tk.call('wm', 'iconbitmap', window._w, working_dir + 'n64_disassembler.ico')
 except:
@@ -168,7 +174,34 @@ window.config(bg=app_config['window_background_colour'])
     Conditional management of each keypress is required to stop all of those problems from happening.
 '''
 
+def setWindowScrollbar(scrollType, a, b=None):
+    evnt = tk.Event()
+    if (scrollType == tk.SCROLL):
+        evnt.delta = -int(a)
+        #scroll by 1 unit if the user pressed the scrollbar arrow button, and 4 units if they clicked on the scrollbar free area
+        scroll_callback(evnt,1 if b == tk.UNITS else 4)
+    elif (scrollType == tk.MOVETO):
+        #determine how much we need to scroll to meet the scrollbar position
+        amount_words = disasm.file_length >> 2
+        firstLine = navigation
+        scrolledLine = float(a)*int(amount_words)
+        evnt.delta = -1 if scrolledLine < firstLine else 1
+        
+        scrollTicks = int(abs(scrolledLine - firstLine) // app_config['scroll_amount'])
+        if (scrollTicks != 0):
+            if (abs(scrollTicks) < 1):
+                scrollTicks = 1 if scrollTicks > 0 else -1
+            scroll_callback(evnt,-scrollTicks)
 
+def updateWindowScrollbarPos():
+    amount_words = disasm.file_length >> 2
+    firstLine = navigation
+    lastLine = navigation + app_config["max_lines"]
+    windowScrollbar.set(firstLine/amount_words,lastLine/amount_words)
+
+windowScrollbar = tk.Scrollbar(window)
+windowScrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+windowScrollbar.config(command=setWindowScrollbar)
 address_text_box = tk.Text(window)
 base_file_text_box = tk.Text(window)
 hack_file_text_box = tk.Text(window)
@@ -196,7 +229,6 @@ user_errors = {}
 max_lines = app_config['max_lines']
 main_font_size = app_config['font_size']
 navigation = 0
-
 
 def font_dimension(size):
     fonty = tkfont.Font(family='Courier', size=size, weight='normal')
@@ -1479,7 +1511,6 @@ def navigate_to(index, center=False, widget=None, region_treatment=False, region
             if not in_region:
                 addresses[i] += disasm.game_offset
     address_range = [extend_zeroes(hexi(i), 8) for i in addresses]
-
     hex_or_bin = app_config['hex_mode'] or app_config['bin_mode']
 
     # Disassemble ints into instructions, or display as hex or bin
@@ -1577,6 +1608,7 @@ def navigate_to(index, center=False, widget=None, region_treatment=False, region
 
     highlight_stuff(widget, skip_moving_cursor=center)
 
+    updateWindowScrollbarPos()
 
 def navigation_callback(address):
     widget = check_widget(window.focus_get())
@@ -1609,14 +1641,13 @@ def navigation_prompt(root=window):
     navigation_callback(address)
 
 
-def scroll_callback(event):
+def scroll_callback(event,numUnits=1):
     if not disassembler_loaded():
         return
     apply_hack_changes()
     apply_comment_changes()
     direction = -app_config['scroll_amount'] if event.delta > 0 else app_config['scroll_amount']
-    navigate_to(navigation + direction, widget=check_widget(window.focus_get()))
-
+    navigate_to(navigation + direction * numUnits, widget=check_widget(window.focus_get()))
 
 def save_changes_to_file(save_as=False):
     if not disassembler_loaded():
@@ -1752,7 +1783,7 @@ def destroy_them(not_main=False):
 
 
 def close_window(side = 'right'):
-    if not disassembler_loaded():
+    if (not app_config['prompt_save_on_exit'] or not disassembler_loaded()):
         destroy_them()
         return
 
@@ -1889,6 +1920,7 @@ def open_files(mode = ''):
             app_config['game_address_mode'][disasm.hack_file_name] = False
         disasm.game_address_mode = app_config['game_address_mode'][disasm.hack_file_name]
         disasm.immediate_identifier = app_config['immediate_identifier']
+        updateToggleAddressLabel()
 
     except Exception as e:
         simpledialog.messagebox._show('Error', e)
@@ -2065,7 +2097,11 @@ def remap_jumps():
 #     remap_win.resizable(False, False)
 #     remap_win.mainloop()
 
-
+def toggle_save_prompt():
+    app_config["prompt_save_on_exit"] = not app_config["prompt_save_on_exit"]
+    save_config()
+    updateSavePromptLabel()
+    
 def toggle_address_mode(buffering=True):
     global function_select
     if not disassembler_loaded():
@@ -2080,6 +2116,7 @@ def toggle_address_mode(buffering=True):
     # This causes bugs, have it only save when user saves
     # app_config['game_address_mode'][disasm.hack_file_name] = toggle_to
     # save_config()
+    updateToggleAddressLabel()
     navigate_to(navigation)
     hack_file_text_box.mark_set(tk.INSERT, cursor)
     highlight_stuff(skip_moving_cursor=True)
@@ -2164,6 +2201,8 @@ def toggle_hex_mode(buffering=True):
     if app_config['hex_mode']:
         app_config['bin_mode'] = False
     save_config()
+    updateToggleHexLabel()
+    updateToggleBinLabel()
     navigate_to(navigation)
     hack_file_text_box.mark_set(tk.INSERT, modify_cursor(cursor, 0, 'max', get_text_content(hack_file_text_box))[0])
     highlight_stuff(skip_moving_cursor=True)
@@ -2179,6 +2218,8 @@ def toggle_bin_mode(buffering=True):
     if app_config['bin_mode']:
         app_config['hex_mode'] = False
     save_config()
+    updateToggleHexLabel()
+    updateToggleBinLabel()
     navigate_to(navigation)
     hack_file_text_box.mark_set(tk.INSERT, modify_cursor(cursor, 0, 'max', get_text_content(hack_file_text_box))[0])
     highlight_stuff(skip_moving_cursor=True)
@@ -2188,6 +2229,7 @@ def toggle_hex_space():
     cursor, line, column = get_cursor(hack_file_text_box)
     app_config['hex_space_separation'] = not app_config['hex_space_separation']
     save_config()
+    updateToggleHexSpaceLabel()
     navigate_to(navigation)
     hack_file_text_box.mark_set(tk.INSERT, cursor)
     highlight_stuff(skip_moving_cursor=True)
@@ -2343,14 +2385,17 @@ def opcodes_list():
         opcodes_win = None
     opcodes_win = tk.Tk()
     opcodes_win.title('Opcodes list')
-    opcodes_win.geometry('650x800+50+50')
-    codes_list_box = tk.Listbox(opcodes_win, font=('Courier', 10))
+    opcodes_win.geometry('{0}x800+50+50'.format(650+scrollBarWidth))
+    scrollbar = tk.Scrollbar(opcodes_win)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    codes_list_box = tk.Listbox(opcodes_win, font=('Courier', 10),yscrollcommand=scrollbar.set)
     [codes_list_box.insert(tk.END, i + ': ' + DOCUMENTATION[i]) for i in DOCUMENTATION]
     codes_list_box.place(x=5, y=5, width=640, height=790)
     opcodes_win.bind('<Escape>', lambda _: opcodes_win.destroy())
     change_colours()
     opcodes_win.protocol('WM_DELETE_WINDOW', opcodes_win_equals_none)
     opcodes_win.resizable(False, False)
+    scrollbar.config(command=codes_list_box.yview)
     opcodes_win.mainloop()
 
 
@@ -2584,9 +2629,13 @@ def view_comments():
         return
     comments_window = tk.Tk()
     comments_window.title('Comments')
-    comments_window.geometry('{}x{}'.format(comments_win_w,comments_win_h))
-    comments_list_box = tk.Listbox(comments_window, font=('Courier', main_font_size))
+    comments_window.geometry('{}x{}'.format(comments_win_w + scrollBarWidth,comments_win_h))
+    scrollbar = tk.Scrollbar(comments_window)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    comments_list_box = tk.Listbox(comments_window, font=('Courier', main_font_size), yscrollcommand=scrollbar.set)
     comments_list_box.place(x=comments_x,y=comments_y,width=comments_w,height=comments_h)
+    scrollbar.config(command=comments_list_box.yview)
+
 
     # If this doesn't want to work the way the auto-copy checkbox does, then it will have to work by force
     def hack_checkbox_callback():
@@ -3026,6 +3075,7 @@ def toggle_base_file():
     apply_hack_changes()
     navigate_to(navigation)
     save_config()
+    updateToggleBaseFileLabel()
     set_widget_sizes()
 
 
@@ -3093,7 +3143,7 @@ def set_widget_sizes(new_size=0, new_max_lines=0):
         base_file_text_box.place_forget()
     hack_file_text_box.place(x=x_3, y=widget_y, width=w_2, height=widget_h)
     comments_text_box.place(x=x_4, y=widget_y, width=w_4, height=widget_h)
-    window.geometry('{}x{}+{}+{}'.format(win_w, win_h, win_x, win_y))
+    window.geometry('{}x{}+{}+{}'.format(win_w + scrollBarWidth, win_h, win_x, win_y))
     if disassembler_loaded():
         window.after(1, lambda: navigate_to(navigation))
     comments_x = 6
@@ -3127,6 +3177,7 @@ def set_widget_sizes(new_size=0, new_max_lines=0):
 def toggle_status_bar():
     app_config['status_bar'] = not app_config['status_bar']
     save_config()
+    updateToggleStatusBarLabel()
     if app_config['status_bar']:
         status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=3)
     else:
@@ -3312,8 +3363,11 @@ def scour_changes():
     if display_list:
         changes_win = tk.Tk()
         changes_win.title('{} Differences'.format(len(display_list)))
-        changes_win.geometry('900x500+50+50')
-        changes_list_box = tk.Listbox(changes_win, font=('Courier', 10))
+        changes_win.geometry('{0}x500+50+50'.format(900+scrollBarWidth))
+        scrollbar = tk.Scrollbar(changes_win)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        changes_list_box = tk.Listbox(changes_win, font=('Courier', 10),yscrollcommand=scrollbar.set)
+        scrollbar.config(command=changes_list_box.yview)
         [changes_list_box.insert(tk.END, i) for i in display_list]
 
         def list_callback():
@@ -3784,8 +3838,11 @@ def find_phrase():
         phrases_win = tk.Tk()
         divide_by = (len(phrases) + 1) if len(phrases) > 1 else 1
         phrases_win.title('{} Results'.format(len(display_list) // divide_by))
-        phrases_win.geometry('400x500+50+50')
-        phrases_list_box = tk.Listbox(phrases_win, font=('Courier', 10))
+        phrases_win.geometry('{0}x500+50+50'.format(400+scrollBarWidth))
+        scrollbar = tk.Scrollbar(phrases_win)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        phrases_list_box = tk.Listbox(phrases_win, font=('Courier', 10),yscrollcommand=scrollbar.set)
+        scrollbar.config(command=phrases_list_box.yview)
         [phrases_list_box.insert(tk.END, i) for i in display_list]
 
         def list_callback():
@@ -4293,6 +4350,35 @@ auto_open = tk.BooleanVar()
 calc_crc = tk.BooleanVar()
 auto_open.set(app_config['open_roms_automatically'])
 
+#toggle-button state vars
+buttonStates = {}
+for i in ["baseFile","statusBar","savePrompt","address","hex","bin","hexSpace"]:
+    buttonStates[i] = tk.BooleanVar()
+
+def updateToggleBaseFileLabel():
+    buttonStates["baseFile"].set(app_config["toggle_base_file"])
+    
+def updateToggleStatusBarLabel():
+    buttonStates["statusBar"].set(app_config["status_bar"])
+    
+def updateToggleAddressLabel(noValue = False):
+    if (noValue):
+        buttonStates["address"].set(next (iter (app_config["game_address_mode"].values())))
+    else:
+         buttonStates["address"].set(disasm.game_address_mode)
+    
+def updateToggleHexLabel():
+    buttonStates["hex"].set(app_config["hex_mode"])
+    
+def updateToggleBinLabel():
+    buttonStates["bin"].set(app_config["bin_mode"])
+    
+def updateToggleHexSpaceLabel():
+    buttonStates["hexSpace"].set(app_config["hex_space_separation"])
+    
+def updateSavePromptLabel():
+    buttonStates["savePrompt"].set(app_config["prompt_save_on_exit"])
+
 file_menu = tk.Menu(menu_bar, tearoff=0)
 file_menu.add_command(label='Start new', command=lambda: open_files('new'))
 file_menu.add_command(label='Open existing', command=lambda: open_files('existing'))
@@ -4337,17 +4423,26 @@ opts_menu.add_separator()
 opts_menu.add_command(label='Set memory editor offset', command=set_mem_edit_offset)
 opts_menu.add_command(label='Set memory regions', command=set_memory_regions)
 opts_menu.add_separator()
-opts_menu.add_command(label='Toggle "game entry point" mode (F5)', command=toggle_address_mode)
-opts_menu.add_command(label='Toggle hex mode (F6)', command=toggle_hex_mode)
-opts_menu.add_command(label='Toggle hex/bin space separation (F7)', command=toggle_hex_space)
-opts_menu.add_command(label='Toggle bin mode (F8)', command=toggle_bin_mode)
+opts_menu.add_checkbutton(label='Toggle "game entry point" mode (F5)', command=toggle_address_mode, variable = buttonStates["address"])
+updateToggleAddressLabel(True)
+opts_menu.add_checkbutton(label='Toggle hex mode (F6)', command=toggle_hex_mode, variable = buttonStates["hex"])
+updateToggleHexLabel()
+opts_menu.add_checkbutton(label='Toggle hex/bin space separation (F7)', command=toggle_hex_space, variable = buttonStates["hexSpace"])
+updateToggleHexSpaceLabel()
+opts_menu.add_checkbutton(label='Toggle bin mode (F8)', command=toggle_bin_mode, variable = buttonStates["bin"])
+updateToggleBinLabel()
+opts_menu.add_separator()
+opts_menu.add_checkbutton(label='Prompt Save on Exit', command=toggle_save_prompt, variable = buttonStates["savePrompt"])
+updateSavePromptLabel()
 menu_bar.add_cascade(label='Options', menu=opts_menu)
 
 win_menu = tk.Menu(menu_bar, tearoff=0)
 win_menu.add_command(label='Change colour scheme', command=set_colour_scheme)
 win_menu.add_command(label='Change window dimensions', command=change_win_dimensions)
-win_menu.add_command(label='Toggle Base Textbox (F3)', command=toggle_base_file)
-win_menu.add_command(label='Toggle Status Bar', command=toggle_status_bar)
+win_menu.add_checkbutton(label='Toggle Base Textbox (F3)', command=toggle_base_file,variable = buttonStates["baseFile"])
+updateToggleBaseFileLabel()
+win_menu.add_checkbutton(label='Toggle Status Bar', command=toggle_status_bar,variable = buttonStates["statusBar"])
+updateToggleStatusBarLabel()
 menu_bar.add_cascade(label='Window', menu=win_menu)
 
 help_menu = tk.Menu(menu_bar,tearoff=0)
