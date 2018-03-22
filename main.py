@@ -289,7 +289,6 @@ def change_colours():
     [label.config(bg=new_tag_config['text_pasting'], fg=text_fg)
      for label in [paste_consume_comment_label, paste_consume_hack_label]]
 
-
     r, g, b = get_colours_of_hex(text_bg)
     new_insert_colour = solve_against_greyscale(r, g, b)
 
@@ -4947,7 +4946,7 @@ def text_box_callback(event):
             if event.widget is address_text_box:
                 window.clipboard_clear()
                 cursor_start = '{}.{}'.format(line, 0)
-                cursor_end = modify_cursor(cursor_start, 0, 'max', get_text_content(address_text_box))
+                cursor_end = modify_cursor(cursor_start, 0, 'max', get_text_content(address_text_box))[0]
                 new_clip = address_text_box.get(cursor_start, cursor_end[0])
                 window.clipboard_append(new_clip)
                 status_text.set('Copied {} to clipboard'.format(new_clip))
