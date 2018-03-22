@@ -3,15 +3,23 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import simpledialog, filedialog, colorchooser
 import os
+from keyboard import is_pressed
 import webbrowser
 from function_defs import *
+from math import ceil
 from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS, CIC, DOCUMENTATION
 
+# This prevents a bug when first using ctrl to highlight paste space consumption by initialising keyboard's components
+is_pressed('ctrl')
 
 CONFIG_FILE = 'rom disassembler.config'
 
 BRANCH_FUNCTIONS = ['BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL', 'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL',
                     'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL', 'BNEZ', 'BNEL', 'BNE', 'BC1F', 'BC1FL', 'BC1T', 'BC1TL']
+
+LOAD_AND_STORE_FUNCTIONS = ['LB', 'LBU', 'LD', 'LDL', 'LDR','LH', 'LHU', 'LL', 'LLD', 'LW', 'LWL',
+                            'LWR','LWU','SB', 'SC', 'SCD', 'SD', 'SDL', 'SDR', 'SH', 'SW', 'SWL', 'SWR',
+                            'CACHE', 'LDC1', 'LWC1', 'SDC1', 'SWC1']
 
 JUMP_FUNCTIONS = ['J', 'JR', 'JAL', 'JALR']
 
@@ -39,6 +47,7 @@ FRESH_APP_CONFIG = {
     'immediate_identifier': '$',
     'hex_mode': False,
     'bin_mode': False,
+    'string_mode': False,
     'hex_space_separation': True,
     'game_address_mode': {},
     'CIC': {},
@@ -57,18 +66,22 @@ FRESH_APP_CONFIG = {
     'text_bg_colour': '#454545',
     'text_fg_colour': '#D0D0D0',
     'differ_colour': '#E6E000',
+    'copied_text': '#FF0000',
+    'highlighted_text_fg': '#FFFFFF',
     'tag_config': {
-          'jump_to': '#1d6152',
-          'branch_to': '#1f5d11',
-          'jump_from': '#D06060',
-          'target': '#009880',
-          'branch': '#985845',
-          'jump': '#A2463C',
-          'bad': '#DD3333',
-          'out_of_range': '#BB2222',
-          'nop': '#606060',
-          'function_end': '#303060',
-          'liken': '#308A30'
+        'jump_to': '#1D6152',
+        'branch_to': '#1F5D11',
+        'jump_from': '#D06060',
+        'target': '#009880',
+        'branch': '#985845',
+        'jump': '#A2463C',
+        'bad': '#DD3333',
+        'out_of_range': '#BB2222',
+        'nop': '#606060',
+        'function_end': '#303060',
+        'liken': '#308A30',
+        'text_pasting': '#654545',
+        'highlighted_text_bg': '#3399FF'
     }
 }
 
@@ -233,11 +246,20 @@ def change_colours():
       text_box.tag_config('cursor_line', background=cursor_line_colour))
      for text_box in ALL_TEXT_BOXES]
     [hack_file_text_box.tag_config(tag, background=new_tag_config[tag]) for tag in new_tag_config]
+    comments_text_box.tag_delete('text_pasting')
+    comments_text_box.tag_config('text_pasting', background=new_tag_config['text_pasting'])
+    [(handle.tag_delete('copied_text'), handle.tag_config('copied_text', foreground=app_config['copied_text']))
+     for handle in [base_file_text_box, hack_file_text_box, comments_text_box]]
+    [(handle.tag_delete('highlighted_text'), handle.tag_config('highlighted_text',
+                                                               foreground=app_config['highlighted_text_fg'],
+                                                               background=new_tag_config['highlighted_text_bg']))
+     for handle in ALL_TEXT_BOXES]
+    [label.config(bg=new_tag_config['text_pasting'], fg=text_fg)
+     for label in [paste_consume_comment_label, paste_consume_hack_label]]
+
 
     r, g, b = get_colours_of_hex(text_bg)
     new_insert_colour = solve_against_greyscale(r, g, b)
-    # global colours_window, jumps_window, comments_window
-    # global changes_win, opcodes_win, script_win
 
     labels = []
     listboxes = []
@@ -415,7 +437,7 @@ def get_word_at(list, line, column):
         upper_bound_punc = line_text.find(')', column)
     if upper_bound_punc < 0:
         upper_bound_punc = len(line_text)
-    return list[line - 1][lower_bound_punc + 1: upper_bound_punc]
+    return list[line - 1][lower_bound_punc + 1: upper_bound_punc], lower_bound_punc
 
 
 # Without this, if the mouse_x location is anywhere beyond halfway between the x positions of
@@ -436,12 +458,15 @@ def correct_cursor(event):
 
 # Is called pretty much after every time the view is changed
 prev_reg_target, prev_address_target, prev_cursor_location = '', 0, 0
-def highlight_stuff(widget=None, skip_moving_cursor=False):
+def highlight_stuff(widget=None, skip_moving_cursor=False, ctrl_held=False):
     global prev_reg_target, prev_address_target, prev_cursor_location, targ_direction
     if not disassembler_loaded():
         return
-    [hack_file_text_box.tag_remove(tag, '1.0', tk.END) for tag in app_config['tag_config']]
-    [text_box.tag_remove('cursor_line', '1.0', tk.END) for text_box in ALL_TEXT_BOXES]
+    [hack_file_text_box.tag_remove(tag, '1.0', tk.END) for tag in app_config['tag_config']
+     if tag not in ['highlighted_text_bg']]
+    [text_box.tag_remove(string, '1.0', tk.END) for text_box in ALL_TEXT_BOXES
+     for string in ['text_pasting', 'cursor_line', 'highlighted_text']]
+    [widg.place_forget() for widg in [paste_consume_comment_label, paste_consume_hack_label]]
 
     if not widget:
         cursor, c_line, column = get_cursor(hack_file_text_box)
@@ -450,7 +475,7 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
         cursor, c_line, column = get_cursor(widget)
         hack_function = True if widget is hack_file_text_box else False
     text = get_text_content(hack_file_text_box).split('\n')
-    targeting = get_word_at(text, c_line, column)
+    targeting, _ = get_word_at(text, c_line, column)
 
     if not prev_cursor_location:
         prev_cursor_location = navigation + c_line - 1
@@ -481,6 +506,29 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
             new_text = '{}: {}'.format(mnemonic, disasm.documentation[mnemonic])
     if new_text:
         status_text.set(new_text)
+
+    if widget in [hack_file_text_box, comments_text_box] and ctrl_held:
+        try:
+            clip = window.clipboard_get()  # Conventionally raises an exception if there is no clipboard contents
+            clip_count = clip.count('\n') + 1
+            lines_dif = min([clip_count, (max_lines - c_line) + 1])
+            widget.tag_add('text_pasting',
+                           cursor_value(c_line, 0),
+                           cursor_value(c_line + lines_dif, 0))
+            if lines_dif != clip_count:
+                extra_lines = clip_count - lines_dif
+                label_text = '+{} line{}'.format(extra_lines, 's' if extra_lines > 1 else '')
+                _x, _y, _w, _h, label = (paste_consume_hack_x, paste_consume_label_y,
+                                         paste_consume_hack_w, paste_consume_label_h, paste_consume_hack_label) \
+                                        if widget is hack_file_text_box else \
+                                        (paste_consume_comment_x, paste_consume_label_y,
+                                         paste_consume_comment_w, paste_consume_label_h, paste_consume_comment_label)
+                label.config(text=label_text, anchor=tk.N, pady=0)
+                label.place(x=_x, y=_y, width=_w)
+
+                # status_text.set('Lines that fall outside of your view will not be pasted.')
+        except:
+            ''
 
     jumps_from = {}
 
@@ -638,15 +686,20 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
             begin = 0
             while hack_function:
                 column = text[i].find(target, begin)
-                word_at = get_word_at(text, line, column)
+                word_at, begin = get_word_at(text, line, column)
+                spce = word_at.find(' ')
+                if spce > 0:
+                    word_at = word_at[:spce]
                 if column >= 0:
-                    if word_at[:1] != app_config['immediate_identifier']:
+                    if word_at[:1] != app_config['immediate_identifier'] and \
+                                    word_at not in ['SRA', 'SRAV', 'DSRA', 'DSRA32', 'DSRAV']:
+                        # not in list condition is so the RA in all of those items don't get highlighted
                         hack_file_text_box.tag_add('liken',
                                                    cursor_value(i + 1, column),
                                                    cursor_value(i + 1, column + len(target)))
                 else:
                     break
-                begin = column + 1
+                begin += len(word_at)
 
     # These conditions allow user to scroll out of view of the target without losing highlighting
     if prev_reg_target:
@@ -654,6 +707,26 @@ def highlight_stuff(widget=None, skip_moving_cursor=False):
     elif targeting in REGISTERS_ENCODE:
         prev_reg_target = targeting
         highlight_targets(targeting)
+
+
+# Allows users to see what they are highlighting
+def highlight_text_selection(widget):
+    widget.tag_remove('highlighted_text', '1.0', tk.END)
+    try:
+        sel_start, sel_start_line, sel_start_column = get_cursor(widget, tk.SEL_FIRST)
+        sel_end, sel_end_line, sel_end_column = get_cursor(widget, tk.SEL_LAST)
+        if sel_start_line != sel_end_line:
+            text_content = get_text_content(widget)
+            sel_start = cursor_value(sel_start_line, 0)
+            sel_end, _, _ = modify_cursor(sel_end, 0, 'max', text_content)
+        widget.tag_add('highlighted_text', sel_start, sel_end)
+    except:
+        ''
+
+
+[textbox.bind(event, lambda e: window.after(0, lambda: highlight_text_selection(e.widget)))
+ for textbox in [hack_file_text_box, base_file_text_box, comments_text_box]
+ for event in ['<B1-Motion>', '<Double-Button-1>', '<Triple-Button-1>']]
 
 
 def reset_target():
@@ -753,6 +826,7 @@ def apply_hack_changes(ignore_slot = None):
         int_word = int_of_4_byte_aligned_region(disasm.hack_file[file_nav:file_nav+4])
         decoded = disasm.decode(int_word, navi)
         decode_place = decoded.find(' ')
+        inst = split_text[i]
         if decode_place >= 0:
             decoded_word = decoded[:decode_place]
         else:
@@ -765,7 +839,7 @@ def apply_hack_changes(ignore_slot = None):
         string_key = '{}'.format(navi)
         # key_4 = extend_zeroes(hexi(navi << 2), 8)
         if not decoded:
-            decoded = 'widdley scuds boi'
+            decoded = '#$*($fjdjaf29$_!*%*%*((($$$$#(mdak'  # arbitrary
         if decoded == split_text[i]:
             clear_error(string_key)
         elif is_hex_part or app_config['hex_mode'] or app_config['bin_mode']:
@@ -796,6 +870,139 @@ def apply_hack_changes(ignore_slot = None):
                 disasm.split_and_store_bytes(encoded_int, navi)
                 clear_error(string_key)
                 unmap(decoded_word, navi, int_word)
+                if this_word in ['ADDIU', 'ADDI'] and decoded_word in ['ADDIU', 'ADDI']:
+                    imm = app_config['immediate_identifier']
+                    if decoded[:decoded.find(imm)] == decoded_word + ' SP, SP, ' and \
+                            inst[:inst.find(imm)] == this_word + ' SP, SP, ':
+
+                        _, func_start, func_end = disasm.find_jumps(navi, apply_offsets=False)
+                        func_start >>= 2
+                        func_end >>= 2
+                        second_mod = 0
+                        amod = 0
+
+                        orig_start = decoded.find(imm) + 1
+                        new_start = inst.find(imm) + 1
+                        orig_sub = False
+                        new_sub = False
+                        dont_continue = False
+
+                        align_upwards = lambda val: int(ceil(val / 4) * 4)
+                        negative = lambda val: val >= 0x8000
+                        orig_sp = deci(decoded[orig_start:])
+                        new_sp = deci(inst[new_start:])
+                        if negative(orig_sp):
+                            orig_sub = True
+                        if negative(new_sp):
+                            new_sub = True
+                        if new_sub != orig_sub:
+                            # print('new_sub != orig_sub')
+                            dont_continue = True
+                        if not dont_continue:
+                            orig_sp = sign_16_bit_value(orig_sp)
+                            new_sp = sign_16_bit_value(new_sp)
+                            if orig_sp == new_sp:
+                                # print('orig_sp == new_sp')
+                                dont_continue = True
+                            else:
+                                if orig_sub:
+                                    orig_sp *= -1
+                                    new_sp *= -1
+                                orig_sp = align_upwards(orig_sp)
+                                new_sp = align_upwards(new_sp)
+                                if orig_sub:
+                                    orig_sp *= -1
+                                    new_sp *= -1
+                                orig_sp = int(orig_sp)
+                                new_sp = int(new_sp)
+                                if orig_sp == new_sp:
+                                    # print('orig_sp == new_sp 2')
+                                    dont_continue = True
+                        sp_diff = orig_sp - new_sp
+                        _func_end = func_end
+
+                        def fix_stack_pointer(first_mod, second_mod, func_range, already_modified, diff):
+                            func = [(i, disasm.decode(int_of_4_byte_aligned_region(
+                                disasm.hack_file[i << 2:(i << 2) + 4]), i)) for i in func_range]
+                            imm = app_config['immediate_identifier']
+                            _diff = diff if already_modified == 1 else -diff
+                            errs = {'count': 0}
+                            if already_modified == 1:
+                                modify = second_mod
+                            else:
+                                modify = first_mod
+
+                            def encode(new_txt, i):
+                                encoded = disasm.encode(new_txt, i)
+                                if encoded >= 0:
+                                    disasm.split_and_store_bytes(encoded, i)
+                                    return True
+                                else:
+                                    user_errors[str(i)] = [encoded, new_txt]
+                                    errs['count'] += 1
+                                    return False
+
+                            # j = 0
+                            change = False  # A switch that can only toggle once
+                            for i, txt in func:
+                                new_txt = ''
+                                if i == modify:
+                                    _int = deci(txt[txt.find(imm) + 1:])
+                                    _int += diff
+                                    new_txt = txt[:txt.find(imm) + 1] + extend_zeroes(hexi(_int), 4)
+                                    change = encode(new_txt, i) or change
+                                if txt[:txt.find(' ')] in LOAD_AND_STORE_FUNCTIONS and '(SP)' in txt:
+                                    int_start = txt.find(imm) + 1
+                                    int_end = txt.find(' (SP)')
+                                    _int = sign_16_bit_value(deci(txt[int_start:int_end]))
+                                    _int += _diff
+                                    _int = extend_zeroes(hexi(unsign_16_bit_value(_int)), 4)
+                                    new_txt = txt[:int_start] + _int + txt[int_end:]
+                                    change = encode(new_txt, i) or change
+                                if i in range(navigation, navigation+len(split_text) - 1) and new_txt:
+                                    txti = (i - navigation) + 1
+                                    curs = cursor_value(txti, 0)
+                                    hack_file_text_box.delete(curs, cursor_value(txti, len(split_text[txti-1])))
+                                    hack_file_text_box.insert(curs, new_txt)
+                            display_text = 'All load/store instructions using SP as the base address have been ' \
+                                           'modified to suit the new SP.'
+                            if errs['count']:
+                                display_text = 'Upon modifying load/store instructions, {} errors occurred ' \
+                                               'during encoding. Ctrl+S to look them up.'.format(errs['count'])
+                            if change:
+                                # apply_hack_changes()
+                                # highlight_stuff(skip_moving_cursor=True)
+                                # status_text.set(display_text)
+                                window.after(0, lambda: (apply_hack_changes(),
+                                                         highlight_stuff(skip_moving_cursor=True),
+                                                         status_text.set(display_text)))
+
+                        while func_end >= func_start and not dont_continue:
+                            _decoded = disasm.decode(int_of_4_byte_aligned_region(
+                                disasm.hack_file[func_end<<2:(func_end<<2)+4]
+                            ), func_end)
+                            _this_word = _decoded[:_decoded.find(' ')]
+                            if _this_word in ['ADDI', 'ADDIU']:
+                                if _decoded[:_decoded.find(imm)] == _this_word + ' SP, SP, ':
+                                    if second_mod:
+                                        first_mod = func_end
+                                        if not amod:
+                                            if navi == func_end:
+                                                amod = 1
+                                            else:
+                                                break
+                                        fix_stack_pointer(first_mod,
+                                                          second_mod,
+                                                          range(func_start, _func_end + 1),
+                                                          amod,
+                                                          sp_diff)
+                                        break
+                                    else:
+                                        if navi == func_end:
+                                            amod = 2
+                                        second_mod = func_end
+                            func_end -= 1
+
                 if this_word in ['J', 'JAL'] + BRANCH_FUNCTIONS:
                     try:
                         found = split_text[i].rfind(app_config['immediate_identifier'])
@@ -955,7 +1162,6 @@ def apply_comment_changes():
                     break
             if breaking:
                 break
-    # save_config()  Dont know why this was here
 
 
 def buffer_append(buffer):
@@ -992,35 +1198,26 @@ def buffer_append(buffer):
         buffer[1] = buffer[1][diff:]
 
 
-# Puts the windows clipboard back when the user leaves focus
-# def replace_clipboard():
-#     global clipboard
-#     try:
-#         window.clipboard_get()
-#         clipboard = ''
-#     except:
-#         if clipboard:
-#             window.clipboard_append(clipboard)
-
-
+__keyboard_event_states = {
+    str(0b0000000000000000100): 'Control',
+    str(0b0100000000000000000): 'Alt',
+    str(0b1000000000000000000): 'Combines with right-hand Alt or Control',
+    str(0b0000000000000000001): 'Shift',
+    str(0b0000000000000001000): 'Num Lock',
+    str(0b0000000000000000010): 'Caps Lock',
+    str(0b0000000000000100000): 'Scroll Lock',
+}
 # Textbox behaviour upon key presses
-# clipboard = ''
+ctrl_on_press = False
+collected_branch_targets = []
+collected_branches = []
+old_selection_bounds = [0,0]
 def keyboard_events(handle, max_char, event, buffer = None, hack_function = False):
-    # global clipboard
+    global ctrl_on_press
     if not disassembler_loaded():
         return
     joined_text = get_text_content(handle)
     split_text = joined_text.split('\n')
-
-    states = {
-        str(0b100): 'Control',
-        str(0b100000000000000000): 'Alt',
-        str(0b1000000000000000000): 'Combines with right-hand Alt or Control',
-        str(0b1): 'Shift',
-        str(0b1000): 'Num Lock',
-        str(0b10): 'Caps Lock',
-        str(0b100000): 'Scroll Lock',
-    }
 
     cursor, line, column = get_cursor(handle)
     ctrl_held = bool(event.state & 0b100)
@@ -1040,7 +1237,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             optimise_function()
         return
     has_char = bool(event.char) and event.keysym != 'Escape' and not ctrl_held
-    just_function_key = event.keysym in ['Alt_L', 'Alt_R', 'Shift_L', 'Shift_R', 'Control_L', 'Control_R']
+    ctrl_key = event.keysym in ['Control_L', 'Control_R']
+    just_function_key = ctrl_key or event.keysym in ['Alt_L', 'Alt_R', 'Shift_L', 'Shift_R']
     if not just_function_key:
         reset_target()
 
@@ -1055,6 +1253,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     restore_original = up_keysym == 'R' and ctrl_held and hack_function
     insert_branch = up_keysym == 'B' and ctrl_held and hack_function
     wipe_line = ((is_backspacing or is_deleting) and shift_held) or insert_branch
+    bin_hex = app_config['bin_mode'] or app_config['hex_mode']
 
     selection_removable = has_char or is_pasting or is_cutting or is_deleting
 
@@ -1094,9 +1293,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                     save_config()
                     disasm.immediate_identifier = immediate_id
                 if game_address_mode != disasm.game_address_mode:
-                    # disasm.game_address_mode = game_address_mode
-                    # app_config['game_address_mode'][disasm.hack_file_name] = game_address_mode
-                    # save_config()
                     toggle_address_mode(buffering=False)
                 if hex_mode != app_config['hex_mode']:
                     app_config['hex_mode'] = hex_mode
@@ -1131,12 +1327,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         selection_end, sel_end_line, sel_end_column = get_cursor(handle, tk.SEL_LAST)
         # Select whole columns if selecting multiple lines
         if sel_start_line != sel_end_line:
-            # if sel_start_column == len(split_text[sel_start_line - 1]):
-            #     selection_line_mod = True
-            #     selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 1, 0, split_text)
-            # if sel_end_column == 0:
-            #     selection_line_mod = True
-            #     selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, -1, 0, split_text)
             selection_start, sel_start_line, sel_start_column = modify_cursor(selection_start, 0, 'min', split_text)
             selection_end, sel_end_line, sel_end_column = modify_cursor(selection_end, 0, 'max', split_text)
     except:
@@ -1164,8 +1354,24 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     pasting_newlines = '\n' in clipboard
     paste_text = ''
     lines_diff = 0
+    already_applying = False
 
-    if (wipe_line or (not has_selection and is_pasting and not pasting_newlines)) and hack_function:
+    if is_copying or is_cutting:
+        collected_branch_targets[:] = []
+        collected_branches[:] = []
+    # if is_cutting and hack_function and not bin_hex:
+    #     if not has_selection:
+    #         if str(navigation + line - 1) in disasm.branches_to:
+    #             collected_branch_targets.append(navigation + line - 1)
+    #             old_selection_bounds[0] = line + navigation - 1
+    #             old_selection_bounds[1] = line + navigation
+    #         _text = split_text[line - 1]
+    #         if _text[:_text.find(' ')] in BRANCH_FUNCTIONS:
+    #             collected_branches.append(navigation + line - 1)
+
+
+
+    if (wipe_line or (not has_selection and is_pasting and not pasting_newlines)) and hack_function and not bin_hex:
         handle.delete(cursor_value(line, 0), cursor_value(line, len(split_text[line-1])))
         new_column = 0
         if insert_branch:
@@ -1173,7 +1379,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             handle.insert(cursor_value(line, 0), branch_template)
             new_column = len(branch_template)
         window.after(0, lambda: handle.mark_set(tk.INSERT, cursor_value(line, new_column)))
-
 
     # Because using mark_set() on SEL_FIRST or SEL_LAST seems to corrupt the widgets beyond repair at a windows level,
     # A work around is required in order for the code to be able to serve it's intended purpose
@@ -1190,9 +1395,24 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         selection_text = handle.get(selection_start, selection_end)
 
         if is_copying or is_cutting:
-            # clipboard = selection_text
             window.after(0, lambda: window.clipboard_clear())
             window.after(0, lambda: window.clipboard_append(selection_text))
+
+            if hack_function and is_cutting and not bin_hex:
+                old_selection_bounds[0] = sel_start_line + navigation - 1
+                old_selection_bounds[1] = sel_end_line + navigation
+                for i in range(sel_start_line + navigation - 1, sel_end_line + navigation):
+                    if str(i) in disasm.branches_to:
+                        collected_branch_targets.append(i)
+                for i in range(sel_start_line - 1, sel_end_line):
+                    if split_text[i][split_text[i].find(' ')] in BRANCH_FUNCTIONS:
+                        collected_branches.append(i + navigation)
+
+            if is_copying:
+                handle.tag_add('copied_text',
+                               selection_start,
+                               selection_end)
+                window.after(75, lambda: handle.tag_remove('copied_text', '1.0', tk.END))
 
         if selection_removable:
             handle.delete(selection_start, selection_end)
@@ -1200,28 +1420,141 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             handle.mark_set(tk.INSERT, selection_start)
 
     if is_pasting:
-        # If window clipboard has contents, contents to be drawn from there, else draw from clipboard
-        # window clipboard having contents means user has copied data from an external source
         try:
             clipboard = window.clipboard_get()
         except:
             clipboard = ''
         if clipboard:
-            if '\n' in clipboard:
-                # Ensure the text has within the maximum amount of lines and columns
-                split_clip = clipboard.split('\n')
-                line_boundary = max_lines - (sel_start_line if has_selection else line)
-                split_clip = split_clip[:line_boundary + 1]
-                split_clip = [i[:max_char] for i in split_clip]
-                lines_diff -= len(split_clip) - 1
-                clipboard = '\n'.join(split_clip)
-                if not selection_function:
-                    min_del, _, __ = modify_cursor(cursor, 0, 'min', split_text)
-                    max_del, _, __ = modify_cursor(cursor, -lines_diff, 'max', split_text)
-                    handle.delete(min_del, max_del)
-                    lines_diff = 0
+            split_clip = clipboard.split('\n')
+            line_boundary = max_lines - (sel_start_line if has_selection else line)
+            errs = 0
+            _line = line if not sel_start_line else sel_start_line
+            # Allows users to cut and paste branch targets, pointing the branches to the new location
+            if hack_function and collected_branch_targets and not bin_hex \
+                    and not old_selection_bounds[0] == _line + navigation - 1:
+                unmapping = []
+                mapping = []
+                apply_hack_changes()
+                _endl = max([_line if not sel_end_line else sel_end_line,
+                             min([max_lines - _line, len(split_clip) + _line])])
+                _split_max = min([max_lines - _line, len(split_clip)])
+                _start = navigation + _line - 1
+                _diff = _start - old_selection_bounds[0]
+                _max = min([old_selection_bounds[0] + line_boundary, old_selection_bounds[1]])
+                old_selection_range = range(old_selection_bounds[0], _max)
+                # selection_range = range(_line - 1, _endl)
+                clip_branches_to = {}
+                for i, txt in enumerate(split_clip[:_split_max]):
+                    if txt[:txt.find(' ')] in BRANCH_FUNCTIONS:
+                        targ_addr = deci(txt[txt.rfind(app_config['immediate_identifier']) + 1:])
+                        if disasm.game_address_mode:
+                            targ_addr = disasm.region_unalign(targ_addr) - disasm.game_offset
+                        targ_addr = str(targ_addr >> 2)
+                        if not targ_addr in clip_branches_to:
+                            clip_branches_to[targ_addr] = []
+                        clip_branches_to[targ_addr].append(i + old_selection_bounds[0])
+
+                for count, i in enumerate(old_selection_range):
+                    if not _diff:
+                        break
+                    dummy_branch = []
+                    key = str(i)
+                    if not i in collected_branch_targets:
+                        continue
+
+                    if key in clip_branches_to:
+                        for branch in clip_branches_to[key]:
+                            dummy_branch.append(branch)
+                            disasm.map(disasm.branches_to, branch, key)
+
+                    for j in disasm.branches_to[key]:
+                        place = -1
+                        view_edit = False
+                        if j in old_selection_range:
+                            place = j - old_selection_bounds[0]
+                            txt = split_clip[place]
+                            # print('j in old_selection_range: txt = {}'.format(txt))
+                            # print('count: '+str(count))
+                        elif j in range(navigation, navigation + max_lines):
+                            view_edit = True
+                            txt = split_text[j - navigation]
+                            # print('j in range(navigation, navigation + max_lines): txt = {}'.format(txt))
+                        else:
+                            txt = disasm.decode(
+                                int_word=int_of_4_byte_aligned_region(disasm.hack_file[j<<2:(j<<2)+4]),
+                                index=j
+                            )
+                            # print('else: txt = {}'.format(txt))
+
+                        if ' ' not in txt:
+                            continue
+                        if txt[:txt.find(' ')] not in BRANCH_FUNCTIONS:
+                            continue
+
+                        imm = deci(txt[-8:])
+                        unmap_target = imm
+                        unmap_address = j
+                        new_imm = imm + int(_diff * 4)
+                        map_target = new_imm
+                        if disasm.game_address_mode:
+                            if place >= 0 or view_edit:
+                                unmap_target = disasm.region_unalign(unmap_target)
+                                map_target = disasm.region_unalign(map_target)
+                            unmap_target -= disasm.game_offset
+                            map_target -= disasm.game_offset
+                        if j not in dummy_branch:
+                            unmapping.append((str(unmap_target >> 2), unmap_address))
+                            if place >= 0:
+                                mapping.append((str(map_target >> 2), j + _diff))
+                            else:
+                                mapping.append((str(map_target >> 2), j))
+                        new_text = txt[:-8] + extend_zeroes(hexi(new_imm), 8)
+                        if place >= 0:
+                            split_clip[place] = new_text
+                        elif view_edit:
+                            targ_line = (j - navigation) + 1
+                            targ_col = len(txt)
+                            hack_file_text_box.delete(
+                                cursor_value(targ_line, 0),
+                                cursor_value(targ_line, targ_col)
+                            )
+                            hack_file_text_box.insert(cursor_value(targ_line, 0), new_text)
+                        else:
+                            encoded = disasm.encode(new_text, j)
+                            if encoded < 0:
+                                user_errors[str(j)] = [encoded, new_text]
+                                errs += 1
+                                unmapping.pop()
+                                mapping.pop()
+                            else:
+                                disasm.split_and_store_bytes(encoded, j)
+                    for dummy in dummy_branch:
+                        disasm.unmap(disasm.branches_to, dummy, key)
+                for target, address in unmapping:
+                    disasm.unmap(disasm.branches_to, address, target)
+                for target, address in mapping:
+                    disasm.map(disasm.branches_to, address, target)
+            if errs:
+                window.after(50, lambda: status_text.set(
+                    'Upon modifying branches, there {} {} {} outside of your current view. '
+                    'To find them, attempt to save.'.format(
+                        'was' if errs == 1 else 'were',
+                        errs,
+                        'error' if errs == 1 else 'errors'
+                    )))
+            # End handling for cut/paste of branches and their targets
+
+            # Ensure the text has within the maximum amount of lines and columns
+            split_clip = split_clip[:line_boundary + 1]
+            split_clip = [i[:max_char] for i in split_clip]
+            lines_diff -= len(split_clip) - 1
+            clipboard = '\n'.join(split_clip)
+            if not selection_function:
+                min_del, _, __ = modify_cursor(cursor, 0, 'min', split_text)
+                max_del, _, __ = modify_cursor(cursor, -lines_diff, 'max', split_text)
+                handle.delete(min_del, max_del)
+                lines_diff = 0
             paste_text = clipboard
-            # window.after(1, lambda: (window.clipboard_clear(), window.clipboard_append(winnie_clip)))
 
     # Either clear lines which would be excess lines after the paste
     # Or add new lines to fill in what would be the gaps after the paste
@@ -1239,6 +1572,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             window.clipboard_append(paste_text)
         window.clipboard_clear()
         handle.insert(insertion_place, paste_text)
+        already_applying = True
         if is_pasting:
             window.after(1, lambda: (apply_hack_changes(),
                                      apply_comment_changes(),
@@ -1250,9 +1584,11 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     cursor, line, column = get_cursor(handle)
     # selection_start, sel_start_line, sel_start_column, selection_end, sel_end_line, sel_end_column = selection_calc()
     # has_selection = selection_start != selection_end
+    had_selection = False
     if selection_removable:
         selection_start, sel_start_line, sel_start_column, selection_end, sel_end_line, sel_end_column = 0,0,0,0,0,0
         has_selection = False
+        had_selection = True
     joined_text = get_text_content(handle)
     split_text = joined_text.split('\n')
 
@@ -1287,6 +1623,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     # Also validate all code except line currently editing
     if standard_key:
         apply_function(ignore_slot = line - 1)
+        already_applying = True
         if split_text[line - 1] == 'NOP' and hack_function:
             handle.delete(cursor_value(line, 0), cursor_value(line, 3))
         def find_line_chars(text, max_char):
@@ -1333,10 +1670,12 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         if is_deleting:
             # apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
             window.after(0, lambda: apply_function(ignore_slot = (line - 1) if not sel_start_line else None))
+            already_applying = True
         handle.insert(cursor,'\n')
         handle.mark_set(tk.INSERT, cursor)
         if is_backspacing:
             window.after(0, lambda: apply_function(ignore_slot = (line - 1) if not sel_start_line else None))
+            already_applying = True
             # apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
 
     # Make return send the cursor to the end of the next line and validate code
@@ -1347,6 +1686,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         handle.delete(cursor)
         new_cursor, _, __ = modify_cursor(cursor, 1 if not shift_held else -1, 'max', split_text)
         window.after(0, lambda: (apply_function(), handle.mark_set(tk.INSERT, new_cursor)))
+        already_applying = True
 
     cursor, line, column = get_cursor(handle)
     split_text = get_text_content(handle).split('\n')
@@ -1362,6 +1702,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         if not (is_pasting or is_returning):
             handle.insert(selection_start, replace_char)
             window.after(0, lambda: apply_function())
+            already_applying = True
         if is_deleting:
             window.after(0, lambda: handle.mark_set(tk.INSERT, selection_start))
 
@@ -1371,6 +1712,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     if vert_arrows:
         apply_function()
+        already_applying = True
 
     if selection_removable and selection_line_mod and (standard_key or is_cutting):
         def move_to():
@@ -1379,14 +1721,39 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             handle.mark_set(tk.INSERT, temp_cursor)
             apply_function()
 
+        already_applying = True
         window.after(0, move_to)
 
     # The delays are necessary to solve complications for text modified by the key after this function fires
-    if not just_function_key:
+    # All of this logic is just for highlighting how much space pasting text would consume while holding ctrl
+    ctrl_held = ctrl_held or ctrl_key
+    def loop_until_no_ctrl():
+        global ctrl_on_press
+        reset_highlights = lambda: window.after(0, lambda: highlight_stuff(event.widget, skip_moving_cursor=True, ctrl_held=ctrl_on_press))
+        if is_pressed('ctrl+x'):
+            reset_highlights()
+        elif is_pressed('ctrl+v'):
+            reset_highlights()
+        elif not is_pressed('ctrl'):
+            ctrl_on_press = False
+            if handle is comments_text_box:
+                window.after(0, apply_comment_changes)
+            reset_highlights()
+            return
+        _loop()
+
+    _loop = lambda: window.after(20, loop_until_no_ctrl)
+    if not ctrl_on_press and ctrl_held and not (has_selection or had_selection):
         if handle is comments_text_box:
-            window.after(0, lambda: (apply_comment_changes(), highlight_stuff(event.widget)))
+            window.after(0, lambda: (apply_comment_changes(), highlight_stuff(event.widget, ctrl_held=ctrl_held, skip_moving_cursor=True)))
         else:
-            window.after(0, lambda: (highlight_stuff(event.widget)))
+            window.after(0, lambda: (highlight_stuff(event.widget, ctrl_held=ctrl_held, skip_moving_cursor=True)))
+        ctrl_on_press = True
+        window.after(200, _loop)
+    elif not ctrl_held or is_cutting:
+        if not already_applying:
+            window.after(0, apply_function)
+        window.after(0, lambda: highlight_stuff(event.widget, skip_moving_cursor=True))
 
 
 base_file_text_box.bind('<Key>', lambda event:
@@ -2732,7 +3099,6 @@ def set_colour_scheme():
                                                      'colour changes.')
     colours_window = tk.Tk()
     colours_window.title('Colour scheme')
-    colours_window.geometry('{}x{}'.format(458, 516))
 
     def colour_buttons_callback(which, with_colour=''):
         if not with_colour:
@@ -2741,7 +3107,7 @@ def set_colour_scheme():
             else:
                 start_colour = app_config[which]
             new_colour = colorchooser.askcolor(color=start_colour, parent=colours_window)
-            print(new_colour)
+            # print(new_colour)
         else:
             r, g, b = get_colours_of_hex(with_colour)
             new_colour = ((r, g, b), with_colour)
@@ -2778,6 +3144,10 @@ def set_colour_scheme():
         'function_end': 'JR RA',
         'bad': 'Syntax errors',
         'out_of_range': 'Immediate out of range errors',
+        'copied_text': 'Copied text blink colour',
+        'text_pasting': 'Clipboard size when ctrl held',
+        'highlighted_text_bg': 'Selected text background',
+        'highlighted_text_fg': 'Selected text colour'
     }
     current_colours = {}
     for i in button_text:
@@ -2807,7 +3177,11 @@ def set_colour_scheme():
         'nop': '#d8d8d8',
         'function_end': '#ca88e6',
         'bad': '#dd3333',
-        'out_of_range': '#be2323'
+        'out_of_range': '#be2323',
+        'copied_text': '#ff0000',
+        'text_pasting': '#ffd8d8',
+        'highlighted_text_bg': '#3399FF',
+        'highlighted_text_fg': '#FFFFFF'
     }
     custom_buttons = {}
     previous_setting_buttons = {}
@@ -2819,7 +3193,7 @@ def set_colour_scheme():
         default_bright_buttons[tag] = tk.Button(colours_window)
         default_dark_buttons[tag] = tk.Button(colours_window)
 
-    # For some reason, I cannot set the command inside a loop. It sets all callbacks with 'out_of_range', the final iteration
+    # For some reason, I cannot set the command inside a loop. It sets all callbacks with 'text_pasting', the final iteration
     custom_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour'))
     custom_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour'))
     custom_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour'))
@@ -2836,6 +3210,10 @@ def set_colour_scheme():
     custom_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end'))
     custom_buttons['bad'].config(command=lambda: colour_buttons_callback('bad'))
     custom_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range'))
+    custom_buttons['copied_text'].config(command=lambda: colour_buttons_callback('copied_text'))
+    custom_buttons['text_pasting'].config(command=lambda: colour_buttons_callback('text_pasting'))
+    custom_buttons['highlighted_text_bg'].config(command=lambda: colour_buttons_callback('highlighted_text_bg'))
+    custom_buttons['highlighted_text_fg'].config(command=lambda: colour_buttons_callback('highlighted_text_fg'))
     previous_setting_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour',current_colours['differ_colour']))
     previous_setting_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',current_colours['text_bg_colour']))
     previous_setting_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',current_colours['text_fg_colour']))
@@ -2852,6 +3230,10 @@ def set_colour_scheme():
     previous_setting_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end',current_colours['function_end']))
     previous_setting_buttons['bad'].config(command=lambda: colour_buttons_callback('bad',current_colours['bad']))
     previous_setting_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range',current_colours['out_of_range']))
+    previous_setting_buttons['copied_text'].config(command=lambda: colour_buttons_callback('copied_text',current_colours['copied_text']))
+    previous_setting_buttons['text_pasting'].config(command=lambda: colour_buttons_callback('text_pasting',current_colours['text_pasting']))
+    previous_setting_buttons['highlighted_text_bg'].config(command=lambda: colour_buttons_callback('highlighted_text_bg',current_colours['highlighted_text_bg']))
+    previous_setting_buttons['highlighted_text_fg'].config(command=lambda: colour_buttons_callback('highlighted_text_fg',current_colours['highlighted_text_fg']))
     default_dark_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour',dark_colours['differ_colour']))
     default_dark_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',dark_colours['text_bg_colour']))
     default_dark_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',dark_colours['text_fg_colour']))
@@ -2868,6 +3250,10 @@ def set_colour_scheme():
     default_dark_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end',dark_colours['function_end']))
     default_dark_buttons['bad'].config(command=lambda: colour_buttons_callback('bad',dark_colours['bad']))
     default_dark_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range',dark_colours['out_of_range']))
+    default_dark_buttons['copied_text'].config(command=lambda: colour_buttons_callback('copied_text',dark_colours['copied_text']))
+    default_dark_buttons['text_pasting'].config(command=lambda: colour_buttons_callback('text_pasting',dark_colours['text_pasting']))
+    default_dark_buttons['highlighted_text_bg'].config(command=lambda: colour_buttons_callback('highlighted_text_bg',dark_colours['highlighted_text_bg']))
+    default_dark_buttons['highlighted_text_fg'].config(command=lambda: colour_buttons_callback('highlighted_text_fg',dark_colours['highlighted_text_fg']))
     default_bright_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour',bright_colours['differ_colour']))
     default_bright_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',bright_colours['text_bg_colour']))
     default_bright_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',bright_colours['text_fg_colour']))
@@ -2884,14 +3270,18 @@ def set_colour_scheme():
     default_bright_buttons['function_end'].config(command=lambda: colour_buttons_callback('function_end',bright_colours['function_end']))
     default_bright_buttons['bad'].config(command=lambda: colour_buttons_callback('bad',bright_colours['bad']))
     default_bright_buttons['out_of_range'].config(command=lambda: colour_buttons_callback('out_of_range',bright_colours['out_of_range']))
+    default_bright_buttons['copied_text'].config(command=lambda: colour_buttons_callback('copied_text',bright_colours['copied_text']))
+    default_bright_buttons['text_pasting'].config(command=lambda: colour_buttons_callback('text_pasting',bright_colours['text_pasting']))
+    default_bright_buttons['highlighted_text_bg'].config(command=lambda: colour_buttons_callback('highlighted_text_bg',bright_colours['highlighted_text_bg']))
+    default_bright_buttons['highlighted_text_fg'].config(command=lambda: colour_buttons_callback('highlighted_text_fg',bright_colours['highlighted_text_fg']))
 
     def change_all(colour_dict):
         [colour_buttons_callback(tag, colour_dict[tag]) for tag in colour_dict]
 
-    y_offset = 0
+    y_offset = 35
     change_colours_label = tk.Label(colours_window, text='Customise')
     change_colours_label.place(x=85,y=10)
-    for button in custom_buttons:
+    for i, button in enumerate(custom_buttons):
         if button in app_config['tag_config']:
             bg = app_config['tag_config'][button]
         else:
@@ -2904,16 +3294,16 @@ def set_colour_scheme():
             fg = '#000000'
         custom_buttons[button].config(text=button_text[button],
                                       bg=bg, activebackground=bg, fg=fg, activeforeground=fg)
-        custom_buttons[button].place(x=5, y=35+y_offset, width=222)
+        custom_buttons[button].place(x=5, y=y_offset, width=222)
 
         default_dark_buttons[button].config(bg=dark_colours[button], activebackground=dark_colours[button])
-        default_dark_buttons[button].place(x=396, y=35+y_offset, width=50)
+        default_dark_buttons[button].place(x=396, y=y_offset, width=50)
 
         default_bright_buttons[button].config(bg=bright_colours[button], activebackground=bright_colours[button])
-        default_bright_buttons[button].place(x=319, y=35+y_offset, width=50)
+        default_bright_buttons[button].place(x=319, y=y_offset, width=50)
 
         previous_setting_buttons[button].config(bg=current_colours[button], activebackground=current_colours[button])
-        previous_setting_buttons[button].place(x=242, y=35+y_offset, width=50)
+        previous_setting_buttons[button].place(x=242, y=y_offset, width=50)
         y_offset += 30
 
     c_bg, c_fg = current_colours['text_bg_colour'], current_colours['text_fg_colour']
@@ -2934,6 +3324,7 @@ def set_colour_scheme():
         colours_window = None
     colours_window.bind('<Escape>', lambda e: close_colours_win())
     colours_window.protocol('WM_DELETE_WINDOW', close_colours_win)
+    colours_window.geometry('{}x{}'.format(458, y_offset))
     change_colours()
     colours_window.resizable(False, False)
     colours_window.mainloop()
@@ -3029,13 +3420,23 @@ def toggle_base_file():
     set_widget_sizes()
 
 
+# Declare them all because "sometimes" it errors when initially running script
+top_label_x, top_label_w, bot_label_x, bot_label_w, paste_consume_label_y,\
+top_label_y, bot_label_y, comments_win_h, comments_x, comments_y, comments_w,\
+comments_h, jumps_win_w, jumps_win_h, func_list_w, func_list_y, func_list_x,\
+func_list_h, jumps_list_x, jumps_list_y, jumps_list_w, jumps_list_h, paste_consume_label_h, \
+jumps_label_y, comments_win_w, targ_top_label_x, targ_top_label_y, targ_top_label_w,\
+targ_bot_label_x, targ_bot_label_y, targ_bot_label_w, dif_label_x, paste_consume_comment_x,\
+paste_consume_hack_x, paste_consume_comment_w, paste_consume_hack_w = [0] * 36
 def set_widget_sizes(new_size=0, new_max_lines=0):
     global main_font_size, max_lines, top_label_x, top_label_w, bot_label_x, bot_label_w
     global top_label_y, bot_label_y, comments_win_h, comments_x, comments_y, comments_w
     global comments_h, jumps_win_w, jumps_win_h, func_list_w, func_list_y, func_list_x
     global func_list_h, jumps_list_x, jumps_list_y, jumps_list_w, jumps_list_h, jumps_label
     global jumps_label_y, comments_win_w, targ_top_label_x, targ_top_label_y, targ_top_label_w
-    global targ_bot_label_x, targ_bot_label_y, targ_bot_label_w, dif_label_x
+    global targ_bot_label_x, targ_bot_label_y, targ_bot_label_w, dif_label_x, paste_consume_comment_x
+    global paste_consume_hack_x, paste_consume_comment_w, paste_consume_hack_w, paste_consume_label_h
+    global paste_consume_label_y
     # if disassembler_loaded():
     #     apply_comment_changes()
     #     apply_hack_changes()
@@ -3085,6 +3486,14 @@ def set_widget_sizes(new_size=0, new_max_lines=0):
     targ_bot_label_y = bot_label_y = (widget_y + widget_h) - 5
     targ_bot_label_x = targ_top_label_x = top_label_x + 50
     targ_bot_label_w = targ_top_label_w = top_label_w - 100
+    paste_consume_hack_x = targ_bot_label_x
+    paste_consume_hack_w = targ_top_label_w
+    paste_consume_comment_label.config(font=('Courier', main_font_size))
+    paste_consume_hack_label.config(font=('Courier', main_font_size))
+    paste_consume_label_h = int(font_h * 3) + 2
+    paste_consume_label_y = targ_bot_label_y - (paste_consume_label_h >> 2)
+    paste_consume_comment_x = x_4 + 80
+    paste_consume_comment_w = w_4 - 160
     [text_box.config(font=('Courier', main_font_size)) for text_box in ALL_TEXT_BOXES + [status_bar]]
     address_text_box.place(x=x_1, y=widget_y, width=w_1, height=widget_h)
     if x_2:
@@ -3141,6 +3550,7 @@ def change_win_dimensions():
         dimension_window.deiconify()
         dimension_window.focus_force()
         return
+    lines_max = 150
     dimension_window = tk.Tk()
     dimension_window.title('Change window dimensions')
     def scale_callback(amt, which):
@@ -3151,7 +3561,7 @@ def change_win_dimensions():
         elif which == 'lines':
             set_widget_sizes(new_max_lines=amt)
     scale_size = tk.Scale(dimension_window, from_=4, to=30, command=lambda amt: scale_callback(amt, 'size'))
-    scale_lines = tk.Scale(dimension_window, from_=1, to=150, command=lambda amt: scale_callback(amt, 'lines'))
+    scale_lines = tk.Scale(dimension_window, from_=1, to=lines_max, command=lambda amt: scale_callback(amt, 'lines'))
     [scale.config(orient=tk.HORIZONTAL) for scale in [scale_size, scale_lines]]
     scale_size.set(app_config['font_size'])
     scale_lines.set(app_config['max_lines'])
@@ -3160,7 +3570,7 @@ def change_win_dimensions():
         if event.widget is scale_size:
             scale_size.set(keep_within(scale_size.get() + shift, 4, 30))
         elif event.widget is scale_lines:
-            scale_lines.set(keep_within(scale_lines.get() + shift, 1, 120))
+            scale_lines.set(keep_within(scale_lines.get() + shift, 1, lines_max))
 
     def dimension_window_equals_none():
         global dimension_window
@@ -3169,6 +3579,7 @@ def change_win_dimensions():
         dimension_window.destroy()
         dimension_window = None
         save_config()
+        status_text.set('Saved window dimension data')
     font_size_label = tk.Label(dimension_window, text='Font size').pack(side=tk.LEFT)
     scale_size.pack(side=tk.LEFT)
     line_amount_label = tk.Label(dimension_window, text='Line amount').pack(side=tk.RIGHT)
@@ -4074,66 +4485,27 @@ def generate_live_patch_script():
     status_text.set('Wrote patch script. Use by starting script. It will stop automatically.')
 
 
-def test():
-    # max_size = 1
-    # # min_size = 2
-    # hex_list = []
-    # i = 0x40
-    # percent = disasm.file_length // 400
-    # while i < disasm.file_length:
-    #     if not (i >> 2) % percent:
-    #         status_text.set('Populating hex_list: {}%'.format((i >> 2) // percent))
-    #         status_bar.update()
-    #     intie = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
-    #     hex_list.append(extend_zeroes(hexi(intie), 8))
-    #     i += 4
-    # i = max_size
-    # percent = len(hex_list) // 100
-    # patterns = {}
-    # while i < len(hex_list):
-    #     if not i % percent:
-    #         status_text.set('Detecting patterns: {}%'.format(i // percent))
-    #         status_bar.update()
-    #     j = -1
-    #     while j >= -max_size:
-    #         this_pattern = ''.join(hex_list[i+j:i])
-    #         if this_pattern not in patterns:
-    #             patterns[this_pattern] = [i+j+0x10]
-    #         else:
-    #             patterns[this_pattern].append(i+j+0x10)
-    #         j -= 1
-    #     i += 1
-    # mio0 = ''.join([extend_zeroes(hexi(ord(i)), 2) for i in 'MIO0'])
-    # print(mio0)
-    # [print(extend_zeroes(hexi(i << 2), 8)) for i in patterns[mio0]]
-    # i = 0
-    # percent = len(patterns) // 100
-    # occurances = {}
-    # for key in patterns:
-    #     if not i & percent:
-    #         status_text.set('Sorting highest occurances: {}%'.format(i // percent))
-    #         status_bar.update()
-    #     i += 1
-    #     occ_key = str(len(patterns[key]))
-    #     if occ_key not in occurances:
-    #         occurances[occ_key] = [key]
-    #     else:
-    #         occurances[occ_key].append(key)
+def decode_mio0(index, thisone=0, max=0):
+    if not disassembler_loaded():
+        return
+    if disasm.hack_file[index:index+4] != b'MIO0':
+        return
 
-    # [print(i) for i in reversed(sorted([int(j) for j in occurances]))]
+    decompressed_len, compressed_offset, uncompressed_offset = \
+        ints_of_4_byte_aligned_region(disasm.hack_file[index+0x04:index+0x10])
 
-    layout_bits = 0x00114760
-    high_bit = 1 << 31
+    layout_bits = index + 0x10
 
     # Handles getting next bit from layout bits
     class layout_ticker():
+        high_bit = 1 << 31
         def __init__(self, layout_bits_start):
-            self.current_bit = high_bit
+            self.current_bit = self.high_bit
             self.layout_bits_start = layout_bits_start
             self.offset = 0
             self.int_operating = 0
         def tick(self):
-            if self.current_bit == high_bit:
+            if self.current_bit == self.high_bit:
                 off = self.layout_bits_start + self.offset
                 self.int_operating = int_of_4_byte_aligned_region(disasm.hack_file[off:off+4])
             is_compressed = not bool(self.int_operating & self.current_bit)
@@ -4146,9 +4518,8 @@ def test():
 
     layout = layout_ticker(layout_bits)
     decompressed = []
-    decompressed_len = 0x35378
-    compressed_offset = (0x19D4 + layout_bits) - 0x10
-    uncompressed_offset = (0xAED0 + layout_bits) - 0x10
+    percent = decompressed_len // 100
+
     while len(decompressed) < decompressed_len:
         is_compressed = layout.tick()
         if is_compressed:
@@ -4159,10 +4530,91 @@ def test():
                 decompressed.append(disasm.hack_file[uncompressed_offset - offset])
                 offset -= 1
                 length -= 1
+                if not len(decompressed) % percent:
+                    text = 'Decoding MIO0 block at {}: {}%'.format(extend_zeroes(hexi(index), 8), len(decompressed) // percent)
+                    if thisone:
+                        text = 'Block {}/{} | '.format(thisone,max) + text
+                    status_text.set(text)
+                    status_bar.update()
             compressed_offset += 2
         else:
             decompressed.append(disasm.hack_file[uncompressed_offset])
             uncompressed_offset += 1
+            if not len(decompressed) % percent:
+                text = 'Decoding MIO0 block at {}: {}%'.format(extend_zeroes(hexi(index), 8), len(decompressed) // percent)
+                if thisone:
+                    text = 'Block {}/{} | '.format(thisone,max) + text
+                status_text.set(text)
+                status_bar.update()
+    [print([extend_zeroes(str(decompressed[j]), 3) for j in range(i, i+8)]) for i in range(0,0x100, 8)]
+    def task(sect):
+        try:
+            print(bytes(sect).decode())
+        except:
+            ''
+    [task(decompressed[i:i + 8]) for i in range(0,0x100, 8)]
+    return decompressed
+
+
+def find_mio0():
+    if not disassembler_loaded():
+        return
+    i = 0
+    mios = []
+    while i < disasm.file_length:
+        if disasm.hack_file[i:i+4] == b'MIO0':
+            mios.append(i)
+        i += 4
+    # [print(extend_zeroes(hexi(i), 8)) for i in mios]
+    hack_text = get_text_content(hack_file_text_box)
+    new_hack_text = hack_text.split('\n')
+    for i in mios:
+        disasm.comments[str(i>>2)] = '#MIO0 signature'
+        if i >> 2 in range(navigation, navigation + max_lines):
+            line = (i >> 2) - navigation
+            new_hack_text[line] = '#MIO0 signature'
+    if hack_text.split('\n') != new_hack_text:
+        hack_file_text_box.delete('1.0', tk.END)
+        hack_file_text_box.insert('1.0', '\n'.join(new_hack_text))
+    simpledialog.messagebox._show('Notice', '{} possible MIO0 signatures found. '
+                                            '\nAll of them have been commented with '
+                                            '"#MIO0 signature".\n'
+                                            'You can now use the comments browser to list them all.'
+                                            ''.format(len(mios)))
+
+
+def decode_all_mio0():
+    i = 0
+    percent = disasm.file_length // 100
+    mios = []
+    while i < disasm.file_length:
+        if disasm.hack_file[i:i+4] == b'MIO0':
+            mios.append(i)
+        if not i % percent:
+            status_text.set('Finding MIO0 signatures ({} so far)... {}%'.format(len(mios), i // percent))
+            status_bar.update()
+        i += 4
+    decoded_blocks = [decode_mio0(i, j + 1, len(mios)) for j, i in enumerate(mios)]
+    for j, i in enumerate(decoded_blocks):
+
+        print(extend_zeroes(hexi(mios[j]), 8), len(i))
+
+
+def test32():
+    oldpos = 0
+    instances = []
+    percent = disasm.file_length // 100
+    buffer_len = 0x1000
+    term = b'mario'
+    while oldpos < disasm.file_length:
+        newpos = disasm.hack_file[oldpos:oldpos+buffer_len].find(term)
+        status_text.set('Finding search term ({} instances)... {}%'.format(len(instances), oldpos // percent))
+        if newpos >= 0:
+            instances.append(oldpos + newpos)
+            oldpos += newpos + len(term)
+        else:
+            oldpos += buffer_len - len(term)
+    [print(extend_zeroes(hexi(i),8)) for i in instances]
 
 
 def optimise_function():
@@ -4176,49 +4628,56 @@ def optimise_function():
         status_text.set('Attempt to find function bounds failed')
         return
     func_ints = ints_of_4_byte_aligned_region(disasm.hack_file[start:end+4])
-    func = [[disasm.decode(i, (start >> 2) + j), (start >> 2) + j] for j, i in enumerate(func_ints)]
+    _increment = (disasm.game_offset >> 2) if disasm.game_address_mode else 0
+    func = [[disasm.decode(i, (start >> 2) + j), (start >> 2) + j + _increment] for j, i in enumerate(func_ints)]
     branches = [[i[0], i[1], deci(i[0][i[0].rfind(app_config['immediate_identifier']) + 1:])]
                 for i in func if i[0][:i[0].find(' ')] in BRANCH_FUNCTIONS]
     func_dict = {}
     for i in func:
         func_dict[str(i[1] << 2)] = i[0]
     jumps = [i for i in func if i[0][:i[0].find(' ')] in JUMP_FUNCTIONS]
-    prev_end_start = end
+    prev_end_start = func[-2][1] << 2
     prev_branch_point = 0
     branches_to = [i[2] for i in branches]
     slots_freed = 0
-    moved = func[-1][0] == 'NOP'
-    thingo = False
+    prev_empty_slot = 0 if func[-1][0] != 'NOP' else (len(func) - 1)
+    ra_load = True if 'LW RA' in func[-1][0] else False
+    sp_modify = True if 'ADDIU SP' in func[-1][0] else False
+    _switch = False
     # Tidy up the footer's branches
     for i, ii in enumerate(reversed(func[:-2])):
         inst, index = ii
-        if inst[:inst.find(' ')] in BRANCH_FUNCTIONS:
+        # func[-2][0] is always 'JR RA'
+        if 'BEQ R0, R0' in inst:
             branch_to = deci(inst[inst.rfind(app_config['immediate_identifier']) + 1:])
-            _end = prev_end_start if not prev_branch_point else prev_branch_point
-            if branch_to == _end and 'BEQ R0, R0' in inst:
-                func[-2 - i][0] = 'NOP'
+            # if disasm.game_address_mode:
+            #     branch_to += disasm.game_offset
+            if branch_to == prev_end_start:
+                func[-3 - i][0] = 'NOP'
                 slots_freed += 1
                 for j, b in enumerate(branches):
                     binst, bindex, b_to = b
                     if b_to == index << 2:
                         binst = binst[:-8]
-                        binst += extend_zeroes(hexi(_end), 8)
+                        binst += extend_zeroes(hexi(prev_end_start), 8)
                         f_index = bindex - (start >> 2)
+                        f_index -= _increment
                         func[f_index][0] = binst
-                prev_branch_point = func[-2 - i][1] << 2
-                thingo = False
-            if thingo:
-                break
-        elif not moved and inst != 'NOP':
-            func[-1][0] = inst
-            func[-2 - i][0] = 'NOP'
-            moved = True
-        elif moved and inst != 'NOP' and 'LW RA' not in inst and 'ADDIU SP' not in inst and not thingo:
-            thingo = True
-        elif thingo:
+        elif inst != 'NOP' and 'LW RA' not in inst and 'ADDIU SP' not in inst:
+            _switch = True
             break
-        if 'LW RA' in inst or 'ADDIU SP' in inst:
-            prev_end_start = func[-2 - i][1] << 2
+        elif prev_empty_slot and inst != 'NOP':
+            func[prev_empty_slot][0] = inst
+            func[-3 - i][0] = 'NOP'
+            prev_empty_slot -= 2 if prev_empty_slot == len(func) - 1 else 1
+        if not prev_empty_slot and inst == 'NOP':
+            prev_empty_slot = len(func) - (i + 3)
+        if 'LW RA' in inst:
+            ra_load = True
+        if 'ADDIU SP' in inst:
+            sp_modify = True
+        if ('LW RA' in inst or 'ADDIU SP' in inst and ra_load and sp_modify) or 'SP' in inst:
+            prev_end_start = func[-3 - i][1] << 2
 
     def wipe_reg():
         if buffer[-1]:
@@ -4256,6 +4715,8 @@ def optimise_function():
 
     new_func = [i[0] for i in func]
 
+    [print(i) for i in new_func]
+
     def find_reg(words):
         asdf = []
         for i in scratch_registers:
@@ -4263,7 +4724,7 @@ def optimise_function():
                 asdf.append(i)
         return asdf
 
-    scratch_registers = ['T' + str(i) for i in range(10)] + ['AT', 'A0', 'A1', 'A2', 'A3']
+    scratch_registers = ['T' + str(i) for i in range(10)] + ['AT']
 
     for b in buffer:
         reg_usage_map = []
@@ -4279,13 +4740,6 @@ def optimise_function():
             elif inst == 'LUI':
                 ''
 
-
-
-    '''
-    
-    group LUIs into immediate value used
-    
-    '''
 
 
 menu_bar = tk.Menu(window)
@@ -4322,6 +4776,11 @@ tools_menu.add_command(label='Generate script for batch of addresses', command=g
 # tools_menu.add_command(label='Generate run-time patch script for PJ64D', command=generate_live_patch_script)
 tools_menu.add_separator()
 tools_menu.add_command(label='Re-map jumps', command=remap_jumps)
+# tools_menu.add_separator()
+# tools_menu.add_command(label='Find MIO0 blocks', command=find_mio0)
+# tools_menu.add_command(label='test', command=test32)
+# tools_menu.add_command(label='Decode MIO0', command=lambda: decode_mio0(simpledialog.askinteger('At what index', '')))
+# tools_menu.add_command(label='Decode ALL MIO0', command=decode_all_mio0)
 # tools_menu.add_separator()
 # tools_menu.add_command(label='Test', command=test)
 tools_menu.add_separator()
@@ -4373,8 +4832,6 @@ hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-G>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-f>', lambda e: follow_jump())
 hack_file_text_box.bind('<Control-F>', lambda e: follow_jump())
-# hack_file_text_box.bind('<Control-o>', lambda e: optimise_function())
-# hack_file_text_box.bind('<Control-O>', lambda e: optimise_function())
 
 
 def text_box_callback(event):
@@ -4391,7 +4848,7 @@ def text_box_callback(event):
                 prev_cursor_location = (line - 1) + navigation
             elif event.widget in [comments_text_box, address_text_box, base_file_text_box]:
                 reset_target()
-            highlight_stuff(widget=event.widget, skip_moving_cursor=True)
+            highlight_stuff(widget=event.widget, skip_moving_cursor=True, ctrl_held=ctrl_on_press)
             if event.widget is address_text_box:
                 window.clipboard_clear()
                 cursor_start = '{}.{}'.format(line, 0)
@@ -4412,7 +4869,6 @@ address_translate_button = tk.Button(window, text='Translate Address', command=l
 address_input.bind('<Return>', lambda e: window.after(1, lambda: translate_box()))
 address_input.bind('<Control-v>', lambda e: window.after(1, lambda: translate_box()))
 address_input.bind('<Control-V>', lambda e: window.after(1, lambda: translate_box()))
-
 
 address_input.place(x=6, y=8, width=88, height=21)
 address_translate_button.place(x=98, y=8, height=21)
@@ -4440,12 +4896,12 @@ nav_button = tk.Button(window, text='Navigate to address in clipboard', command=
                        font=('Sans', 9))
 nav_button.place(x=500, y=8, height=21)
 
-
 target_up_label = tk.Label(window)
 target_down_label = tk.Label(window)
 target_of_up_label = tk.Label(window)
 target_of_down_label = tk.Label(window)
-dif_label_x = 0
+paste_consume_hack_label = tk.Label(window)
+paste_consume_comment_label = tk.Label(window)
 
 status_text = tk.StringVar()
 status_text.set('Welcome!')
@@ -4463,7 +4919,6 @@ change_colours()
 if app_config['open_roms_automatically'] and app_config['previous_base_opened'] and app_config['previous_hack_opened']:
     if exists(app_config['previous_base_opened']) and exists(app_config['previous_hack_opened']):
         window.after(1, open_files)
-
 
 window.resizable(False, False)
 window.mainloop()
