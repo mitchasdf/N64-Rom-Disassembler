@@ -40,7 +40,22 @@ CODE_20 = 'CODE_20'  # Code (20bit)  -- Numerical Parameter
 VS = 'VS'  # RSP Register
 VD = 'VD'  # RSP Register
 VT = 'VT'  # RSP Register
-MOD = 'MOD'  # Extra RSP numerical parameter
+MOD = 'MOD'  # Extra RSP numerical parameter - I don't know what this does though
+
+REG_TYPES = {
+    'RT': 'MAIN',
+    'RD': 'MAIN',
+    'RS': 'MAIN',
+    'BASE': 'MAIN',
+    'FT': 'FLOAT',
+    'FD': 'FLOAT',
+    'FS': 'FLOAT',
+    'CS': 'CP0',
+    'VS': 'VECTOR',
+    'VD': 'VECTOR',
+    'VT': 'VECTOR'
+
+}
 
 ADDRESS_ALIGNMENT = 0x04000000
 ADDRESS_ALIGNMENT_4 = 0x10000000
@@ -202,8 +217,7 @@ CODES_USING_ADDRESSES = ['BC1F', 'BC1FL', 'BC1T', 'BC1TL', 'BEQ', 'BEQL', 'BGEZ'
                          'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL', 'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL',
                          'BNEZ', 'BNEL', 'BNE', 'J', 'JAL']
 
-SHWIFTY_INSTRUCTIONS = {'DSLL':None, 'DSLL32':None, 'DSRA':None, 'DSRA32':None, 'DSRL':None,
-                        'DSRL32':None, 'SLL':None, 'SRA':None, 'SRL':None}
+SHWIFTY_INSTRUCTIONS = ['DSLL', 'DSLL32', 'DSRA', 'DSRA32', 'DSRL', 'DSRL32', 'SLL', 'SRA', 'SRL']
 
 REGISTERS_ENCODE = {  # For Disassembler.encode(): To pull the values of register names in order to encode
     'R0': 0,
@@ -1243,6 +1257,8 @@ class Disassembler:
             self.fit('VMADN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 14]], [VD, VT, VS, MOD])
             self.fit('VMADH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 15]], [VD, VT, VS, MOD])
             # Unfinished
+
+        # So the python DLL doesn't crash when fitting a 2nd time (when user opens more than 1 rom in a session)
         decoder_fitted = True
 
     def fit(self, mnemonic, encoding, appearance):
@@ -1307,6 +1323,8 @@ class Disassembler:
         #     print('')
 
         # Fit the opcode matrix
+        # This is what the script will fall back on if you aren't able to load the python DLL
+        # It is just a slight bit (~8%) slower than the python DLL version of the algorithm.
         offset = 0
         matrix = self.opcode_matrix
         for j, i in enumerate(reordered_encoding):
@@ -1325,33 +1343,6 @@ class Disassembler:
                 offset = self.matrix_stack
             else:
                 offset = matrix[value + offset]
-
-        # for j, i in enumerate(reordered_encoding):
-        #     value, length, bits_addressed = i
-        #     shift_amount = 32 - (length + bits_addressed)
-        #     bitwise_and = int('0b' + ('1' * length) + ('0' * shift_amount), 2)
-        #     if not matrix_branch:
-        #         matrix_branch.append([])
-        #         target = 0
-        #     else:
-        #         target = -1
-        #         for i in range(len(matrix_branch)):
-        #             if matrix_branch[i][1] == bitwise_and and matrix_branch[i][2] == shift_amount:
-        #                 target = i
-        #         if target < 0:
-        #             target = len(matrix_branch)
-        #             matrix_branch.append([])
-        #     if not matrix_branch[target]:
-        #         matrix_branch[target].append([None] * (2 ** length))
-        #         matrix_branch[target].append(bitwise_and)
-        #         matrix_branch[target].append(shift_amount)
-        #         self.branches += 1
-        #     if j < len(reordered_encoding) - 1:
-        #         if matrix_branch[target][0][value] is None:
-        #             matrix_branch[target][0][value] = []
-        #         matrix_branch = matrix_branch[target][0][value]
-        #     else:
-        #         matrix_branch[target][0][value] = mnemonic
         appearance = [[i, appearance_bit_correspondence[i]] for i in appearance]
         if mnemonic in DOCUMENTATION:
             self.documentation[mnemonic] = DOCUMENTATION[mnemonic]
@@ -1359,7 +1350,6 @@ class Disassembler:
         self.encodes[mnemonic] = encoding
         self.appearances[mnemonic] = appearance
         self.identifying_bits[mnemonic] = int(identifying_bits, 2)
-
 
     def region_align(self, address, invert=False, game_offset=False):
         if game_offset:
@@ -1521,7 +1511,8 @@ class Disassembler:
             int_result = self.identifying_bits[opcode]
             for i in range(len(self.appearances[opcode])):
                 param = str_parameters[i]
-                if param[0] == self.immediate_identifier or self.appearances[opcode][i][0] == 'MOD':
+                param_type = self.appearances[opcode][i][0]
+                if param[0] == self.immediate_identifier or param_type == 'MOD':
                     if opcode in SHWIFTY_INSTRUCTIONS:
                         param = int(param[1:])
                     else:
@@ -1547,13 +1538,22 @@ class Disassembler:
                             # Immediate out of bounds error
                             return -3
                     else:
-                        if self.appearances[opcode][i][0] not in MAXIMUM_VALUES.keys():
+                        if self.appearances[opcode][i][0] not in MAXIMUM_VALUES:
                             # Syntax error - used immediate where a parameter should be a register
                             return -2
                         if param >> 2 > MAXIMUM_VALUES[self.appearances[opcode][i][0]] or param < 0:
                             # Immediate out of bounds error
                             return -3
                 else:
+                    if param in ['F00', 'F01', 'F02', 'F03', 'F04', 'F05', 'F06', 'F07', 'F08', 'F09']:
+                        # Slices the middle character out, making "F0", "F1", ect
+                        param = param[::2]
+                    if param in REGISTERS['MAIN'] and REG_TYPES[param_type] != 'MAIN' or \
+                            param in REGISTERS['FLOAT'] and REG_TYPES[param_type] != 'FLOAT' or \
+                            param in REGISTERS['CP0'] and REG_TYPES[param_type] != 'CP0' or \
+                            param in REGISTERS['VECTOR'] and REG_TYPES[param_type] != 'VECTOR':
+                        # Syntax error - register of the wrong type used
+                        return -2
                     param = REGISTERS_ENCODE[param]
                 int_result += param << self.appearances[opcode][i][1][1]
         except:
@@ -1658,7 +1658,7 @@ class Disassembler:
                 instruction = self.decode(int_word, index + i)
                 if not instruction:
                     return [], 0, 0
-                if instruction[:5] == 'JR RA':
+                if instruction[:5] == 'JR RA' and i != -1:
                     # Skip the delay slot
                     i += 2
                     break
@@ -1729,6 +1729,7 @@ class Disassembler:
             i = 0
             while i < len(dict[target]) - 2:
                 if target in range(dict[target][i], dict[target][i+1]):
+                    i += 1
                     break
                 i += 1
             dict[target].insert(i, address)
@@ -1738,21 +1739,19 @@ class Disassembler:
     def byte_swap(self, bytes):
         new_bytes = bytearray()
         for i in range(0, len(bytes), 4):
-            [new_bytes.append(0) for _ in [None] * 4]
-            new_bytes[i + 1] = bytes[i]
-            new_bytes[i] = bytes[i + 1]
-            new_bytes[i + 3] = bytes[i + 2]
-            new_bytes[i + 2] = bytes[i + 3]
+            new_bytes.append(bytes[i + 1])
+            new_bytes.append(bytes[i])
+            new_bytes.append(bytes[i + 3])
+            new_bytes.append(bytes[i + 2])
         return new_bytes
 
     def byte_reverse(self, bytes):
         new_bytes = bytearray()
         for i in range(0, len(bytes), 4):
-            [new_bytes.append(0) for _ in [None] * 4]
-            new_bytes[i] = bytes[i+3]
-            new_bytes[i+1] = bytes[i+2]
-            new_bytes[i+2] = bytes[i+1]
-            new_bytes[i+3] = bytes[i]
+            new_bytes.append(bytes[i+3])
+            new_bytes.append(bytes[i+2])
+            new_bytes.append(bytes[i+1])
+            new_bytes.append(bytes[i])
         return new_bytes
 
     # data from http://n64dev.org/n64crc.html
