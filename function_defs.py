@@ -160,3 +160,15 @@ def double_to_hex(d):
 def hex_to_double(h):
     return struct.unpack('d', struct.pack('Q', deci(h)))[0]
 
+
+# def JSON_parse(str):
+#     result_dict = {}
+#     # targ_dict = None
+#     stack1 = []
+#     while str:
+#         if str[0] == '{':
+#             if not stack1:
+#                 stack1.append(result_dict)
+#             else:
+#
+#     return result_dict
