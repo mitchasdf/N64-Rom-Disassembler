@@ -1823,7 +1823,7 @@ def destroy_change_rom_name_button():
         change_rom_name_button = None
 
 
-def navigate_to(index, center=False, widget=None, region_treatment=False, region_override=False):
+def navigate_to(index, center=False, widget=None, region_treatment=False, region_override=False, ctrl_held=False):
     global navigation, change_rom_name_button, prev_cursor_location
     if not disassembler_loaded():
         return
@@ -1973,7 +1973,7 @@ def navigate_to(index, center=False, widget=None, region_treatment=False, region
         new_cursor, _, __ = modify_cursor('1.0', line, 'max', get_text_content(hack_file_text_box))
         hack_file_text_box.mark_set(tk.INSERT, new_cursor)
 
-    highlight_stuff(widget, skip_moving_cursor=center)
+    highlight_stuff(widget, skip_moving_cursor=center, ctrl_held=ctrl_held)
 
     updateWindowScrollbarPos()
 
@@ -2014,7 +2014,7 @@ def scroll_callback(event,numUnits=1):
     apply_hack_changes()
     apply_comment_changes()
     direction = -app_config['scroll_amount'] if event.delta > 0 else app_config['scroll_amount']
-    navigate_to(navigation + direction * numUnits, widget=check_widget(window.focus_get()))
+    navigate_to(navigation + direction * numUnits, widget=check_widget(window.focus_get()), ctrl_held=ctrl_on_press)
 
 def save_changes_to_file(save_as=False):
     if not disassembler_loaded():
