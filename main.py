@@ -4816,9 +4816,9 @@ def updateToggleStatusBarLabel():
     
 def updateToggleAddressLabel(noValue = False):
     if (noValue):
-        buttonStates["address"].set(next (iter (app_config["game_address_mode"].values())))
+        buttonStates["address"].set(False)
     else:
-         buttonStates["address"].set(disasm.game_address_mode)
+        buttonStates["address"].set(disasm.game_address_mode)
     
 def updateToggleHexLabel():
     buttonStates["hex"].set(app_config["hex_mode"])
