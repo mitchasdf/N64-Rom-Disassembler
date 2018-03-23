@@ -4947,7 +4947,7 @@ def text_box_callback(event):
                 window.clipboard_clear()
                 cursor_start = '{}.{}'.format(line, 0)
                 cursor_end = modify_cursor(cursor_start, 0, 'max', get_text_content(address_text_box))[0]
-                new_clip = address_text_box.get(cursor_start, cursor_end[0])
+                new_clip = address_text_box.get(cursor_start, cursor_end)
                 window.clipboard_append(new_clip)
                 status_text.set('Copied {} to clipboard'.format(new_clip))
         window.after(1, lambda: after_delay(event))
