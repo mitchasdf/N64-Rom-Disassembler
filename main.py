@@ -1786,7 +1786,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         ctrl_on_press = True
         window.after(200, _loop)
     elif not ctrl_held or is_cutting:
-        if not already_applying:
+        if handle is comments_text_box:
             window.after(0, apply_function)
         window.after(0, lambda: highlight_stuff(event.widget, skip_moving_cursor=True))
 
