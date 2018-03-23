@@ -1565,6 +1565,10 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                     disasm.unmap(disasm.branches_to, address, target)
                 for target, address in mapping:
                     disasm.map(disasm.branches_to, address, target)
+                old_selection_bounds[0] = 0
+                old_selection_bounds[1] = 0
+                collected_branch_targets[:] = []
+                collected_branches[:] = []
             if errs:
                 window.after(50, lambda: status_text.set(
                     'Upon modifying branches, there {} {} {} outside of your current view. '
