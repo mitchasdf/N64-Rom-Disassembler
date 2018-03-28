@@ -988,41 +988,41 @@ class Disassembler:
         if True:
 
             # Load and Store instructions
-            self.fit('LB',    [[OPCODE, 32], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LBU',   [[OPCODE, 36], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LD',    [[OPCODE, 55], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LDL',   [[OPCODE, 26], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LDR',   [[OPCODE, 27], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LH',    [[OPCODE, 33], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LHU',   [[OPCODE, 37], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LL',    [[OPCODE, 48], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LLD',   [[OPCODE, 52], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LW',    [[OPCODE, 35], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LWL',   [[OPCODE, 34], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LWR',   [[OPCODE, 38], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('LWU',   [[OPCODE, 39], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('SB',    [[OPCODE, 40], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('SC',    [[OPCODE, 56], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('SCD',   [[OPCODE, 60], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('SD',    [[OPCODE, 63], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('SDL',   [[OPCODE, 44], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('SDR',   [[OPCODE, 45], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('SH',    [[OPCODE, 41], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('SW',    [[OPCODE, 43], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('SWL',   [[OPCODE, 42], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
-            self.fit('SWR',   [[OPCODE, 46], BASE, RT, IMMEDIATE],  [RT, IMMEDIATE, BASE])
+            self.fit('LB',    [[OPCODE, 32], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LBU',   [[OPCODE, 36], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LD',    [[OPCODE, 55], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LDL',   [[OPCODE, 26], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LDR',   [[OPCODE, 27], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LH',    [[OPCODE, 33], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LHU',   [[OPCODE, 37], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LL',    [[OPCODE, 48], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LLD',   [[OPCODE, 52], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LW',    [[OPCODE, 35], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LWL',   [[OPCODE, 34], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LWR',   [[OPCODE, 38], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('LWU',   [[OPCODE, 39], BASE, RD, IMMEDIATE],  [RD, IMMEDIATE, BASE])
+            self.fit('SB',    [[OPCODE, 40], BASE, RS, IMMEDIATE],  [RS, IMMEDIATE, BASE])
+            self.fit('SC',    [[OPCODE, 56], BASE, RS, IMMEDIATE],  [RS, IMMEDIATE, BASE])
+            self.fit('SCD',   [[OPCODE, 60], BASE, RS, IMMEDIATE],  [RS, IMMEDIATE, BASE])
+            self.fit('SD',    [[OPCODE, 63], BASE, RS, IMMEDIATE],  [RS, IMMEDIATE, BASE])
+            self.fit('SDL',   [[OPCODE, 44], BASE, RS, IMMEDIATE],  [RS, IMMEDIATE, BASE])
+            self.fit('SDR',   [[OPCODE, 45], BASE, RS, IMMEDIATE],  [RS, IMMEDIATE, BASE])
+            self.fit('SH',    [[OPCODE, 41], BASE, RS, IMMEDIATE],  [RS, IMMEDIATE, BASE])
+            self.fit('SW',    [[OPCODE, 43], BASE, RS, IMMEDIATE],  [RS, IMMEDIATE, BASE])
+            self.fit('SWL',   [[OPCODE, 42], BASE, RS, IMMEDIATE],  [RS, IMMEDIATE, BASE])
+            self.fit('SWR',   [[OPCODE, 46], BASE, RS, IMMEDIATE],  [RS, IMMEDIATE, BASE])
             self.fit('SYNC',  [[OPCODE, 0], 20, [OPCODE, 15]],      [])
 
             # Arithmetic Instructions
             self.fit('ADD',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 32]],  [RD, RS, RT])
-            self.fit('ADDI',    [[OPCODE, 8], RS, RT, IMMEDIATE],            [RT, RS, IMMEDIATE])
-            self.fit('ADDIU',   [[OPCODE, 9], RS, RT, IMMEDIATE],            [RT, RS, IMMEDIATE])
+            self.fit('ADDI',    [[OPCODE, 8], RS, RD, IMMEDIATE],            [RD, RS, IMMEDIATE])
+            self.fit('ADDIU',   [[OPCODE, 9], RS, RD, IMMEDIATE],            [RD, RS, IMMEDIATE])
             self.fit('ADDU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 33]],  [RD, RS, RT])
             self.fit('AND',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 36]],  [RD, RS, RT])
-            self.fit('ANDI',    [[OPCODE, 12], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            self.fit('ANDI',    [[OPCODE, 12], RS, RD, IMMEDIATE],           [RD, RS, IMMEDIATE])
             self.fit('DADD',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 44]],  [RD, RS, RT])
-            self.fit('DADDI',   [[OPCODE, 24], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
-            self.fit('DADDIU',  [[OPCODE, 25], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            self.fit('DADDI',   [[OPCODE, 24], RS, RD, IMMEDIATE],           [RD, RS, IMMEDIATE])
+            self.fit('DADDIU',  [[OPCODE, 25], RS, RD, IMMEDIATE],           [RD, RS, IMMEDIATE])
             self.fit('DADDU',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 45]],  [RD, RS, RT])
             self.fit('DDIV',    [[OPCODE, 0], RS, RT, 10, [OPCODE, 30]],     [RS, RT])
             self.fit('DDIVU',   [[OPCODE, 0], RS, RT, 10, [OPCODE, 31]],     [RS, RT])
@@ -1041,7 +1041,7 @@ class Disassembler:
             self.fit('DSRLV',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 22]],  [RD, RT, RS])
             self.fit('DSUB',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 46]],  [RD, RS, RT])
             self.fit('DSUBU',   [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 47]],  [RD, RS, RT])
-            self.fit('LUI',     [[OPCODE, 15], 5, RT, IMMEDIATE],            [RT, IMMEDIATE])
+            self.fit('LUI',     [[OPCODE, 15], 5, RD, IMMEDIATE],            [RD, IMMEDIATE])
             self.fit('MFHI',    [[OPCODE, 0], 5, 5, RD, 5, [OPCODE, 16]],    [RD])
             self.fit('MFLO',    [[OPCODE, 0], 5, 5, RD, 5, [OPCODE, 18]],    [RD])
             self.fit('MTHI',    [[OPCODE, 0], RS, 15, [OPCODE, 17]],         [RS])
@@ -1050,12 +1050,12 @@ class Disassembler:
             self.fit('MULTU',   [[OPCODE, 0], RS, RT, 10, [OPCODE, 25]],     [RS, RT])
             self.fit('NOR',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 39]],  [RD, RS, RT])
             self.fit('OR',      [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 37]],  [RD, RS, RT])
-            self.fit('ORI',     [[OPCODE, 13], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            self.fit('ORI',     [[OPCODE, 13], RS, RD, IMMEDIATE],           [RD, RS, IMMEDIATE])
             self.fit('SLL',     [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 0]],   [RD, RT, SA])
             self.fit('SLLV',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 4]],   [RD, RT, RS])
             self.fit('SLT',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 42]],  [RD, RS, RT])
-            self.fit('SLTI',    [[OPCODE, 10], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
-            self.fit('SLTIU',   [[OPCODE, 11], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            self.fit('SLTI',    [[OPCODE, 10], RS, RD, IMMEDIATE],           [RD, RS, IMMEDIATE])
+            self.fit('SLTIU',   [[OPCODE, 11], RS, RD, IMMEDIATE],           [RD, RS, IMMEDIATE])
             self.fit('SLTU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 43]],  [RD, RS, RT])
             self.fit('SRA',     [[OPCODE, 0], 5, RT, RD, SA, [OPCODE, 3]],   [RD, RT, SA])
             self.fit('SRAV',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 7]],   [RD, RT, RS])
@@ -1064,7 +1064,7 @@ class Disassembler:
             self.fit('SUB',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 34]],  [RD, RS, RT])
             self.fit('SUBU',    [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 35]],  [RD, RS, RT])
             self.fit('XOR',     [[OPCODE, 0], RS, RT, RD, 5, [OPCODE, 38]],  [RD, RS, RT])
-            self.fit('XORI',    [[OPCODE, 14], RS, RT, IMMEDIATE],           [RT, RS, IMMEDIATE])
+            self.fit('XORI',    [[OPCODE, 14], RS, RD, IMMEDIATE],           [RD, RS, IMMEDIATE])
 
             # Jump and Branch Instructions
             self.fit('BEQ',      [[OPCODE, 4], RS, RT, OFFSET],             [RS, RT, OFFSET])
@@ -1085,8 +1085,8 @@ class Disassembler:
             self.fit('BNE',      [[OPCODE, 5], RS, RT, OFFSET],             [RS, RT, OFFSET])
             self.fit('J',        [[OPCODE, 2], ADDRESS],                    [ADDRESS])
             self.fit('JAL',      [[OPCODE, 3], ADDRESS],                    [ADDRESS])
-            self.fit('JALR',     [[OPCODE, 0], RS, 5, RD, 5, [OPCODE, 9]],  [RD, RS])
-            self.fit('JR',       [[OPCODE, 0], RS, 15, [OPCODE, 8]],        [RS])
+            self.fit('JALR',     [[OPCODE, 0], RS, 5, RT, 5, [OPCODE, 9]],  [RT, RS])
+            self.fit('JR',       [[OPCODE, 0], RT, 15, [OPCODE, 8]],        [RT])
 
             # Special Instructions
             self.fit('BREAK',    [[OPCODE, 0], CODE_20, [OPCODE, 13]],  [CODE_20])
@@ -1108,10 +1108,10 @@ class Disassembler:
 
             # System Control Processor (COP0) Instructions
             self.fit('CACHE',  [[OPCODE, 47], BASE, OP, IMMEDIATE],                     [OP, IMMEDIATE, BASE])
-            self.fit('DMFC0',  [[OPCODE, 16], [EX_OPCODE, 1], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
+            self.fit('DMFC0',  [[OPCODE, 16], [EX_OPCODE, 1], RD, CS, 5, [OPCODE, 0]],  [RD, CS])
             self.fit('DMTC0',  [[OPCODE, 16], [EX_OPCODE, 5], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
             self.fit('ERET',   [[OPCODE, 16], CO, 19, [OPCODE, 24]],                    [])
-            self.fit('MFC0',   [[OPCODE, 16], [EX_OPCODE, 0], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
+            self.fit('MFC0',   [[OPCODE, 16], [EX_OPCODE, 0], RD, CS, 5, [OPCODE, 0]],  [RD, CS])
             self.fit('MTC0',   [[OPCODE, 16], [EX_OPCODE, 4], RT, CS, 5, [OPCODE, 0]],  [RT, CS])
             self.fit('TLBP',   [[OPCODE, 16], CO, 19, [OPCODE, 8]],                     [])
             self.fit('TLBR',   [[OPCODE, 16], CO, 19, [OPCODE, 1]],                     [])
@@ -1167,7 +1167,7 @@ class Disassembler:
             self.fit('CEIL.L.D',   [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 10]],  [FD, FS])
             self.fit('CEIL.W.S',   [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 14]],  [FD, FS])
             self.fit('CEIL.W.D',   [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 14]],  [FD, FS])
-            self.fit('CFC1',       [[OPCODE, 17], [FMT, 2], RT, FS, 11],                [RT, FS])
+            self.fit('CFC1',       [[OPCODE, 17], [FMT, 2], RD, FS, 11],                [RD, FS])
             self.fit('CTC1',       [[OPCODE, 17], [FMT, 6], RT, FS, 11],                [RT, FS])
             self.fit('CVT.D.S',    [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 33]],  [FD, FS])
             self.fit('CVT.D.W',    [[OPCODE, 17], [FMT, 20], 5, FS, FD, [OPCODE, 33]],  [FD, FS])
@@ -1181,7 +1181,7 @@ class Disassembler:
             self.fit('CVT.W.D',    [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 36]],  [FD, FS])
             self.fit('DIV.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 3]],  [FD, FS, FT])
             self.fit('DIV.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 3]],  [FD, FS, FT])
-            self.fit('DMFC1',      [[OPCODE, 17], [FMT, 1], RT, FS, 11],                [RT, FS])
+            self.fit('DMFC1',      [[OPCODE, 17], [FMT, 1], RD, FS, 11],                [RD, FS])
             self.fit('DMTC1',      [[OPCODE, 17], [FMT, 5], RT, FS, 11],                [RT, FS])
             self.fit('FLOOR.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 11]],  [FD, FS])
             self.fit('FLOOR.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 11]],  [FD, FS])
@@ -1189,7 +1189,7 @@ class Disassembler:
             self.fit('FLOOR.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 15]],  [FD, FS])
             self.fit('LDC1',       [[OPCODE, 53], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
             self.fit('LWC1',       [[OPCODE, 49], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
-            self.fit('MFC1',       [[OPCODE, 17], [FMT, 0], RT, FS, 11],                [RT, FS])
+            self.fit('MFC1',       [[OPCODE, 17], [FMT, 0], RD, FS, 11],                [RD, FS])
             self.fit('MOV.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 6]],   [FD, FS])
             self.fit('MOV.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 6]],   [FD, FS])
             self.fit('MTC1',       [[OPCODE, 17], [FMT, 4], RT, FS, 11],                [RT, FS])
@@ -1256,6 +1256,7 @@ class Disassembler:
             self.fit('VMADM', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 13]], [VD, VT, VS, MOD])
             self.fit('VMADN', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 14]], [VD, VT, VS, MOD])
             self.fit('VMADH', [[OPCODE, 18], [CO, 1], MOD, VS, VT, VD, [OPCODE, 15]], [VD, VT, VS, MOD])
+            # [print(i + ':', self.appearances[i]) for i in self.appearances]
             # Unfinished
 
         # So the python DLL doesn't crash when fitting a 2nd time (when user opens more than 1 rom in a session)
@@ -1399,7 +1400,7 @@ class Disassembler:
         address -= (index & 0x3F000000) << 2
         return address
 
-    def decode(self, int_word, index):
+    def decode(self, int_word, index, apply_offsets=False):
         if int_word == 0:
             return 'NOP'
         if decoder:
@@ -1445,6 +1446,11 @@ class Disassembler:
                     inner_value <<= 2
                 if is_address:
                     inner_value = self.solve_address(index, inner_value)
+                if apply_offsets:
+                    if is_address and not self.game_address_mode:
+                        inner_value = self.region_unalign(inner_value, game_offset=True)
+                    elif is_offset and self.game_address_mode:
+                        inner_value = self.region_align(inner_value, game_offset=True)
                 if self.game_address_mode and (is_address or is_offset):
                     inner_value += self.game_offset
                 decode_text = self.immediate_identifier + extend_zeroes(hexi(inner_value), HEX_EXTEND[param_name])
@@ -1468,8 +1474,15 @@ class Disassembler:
             parameters += decode_text
         return mnemonic + parameters
 
-    def encode(self, string, index):
+    def encode(self, string, index, return_object=False):
+        if isinstance(string, dict):
+            new_string = '{} {}'.format(string['mnemonic'], ', '.join([string[self.appearances[string['mnemonic']][i][0]]
+                                                                       for i in range(len(self.appearances[string['mnemonic']]))]))
+            del string
+            string = new_string
         if string in ['', 'N', 'NO'] or string[:3] == 'NOP':
+            if return_object:
+                return 'NOP', {}
             return 0
         punc = string.find(' ')
         if punc < 0:
@@ -1508,6 +1521,13 @@ class Disassembler:
                 string = string[punc + cut:]
                 if len(str_parameters) == len(self.appearances[opcode]):
                     break
+            if return_object:
+                objectie = {}
+                i = 0
+                while i < len(str_parameters):
+                    objectie[self.appearances[opcode][i][0]] = str_parameters[i]
+                    i += 1
+                return opcode, objectie
             int_result = self.identifying_bits[opcode]
             for i in range(len(self.appearances[opcode])):
                 param = str_parameters[i]
@@ -1658,7 +1678,7 @@ class Disassembler:
                 instruction = self.decode(int_word, index + i)
                 if not instruction:
                     return [], 0, 0
-                if instruction[:5] == 'JR RA' and i != -1:
+                if instruction[:5] == 'JR RA' and i < -1:
                     # Skip the delay slot
                     i += 2
                     break
@@ -1678,7 +1698,7 @@ class Disassembler:
             this_function.append(index + i)
             i += 1
             # if only_return_function_end:
-            if instruction[:5] == 'JR RA':
+            if instruction == 'JR RA':
                 break
             # else:
             #     if instruction[:2] == 'JR':
