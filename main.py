@@ -1,6 +1,6 @@
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import simpledialog, filedialog, colorchooser
+from tkinter import simpledialog, filedialog, colorchooser, messagebox
 import os
 from keyboard import is_pressed
 import webbrowser
@@ -15,6 +15,8 @@ CONFIG_FILE = 'rom disassembler.config'
 
 BRANCH_FUNCTIONS = ['BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL', 'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL',
                     'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL', 'BNEZ', 'BNEL', 'BNE', 'BC1F', 'BC1FL', 'BC1T', 'BC1TL']
+
+BRANCH_LIKELIES = ['BEQL', 'BGEZALL', 'BGEZL', 'BGTZL', 'BLEZL', 'BLTZALL', 'BLTZL', 'BNEZ', 'BNEL', 'BC1FL', 'BC1TL']
 
 LOAD_AND_STORE_FUNCTIONS = ['LB', 'LBU', 'LD', 'LDL', 'LDR','LH', 'LHU', 'LL', 'LLD', 'LW', 'LWL',
                             'LWR','LWU','SB', 'SC', 'SCD', 'SD', 'SDL', 'SDR', 'SH', 'SW', 'SWL', 'SWR',
@@ -855,7 +857,7 @@ def apply_hack_changes(ignore_slot = None):
             continue
         is_hex_part = navi < 16
         int_word = int_of_4_byte_aligned_region(disasm.hack_file[file_nav:file_nav+4])
-        decoded = disasm.decode(int_word, navi)
+        decoded = disasm.decode(int_word, navi, apply_offsets=True)
         decode_place = decoded.find(' ')
         inst = split_text[i]
         if decode_place >= 0:
@@ -929,6 +931,11 @@ def apply_hack_changes(ignore_slot = None):
                         if new_sub != orig_sub:
                             # print('new_sub != orig_sub')
                             dont_continue = True
+                        if not messagebox.askyesno(title='Attention', message='Do you wish to offset all reads and writes'
+                                                                              ' to the stack within this function?',
+                                                   icon='warning'):
+                            dont_continue = True
+
                         if not dont_continue:
                             orig_sp = sign_16_bit_value(orig_sp)
                             new_sp = sign_16_bit_value(new_sp)
@@ -1250,6 +1257,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     joined_text = get_text_content(handle)
     split_text = joined_text.split('\n')
 
+    apply_function = apply_hack_changes if hack_function else lambda ignore_slot=None: apply_comment_changes()
+
     cursor, line, column = get_cursor(handle)
     ctrl_held = bool(event.state & 0b100)
     shift_held = bool(event.state & 0b1)
@@ -1265,6 +1274,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                                  handle.mark_set(tk.INSERT, cursor),
                                  highlight_stuff()))
         if up_keysym == 'O' and hack_function:
+            apply_hack_changes()
             optimise_function()
         return
     has_char = bool(event.char) and event.keysym != 'Escape' and not ctrl_held
@@ -1290,8 +1300,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     not_arrows = event.keysym not in ['Left', 'Up', 'Right', 'Down']
     vert_arrows = event.keysym in ['Up', 'Down']
-
-    apply_function = apply_hack_changes if hack_function else lambda ignore_slot=None: apply_comment_changes()
 
     # Cause each modification of text box to snap-shot data in order to undo/redo
     if buffer and ((not (is_undoing or is_redoing) and has_char and not_arrows) or ctrl_d or is_pasting or is_cutting or wipe_line
@@ -1385,7 +1393,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     pasting_newlines = '\n' in clipboard
     paste_text = ''
     lines_diff = 0
-    already_applying = False
 
     if is_copying or is_cutting:
         collected_branch_targets[:] = []
@@ -1607,7 +1614,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             window.clipboard_append(paste_text)
         window.clipboard_clear()
         handle.insert(insertion_place, paste_text)
-        already_applying = True
         if is_pasting:
             window.after(1, lambda: (apply_hack_changes(),
                                      apply_comment_changes(),
@@ -1658,7 +1664,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     # Also validate all code except line currently editing
     if standard_key:
         apply_function(ignore_slot = line - 1)
-        already_applying = True
         if split_text[line - 1] == 'NOP' and hack_function:
             handle.delete(cursor_value(line, 0), cursor_value(line, 3))
         def find_line_chars(text, max_char):
@@ -1705,12 +1710,10 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         if is_deleting:
             # apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
             window.after(0, lambda: apply_function(ignore_slot = (line - 1) if not sel_start_line else None))
-            already_applying = True
         handle.insert(cursor,'\n')
         handle.mark_set(tk.INSERT, cursor)
         if is_backspacing:
             window.after(0, lambda: apply_function(ignore_slot = (line - 1) if not sel_start_line else None))
-            already_applying = True
             # apply_function(ignore_slot = (line - 1) if not sel_start_line else None)
 
     # Make return send the cursor to the end of the next line and validate code
@@ -1721,7 +1724,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         handle.delete(cursor)
         new_cursor, _, __ = modify_cursor(cursor, 1 if not shift_held else -1, 'max', split_text)
         window.after(0, lambda: (apply_function(), handle.mark_set(tk.INSERT, new_cursor)))
-        already_applying = True
 
     cursor, line, column = get_cursor(handle)
     split_text = get_text_content(handle).split('\n')
@@ -1737,7 +1739,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         if not (is_pasting or is_returning):
             handle.insert(selection_start, replace_char)
             window.after(0, lambda: apply_function())
-            already_applying = True
         if is_deleting:
             window.after(0, lambda: handle.mark_set(tk.INSERT, selection_start))
 
@@ -1747,7 +1748,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
 
     if vert_arrows:
         apply_function()
-        already_applying = True
 
     if selection_removable and selection_line_mod and (standard_key or is_cutting):
         def move_to():
@@ -1756,7 +1756,6 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             handle.mark_set(tk.INSERT, temp_cursor)
             apply_function()
 
-        already_applying = True
         window.after(0, move_to)
 
     # The delays are necessary to solve complications for text modified by the key after this function fires
@@ -1764,7 +1763,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     ctrl_held = ctrl_held or ctrl_key
     def loop_until_no_ctrl():
         global ctrl_on_press
-        reset_highlights = lambda: window.after(0, lambda: highlight_stuff(event.widget, skip_moving_cursor=True, ctrl_held=ctrl_on_press))
+        reset_highlights = lambda: window.after(0, lambda: highlight_stuff(event.widget, skip_moving_cursor=True, ctrl_held=False))
         if is_pressed('ctrl+x'):
             reset_highlights()
         elif is_pressed('ctrl+v'):
@@ -1785,7 +1784,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
             window.after(0, lambda: (highlight_stuff(event.widget, ctrl_held=ctrl_held, skip_moving_cursor=True)))
         ctrl_on_press = True
         window.after(200, _loop)
-    elif not ctrl_held or is_cutting:
+    elif not ctrl_held or is_cutting or is_pasting:
         if handle is comments_text_box:
             window.after(0, apply_function)
         window.after(0, lambda: highlight_stuff(event.widget, skip_moving_cursor=True))
@@ -1922,7 +1921,8 @@ def navigate_to(index, center=False, widget=None, region_treatment=False, region
                         new_text = text[:immid_in + 1] + extend_zeroes(hexi(address), 8)
                         disassembly[i] = new_text
             except Exception as e:
-                print(e)
+                # print(e)
+                ''
 
     # Replace disassembled data in the hack file with any errors the user has made
     for i in range(len(hack_disassembled)):
@@ -2957,6 +2957,7 @@ def find_jumps(just_window=False):
         # User attempting to get jumps from the top of the header
         return
     is_in_comments = comment_key in disasm.comments
+    was_in = False
     for display_key in config:
         key_not_in_jumps_displaying = key_not_in_jumps_displaying and display_key[:19] != key
         if not key_not_in_jumps_displaying:
@@ -2966,8 +2967,8 @@ def find_jumps(just_window=False):
                 new_key = key
             if new_key != display_key:
                 del jumps_displaying[display_key]
-                key_not_in_jumps_displaying = True
-                # key = new_key
+                key_not_in_jumps_displaying = was_in = True
+            break
     if is_in_comments:
         key += ' {}'.format(disasm.comments[comment_key])
     if key_not_in_jumps_displaying and jumps:
@@ -2977,7 +2978,7 @@ def find_jumps(just_window=False):
                 jumps[i] += ' ' + disasm.comments[comment_key]
         jumps_displaying[key] = jumps
         save_config()
-        if jumps_window:
+        if jumps_window and not was_in:
             function_list_box.insert(tk.END, key)
 
 
@@ -4669,6 +4670,7 @@ def test32():
     while oldpos < disasm.file_length:
         newpos = disasm.hack_file[oldpos:oldpos+buffer_len].find(term)
         status_text.set('Finding search term ({} instances)... {}%'.format(len(instances), oldpos // percent))
+        status_bar.update()
         if newpos >= 0:
             instances.append(oldpos + newpos)
             oldpos += newpos + len(term)
@@ -4678,127 +4680,262 @@ def test32():
 
 
 def optimise_function():
-    # This is just in testing phase. Such complex, very confuse
-    return
     if not disassembler_loaded():
         return
     m_index = (navigation + get_cursor(hack_file_text_box)[1]) - 1
     _, start, end = disasm.find_jumps(m_index, apply_offsets=False)
-    if start < 0x40 or end >= disasm.file_length:
+    if start < 0x40:
         status_text.set('Attempt to find function bounds failed')
         return
-    func_ints = ints_of_4_byte_aligned_region(disasm.hack_file[start:end+4])
-    _increment = (disasm.game_offset >> 2) if disasm.game_address_mode else 0
-    func = [[disasm.decode(i, (start >> 2) + j), (start >> 2) + j + _increment] for j, i in enumerate(func_ints)]
-    branches = [[i[0], i[1], deci(i[0][i[0].rfind(app_config['immediate_identifier']) + 1:])]
-                for i in func if i[0][:i[0].find(' ')] in BRANCH_FUNCTIONS]
-    func_dict = {}
-    for i in func:
-        func_dict[str(i[1] << 2)] = i[0]
-    jumps = [i for i in func if i[0][:i[0].find(' ')] in JUMP_FUNCTIONS]
-    prev_end_start = func[-2][1] << 2
-    prev_branch_point = 0
-    branches_to = [i[2] for i in branches]
-    slots_freed = 0
-    prev_empty_slot = 0 if func[-1][0] != 'NOP' else (len(func) - 1)
-    ra_load = True if 'LW RA' in func[-1][0] else False
-    sp_modify = True if 'ADDIU SP' in func[-1][0] else False
-    _switch = False
-    # Tidy up the footer's branches
-    for i, ii in enumerate(reversed(func[:-2])):
-        inst, index = ii
-        # func[-2][0] is always 'JR RA'
-        if 'BEQ R0, R0' in inst:
-            branch_to = deci(inst[inst.rfind(app_config['immediate_identifier']) + 1:])
-            # if disasm.game_address_mode:
-            #     branch_to += disasm.game_offset
-            if branch_to == prev_end_start:
-                func[-3 - i][0] = 'NOP'
-                slots_freed += 1
-                for j, b in enumerate(branches):
-                    binst, bindex, b_to = b
-                    if b_to == index << 2:
-                        binst = binst[:-8]
-                        binst += extend_zeroes(hexi(prev_end_start), 8)
-                        f_index = bindex - (start >> 2)
-                        f_index -= _increment
-                        func[f_index][0] = binst
-        elif inst != 'NOP' and 'LW RA' not in inst and 'ADDIU SP' not in inst:
-            _switch = True
-            break
-        elif prev_empty_slot and inst != 'NOP':
-            func[prev_empty_slot][0] = inst
-            func[-3 - i][0] = 'NOP'
-            prev_empty_slot -= 2 if prev_empty_slot == len(func) - 1 else 1
-        if not prev_empty_slot and inst == 'NOP':
-            prev_empty_slot = len(func) - (i + 3)
-        if 'LW RA' in inst:
-            ra_load = True
-        if 'ADDIU SP' in inst:
-            sp_modify = True
-        if ('LW RA' in inst or 'ADDIU SP' in inst and ra_load and sp_modify) or 'SP' in inst:
-            prev_end_start = func[-3 - i][1] << 2
+    _start = start >> 2
+    func = [[disasm.decode(i, j+_start), j+_start]
+            for j, i in enumerate(ints_of_4_byte_aligned_region(disasm.hack_file[start:end+4]))]
 
-    def wipe_reg():
-        if buffer[-1]:
-            buffer.append([])
+    change_map = []
+    scratch = {}
+    pointer_creation = {}
+    anchored = []
+    replacing = {}
+    prev_start = {'': 0}  # So there it no need for global scope
 
-    def get_opcode(inst):
-        if not ' ' in inst:
-            return inst
-        return inst[:inst.find(' ')]
+    def calc_free_slots():
+        count = 0
+        for i in func:
+            word, params = disasm.encode(i[0], i[1], return_object=True)
+            if word == 'NOP':
+                count += 1
+        return count
 
-    buffer = [[]]
-    continuing = 0
+    def dict_append(dict, key, item):
+        if key not in dict:
+            dict[key] = []
+        dict[key].append(item)
 
-    for j, i in enumerate(func):
-        if continuing:
-            continuing -= 1
-            continue
-        inst = i[0]
-        word = get_opcode(inst)
-        if word in ['JALR', 'JAL'] + BRANCH_FUNCTIONS:
-            wipe_reg()
-            continuing = 1
-            continue
-        if 'SP' in inst:
-            wipe_reg()
-            continue
-        if i[1] in branches_to:
-            wipe_reg()
-        words = inst.replace(',', '').replace('(', '').replace(')', '').replace(app_config['immediate_identifier'], '').split(' ')
-        buffer[-1].append([words, i[1]])
+    def reset_scratch(j):
+        for i in ['T' + str(i) for i in range(10)] + ['AT']:
+            scratch[i] = ''
+        scratch['R0'] = 0
+        anchored[:] = []
+        [change_map.append(change) for _ in range(j - prev_start[''])]
+        prev_start[''] = j
+        while pointer_creation:
+            del pointer_creation[list(pointer_creation)[0]]
+        while replacing:
+            del replacing[list(replacing)[0]]
+
+    def next_free_reg():
+        used = []
+        delay_slot = 0
+        i = prev_start['']
+        while i < len(func):
+            word, params = disasm.encode(func[i][0], func[i][1], return_object=True)
+            navi = _start + i
+            if delay_slot:
+                delay_slot -= 1
+                if not delay_slot:
+                    break
+            if str(navi) in disasm.branches_to and i > prev_start['']:
+                break
+            if word in JUMP_FUNCTIONS:
+                delay_slot = 2
+            for param in params:
+                if params[param] in scratch:
+                    if not params[param] in used:
+                        used.append(params[param])
+            i += 1
+        _anchored = [replacing[key] for key in replacing]
+        for i in ['T' + str(i) for i in range(10)] + ['AT']:
+            if i not in used:
+                return i
+        for i in ['T' + str(i) for i in range(10)] + ['AT']:
+            if i not in _anchored and scratch[i] == '':
+                return i
+        for i in ['T' + str(i) for i in range(10)] + ['AT']:
+            if i not in _anchored:
+                return i
+        return 'AT'
+
+    def wipe(dict, key):
+        if key in dict:
+            del dict[key]
+        places = [i for i in replacing if replacing[i] == key]
+        for i in places:
+            del replacing[i]
+
+    def replace(_replace, _with, i):
+        j = i
+        j_delay_slot = 0
+        while j < len(func):
+            j_word, j_params = disasm.encode(func[j][0], func[j][1], return_object=True)
+            navj = _start + j
+            if j_delay_slot:
+                j_delay_slot -= 1
+                if not j_delay_slot:
+                    break
+            if str(navj) in disasm.branches_to:
+                break
+            if j_word in JUMP_FUNCTIONS:
+                j_delay_slot = 2
+            _switch = False
+            for _p in j_params:
+                if j_params[_p] == _replace:
+                    j_params[_p] = _with
+                    _switch = True
+            if _switch:
+                j_params['mnemonic'] = j_word
+                func[j][0] = disasm.decode(disasm.encode(j_params, func[j][1]), func[j][1])
+            j += 1
+
+    nop_count = calc_free_slots()
+    reset_scratch(0)
+    delay_slot = 0
+    change = False
+    i = 0
+    while i < len(func):
+        word, params = disasm.encode(func[i][0], func[i][1], return_object=True)
+        navi = _start + i
+        if delay_slot:
+            delay_slot -= 1
+            if not delay_slot:
+                reset_scratch(i)
+                change = False
+        if word in ['ADDIU', 'ADDI']:
+            if params['RD'] == 'SP':
+                reset_scratch(i)
+                change = False
+        if word in LOAD_AND_STORE_FUNCTIONS:
+            param = 'RS' if 'RS' in params else ('RD' if 'RD' in params else '')
+            if param:
+                if params[param] == 'RA':
+                    reset_scratch(i)
+                    change = False
+        if str(navi) in disasm.branches_to:
+            reset_scratch(i)
+            change = False
+        if word in JUMP_FUNCTIONS:
+            delay_slot = 2
+        switch = False
+        for p in params:
+            if params[p] in replacing:
+                if p == 'RD':
+                    _replace = params[p]
+                    _with = next_free_reg()
+                    replace(_replace, _with, i + 1)
+                # else:
+                params[p] = replacing[params[p]]
+                switch = True
+        if switch:
+            params['mnemonic'] = word
+            func[i][0] = disasm.decode(disasm.encode(params, func[i][1]), func[i][1])
+        if word in LOAD_AND_STORE_FUNCTIONS:
+            _d_in = 'RD' in params
+            if _d_in:
+                _d_in = params['RD'] in scratch
+            _base = params['BASE']
+            if _base in scratch:
+                if scratch[_base] == '':
+                    scratch[_base] = 0
+                pointer = '{} {}'.format(scratch[_base], deci(params['IMMEDIATE'][1:]))
 
 
-    load_instructions = ['LB','LBU','LD','LDL','LDR','LH','LHU','LL','LLD','LW','LWL','LWR','LWU','LWC1','LDC1']
-    store_instructions = ['SB','SC','SCD','SD','SDL','SDR','SH','SW','SWL','SWR','SWC1','SDC1']
+                if scratch[_base] is None and _d_in:
+                    scratch[params['RD']] = None
+                    wipe(pointer_creation, params['RD'])
+                elif _d_in:
+                    existent = ''
+                    for j in scratch:
+                        if scratch[j] == pointer:
+                            existent = j
+                            break
+                    if existent:
+                        replacing[params['RD']] = existent
+                        if params['RD'] in pointer_creation:
+                            for j in pointer_creation[params['RD']]:
+                                func[j][0] = 'NOP'
+                        change = True
+                        func[i][0] = 'NOP'
+                        scratch[params['RD']] = ''
+                        wipe(pointer_creation, params['RD'])
+                    else:
+                        if params['RD'] == params['BASE']:
+                            new_reg = next_free_reg()
+                            replace(params['RD'], new_reg, i + 1)
+                            params['RD'] = new_reg
+                            params['mnemonic'] = word
+                            func[i][0] = disasm.decode(disasm.encode(params, func[i][1]), func[i][1])
+                        scratch[params['RD']] = pointer
+                        dict_append(pointer_creation, params['RD'], i)
 
-    new_func = [i[0] for i in func]
-
-    [print(i) for i in new_func]
-
-    def find_reg(words):
-        asdf = []
-        for i in scratch_registers:
-            if i in words[1:]:
-                asdf.append(i)
-        return asdf
-
-    scratch_registers = ['T' + str(i) for i in range(10)] + ['AT']
-
-    for b in buffer:
-        reg_usage_map = []
-        all_reg_use = {}
-        for r in scratch_registers:
-            all_reg_use[r] = False
-        for words, index in b:
-            inst = words[0]
-            if inst in load_instructions:
-                ''
-            elif inst in store_instructions:
-                ''
-            elif inst == 'LUI':
-                ''
+            elif _d_in:
+                scratch[params['RD']] = None
+                wipe(pointer_creation, params['RD'])
+        elif 'RD' in params:
+            _rd = params['RD']
+            if _rd in scratch and _rd != 'R0':
+                if word == 'LUI':
+                    wipe(pointer_creation, _rd)
+                    scratch[_rd] = deci(params['IMMEDIATE'][1:]) << 16
+                    dict_append(pointer_creation, _rd, i)
+                elif word in ['ADDIU', 'ADDI', 'ORI']:
+                    _rs = params['RS']
+                    if _rs in scratch:
+                        if isinstance(scratch[_rd], str):
+                            scratch[_rd] = 0
+                            wipe(pointer_creation, _rd)
+                        if scratch[_rs] is None:
+                            scratch[_rd] = None
+                            wipe(pointer_creation, _rd)
+                        else:
+                            val = deci(params['IMMEDIATE'][1:])
+                            if word != 'ORI':
+                                val = sign_16_bit_value(val)
+                            if not isinstance(scratch[_rs], str) or scratch[_rs] == '':
+                                if scratch[_rs] == '':
+                                    scratch[_rd] = val
+                                else:
+                                    scratch[_rd] = scratch[_rs] + val
+                                dict_append(pointer_creation, _rd, i)
+                            else:
+                                scratch[_rd] = None
+                                wipe(pointer_creation, _rd)
+                    else:
+                        scratch[_rd] = None
+                        wipe(pointer_creation, _rd)
+                else:
+                    scratch[_rd] = None
+                    wipe(pointer_creation, _rd)
+        i += 1
+    reset_scratch(i)
+    after_nop_count = calc_free_slots()
+    # jr_ra_delay_filled = func[-1][0] != 'NOP'
+    # sp_mod = False
+    # ra_get = False
+    #
+    # i -= 3
+    # while i > 0:
+    #     word, params = disasm.encode(func[i][0], func[i][1], return_object=True)
+    #     if not word in ['NOP'] + BRANCH_FUNCTIONS + JUMP_FUNCTIONS and not jr_ra_delay_filled:
+    #         params['mnemonic'] = word
+    #         func[-1][0] = disasm.decode(disasm.encode(params, func[-1][1]), func[-1][1])
+    #         func[i][0] = 'NOP'
+    #         params = {}
+    #         word = 'NOP'
+    #         jr_ra_delay_filled = True
+    #         change_map[i] = True
+    #         change_map[-1] = True
+    #
+    #     i -= 1
+    def fin():
+        for i in range(len(func)):
+            if change_map[i]:
+                _int = disasm.encode(func[i][0], func[i][1])
+                disasm.split_and_store_bytes(_int, func[i][1])
+        navigate_to(navigation)
+        window.after(300, lambda: status_text.set('{} redundant instructions were removed.'.format(after_nop_count-nop_count)))
+    # The work this function does will be in a race condition with keyboard_events(). keyboard_events() can undo
+    #  the work done by this function in the user's current view due to it encoding what is on screen while this
+    #  work is being done. This is solved by having this code finish last in the race.
+    window.after(5, fin)
 
 
 
