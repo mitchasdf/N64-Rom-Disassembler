@@ -6,17 +6,18 @@ from keyboard import is_pressed
 import webbrowser
 from function_defs import *
 from math import ceil
-from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS, CIC, DOCUMENTATION
+from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS, CIC, DOCUMENTATION, \
+                         BRANCH_FUNCTIONS
 
 # This prevents a bug when first using ctrl to highlight paste space consumption by initialising keyboard's components
 is_pressed('ctrl')
 
 CONFIG_FILE = 'rom disassembler.config'
 
-BRANCH_FUNCTIONS = ['BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL', 'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL',
-                    'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL', 'BNEZ', 'BNEL', 'BNE', 'BC1F', 'BC1FL', 'BC1T', 'BC1TL']
 
-BRANCH_LIKELIES = ['BEQL', 'BGEZALL', 'BGEZL', 'BGTZL', 'BLEZL', 'BLTZALL', 'BLTZL', 'BNEZ', 'BNEL', 'BC1FL', 'BC1TL']
+BRANCH_LIKELIES = ['BEQL', 'BGEZALL', 'BGEZL', 'BGTZL', 'BLEZL', 'BLTZALL', 'BLTZL', 'BNEL', 'BC1FL', 'BC1TL']
+
+FLOAT_BRANCHES = ['BC1F', 'BC1FL', 'BC1T', 'BC1TL']
 
 LOAD_AND_STORE_FUNCTIONS = ['LB', 'LBU', 'LD', 'LDL', 'LDR','LH', 'LHU', 'LL', 'LLD', 'LW', 'LWL',
                             'LWR','LWU','SB', 'SC', 'SCD', 'SD', 'SDL', 'SDR', 'SH', 'SW', 'SWL', 'SWR',
@@ -353,6 +354,13 @@ def change_colours():
     if change_rom_name_button:
         change_rom_name_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg, activeforeground=text_fg)
     highlight_stuff(skip_moving_cursor=True)
+
+
+def wait_ctrl_release(callback):
+    if is_pressed('ctrl'):
+        window.after(20, lambda: wait_ctrl_release(callback))
+    else:
+        callback()
 
 
 def disassembler_loaded():
@@ -774,6 +782,7 @@ def apply_hack_changes(ignore_slot = None):
     if not disassembler_loaded():
         return
 
+    hex_or_bin = app_config['hex_mode'] or app_config['bin_mode']
     targets_lower = [deci(i[:8]) for i in jumps_displaying]
     targets_upper = [deci(i[11:19]) for i in jumps_displaying]
     def find_target_key(target):
@@ -892,7 +901,7 @@ def apply_hack_changes(ignore_slot = None):
                 unmap(decoded_word, navi, int_word)
 
         elif not split_text[i]:
-            disasm.split_and_store_bytes(0, navi)
+            disasm.split_and_store_bytes(0, navi, add_to_changes=True)
             hack_file_text_box.insert(cursor_value(i + 1, 0), 'NOP')
             clear_error(string_key)
             unmap(decoded_word, navi, int_word)
@@ -900,7 +909,7 @@ def apply_hack_changes(ignore_slot = None):
         elif split_text[i] != 'UNKNOWN/NOT AN INSTRUCTION':
             encoded_int = disasm.encode(split_text[i], navi)
             if encoded_int >= 0:
-                disasm.split_and_store_bytes(encoded_int, navi)
+                disasm.split_and_store_bytes(encoded_int, navi, add_to_changes=True)
                 clear_error(string_key)
                 unmap(decoded_word, navi, int_word)
                 if this_word in ['ADDIU', 'ADDI'] and decoded_word in ['ADDIU', 'ADDI']:
@@ -973,7 +982,7 @@ def apply_hack_changes(ignore_slot = None):
                             def encode(new_txt, i):
                                 encoded = disasm.encode(new_txt, i)
                                 if encoded >= 0:
-                                    disasm.split_and_store_bytes(encoded, i)
+                                    disasm.split_and_store_bytes(encoded, i, add_to_changes=True)
                                     return True
                                 else:
                                     user_errors[str(i)] = [encoded, new_txt]
@@ -1565,7 +1574,7 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                                 unmapping.pop()
                                 mapping.pop()
                             else:
-                                disasm.split_and_store_bytes(encoded, j)
+                                disasm.split_and_store_bytes(encoded, j, add_to_changes=True)
                     for dummy in dummy_branch:
                         disasm.unmap(disasm.branches_to, dummy, key)
                 for target, address in unmapping:
@@ -1577,9 +1586,9 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
                 collected_branch_targets[:] = []
                 collected_branches[:] = []
             if errs:
-                window.after(50, lambda: status_text.set(
+                wait_ctrl_release(lambda: status_text.set(
                     'Upon modifying branches, there {} {} {} outside of your current view. '
-                    'To find them, attempt to save.'.format(
+                    'Ctrl+S to look them up.'.format(
                         'was' if errs == 1 else 'were',
                         errs,
                         'error' if errs == 1 else 'errors'
@@ -1653,7 +1662,8 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
         # print(get_text_content(hack_file_text_box))
         for i in to_fix:
             navi = i << 2
-            disasm.split_and_store_bytes(int_of_4_byte_aligned_region(disasm.base_file[navi:navi+4]), i)
+            disasm.split_and_store_bytes(int_of_4_byte_aligned_region(disasm.base_file[navi:navi+4]), i,
+                                         add_to_changes=not bin_hex)
         navigate_to(navigation)
         return
 
@@ -2107,8 +2117,7 @@ def save_changes_to_file(save_as=False):
     message = 'Rom Saved.'
     if app_config['calc_crc'][disasm.hack_file_name]:
         message += checksum_text
-    status_text.set(message)
-    window.update()
+    wait_ctrl_release(lambda: status_text.set(message))
     return True
 
 
@@ -4506,31 +4515,13 @@ def float_to_hex_converter():
 
 
 def generate_live_patch_script():
-    out_script = ''
-    i = 0x1000
-    percent = disasm.file_length // 100
-    while i < disasm.file_length:
-        cont = True
-        if not i % percent:
-            status_text.set('Scanning changes: {}%'.format(i // percent))
-            status_bar.update()
-        for j in range(4):
-            if disasm.base_file[i+j] != disasm.hack_file[i+j]:
-                cont = False
-                break
-        if not cont:
-            address = disasm.region_align(i) + disasm.game_offset
-            val = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
-            address, val = extend_zeroes(hexi(address), 8), extend_zeroes(hexi(val), 8)
-            out_script += '\n'
-            if str(i >> 2) in disasm.comments:
-                out_script += '//' + disasm.comments[str(i >> 2)] + '\n'
-            out_script += 'mem.u32[0x{}] = 0x{};'.format(address, val)
-            decoded = disasm.decode(deci(val), i >> 2)
-            if not decoded:
-                decoded = 'NOP'
-            out_script += ' //{}\n'.format(decoded)
-        i += 4
+    if not disassembler_loaded():
+        return
+    if not disasm.changes_made_during_session:
+        wait_ctrl_release(lambda: status_text.set('You have made no changes this session to apply a patch for.'))
+        return
+    out_script = '\n'
+
     if app_config['script_output_dir'] == working_dir:
         out_dir = filedialog.askdirectory(title='Target your scripts dir within PJ64d')
         if not out_dir:
@@ -4541,9 +4532,21 @@ def generate_live_patch_script():
     else:
         out_dir = app_config['script_output_dir']
     file_path = out_dir + disasm.hack_file_name[:disasm.hack_file_name.rfind('.')] + ' patch.js'
+
+    for i in disasm.changes_made_during_session:
+        i <<= 2
+        address = disasm.region_align(i) + disasm.game_offset
+        address = extend_zeroes(hexi(address), 8)
+        val = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
+        decoded = disasm.decode(val, i >> 2, apply_offsets=True)
+        out_script += 'mem.u32[0x{}] = 0x{};\n'.format(address, val)
+        out_script += 'console.log(\'Wrote to 0x{}: {}\');\n\n'.format(address, decoded)
+    out_script += 'console.log(\'\\nApplied patch - script will now terminate.\');\n'
     with open(file_path, 'w') as file:
         file.write(out_script)
-    status_text.set('Wrote patch script. Use by starting script. It will stop automatically.')
+    wait_ctrl_release(lambda: status_text.set('Wrote patch script to scripts dir. '
+                                              'Apply patch by running script during emulation.'))
+
 
 
 def decode_mio0(index, thisone=0, max=0):
@@ -4682,12 +4685,13 @@ def test32():
 def optimise_function():
     if not disassembler_loaded():
         return
-    m_index = (navigation + get_cursor(hack_file_text_box)[1]) - 1
-    _, start, end = disasm.find_jumps(m_index, apply_offsets=False)
+    m_index = get_cursor(hack_file_text_box)[1] - 1
+    _, start, end = disasm.find_jumps(navigation + m_index, apply_offsets=False)
     if start < 0x40:
-        status_text.set('Attempt to find function bounds failed')
+        wait_ctrl_release(lambda: status_text.set('Attempt to find function bounds failed'))
         return
     _start = start >> 2
+    m_index += navigation - _start
     func = [[disasm.decode(i, j+_start), j+_start]
             for j, i in enumerate(ints_of_4_byte_aligned_region(disasm.hack_file[start:end+4]))]
 
@@ -4821,7 +4825,6 @@ def optimise_function():
                     _replace = params[p]
                     _with = next_free_reg()
                     replace(_replace, _with, i + 1)
-                # else:
                 params[p] = replacing[params[p]]
                 switch = True
         if switch:
@@ -4836,8 +4839,6 @@ def optimise_function():
                 if scratch[_base] == '':
                     scratch[_base] = 0
                 pointer = '{} {}'.format(scratch[_base], deci(params['IMMEDIATE'][1:]))
-
-
                 if scratch[_base] is None and _d_in:
                     scratch[params['RD']] = None
                     wipe(pointer_creation, params['RD'])
@@ -4907,6 +4908,7 @@ def optimise_function():
         i += 1
     reset_scratch(i)
     after_nop_count = calc_free_slots()
+
     # jr_ra_delay_filled = func[-1][0] != 'NOP'
     # sp_mod = False
     # ra_get = False
@@ -4929,9 +4931,173 @@ def optimise_function():
         for i in range(len(func)):
             if change_map[i]:
                 _int = disasm.encode(func[i][0], func[i][1])
-                disasm.split_and_store_bytes(_int, func[i][1])
+                disasm.split_and_store_bytes(_int, func[i][1], add_to_changes=True)
         navigate_to(navigation)
-        window.after(300, lambda: status_text.set('{} redundant instructions were removed.'.format(after_nop_count-nop_count)))
+        if messagebox.askyesno('', 'Do you wish to arrange all NOPs around your cursor location?'):
+            get_addr = lambda word: deci(word[word.find(app_config['immediate_identifier']) + 1:])
+            next_nop = (len(func) - 1) if func[-1][0] == 'NOP' else None
+            branch_end = func[-2][1]
+            imm = app_config['immediate_identifier']
+            deleting = True
+            prev_instruction = False
+            prev_float_branch = False
+            i = len(func) - 3
+            inc = disasm.game_offset if disasm.game_address_mode else 0
+            reversal = False
+            def swap_comments(i, j):
+                comm_i = comm_j = ''
+                if str(i) in disasm.comments:
+                    comm_i = disasm.comments[str(i)]
+                    del disasm.comments[str(i)]
+                if str(j) in disasm.comments:
+                    comm_j = disasm.comments[str(j)]
+                    del disasm.comments[str(j)]
+                if comm_i:
+                    disasm.comments[str(j)] = comm_i
+                if comm_j:
+                    disasm.comments[str(i)] = comm_j
+
+            # Group all NOPs toward the top of the function
+            while i >= 0:
+                word = func[i][0]
+                adding = -2 if next_nop == len(func) - 1 else -1
+                addr = func[i][1]
+                next_word = func[i - 1][0]
+                if not deleting and not reversal:
+                    if i == 1:
+                        if not next_nop:
+                            break
+                        reversal = True
+                        i += 1
+                        next_nop += 1
+                        continue
+                if reversal and (i == m_index or next_nop == len(func) - 2):
+                    break
+                if not word == 'NOP' or reversal:
+                    b_or_j = word[:word.find(' ')] in BRANCH_FUNCTIONS + JUMP_FUNCTIONS
+                    if next_word[:next_word.find(' ')] in BRANCH_FUNCTIONS + JUMP_FUNCTIONS and \
+                            'BEQ R0, R0' not in next_word:
+                        deleting = False
+                    if 'BEQ R0, R0' in word and deleting and not reversal:
+                        # Remove redundant branches at the bottom
+                        b_addr = get_addr(word)
+                        if disasm.game_address_mode:
+                            b_addr -= disasm.game_offset
+                        b_addr >>= 2
+                        if not b_addr == branch_end:
+                            deleting = False
+                            # Don't increment i
+                            continue
+                        if str(addr) in disasm.branches_to:
+                            branches = disasm.branches_to[str(addr)].copy()
+                            for ind in branches:
+                                _int = int_of_4_byte_aligned_region(disasm.hack_file[ind<<2:(ind<<2)+4])
+                                this_word = disasm.decode(_int, ind)
+                                disasm.unmap(disasm.branches_to, ind, str(addr))
+                                disasm.map(disasm.branches_to, ind, str(branch_end))
+                                newval = branch_end << 2
+                                if disasm.game_address_mode:
+                                    newval += disasm.game_offset
+                                this_word = this_word[:this_word.find(imm)+1] + extend_zeroes(hexi(newval), 8)
+                                _int = disasm.encode(this_word, ind)
+                                disasm.split_and_store_bytes(_int, ind, add_to_changes = True)
+                                for l in range(len(func)):
+                                    l_word, l_index = func[l]
+                                    if l_index == ind:
+                                        func[l][0] = l_word[:l_word.find(imm)] + this_word[this_word.find(imm):]
+                        disasm.unmap(disasm.branches_to, func[i][1], str(b_addr))
+                        disasm.split_and_store_bytes(0, func[i][1], add_to_changes = True)
+                        func[i][0] = 'NOP'
+
+                        i -= 1
+                        continue
+                    elif b_or_j or ('RA' not in word and 'SP' not in word and 'V0' not in word and 'V1' not in word):
+                        deleting = False
+
+                    if next_nop:
+                        # print(extend_zeroes(hexi((addr << 2) + inc), 8), word)
+                        # print('i:',i,'','next_nop:',next_nop)
+                        if b_or_j and not word[:word.find(' ')] in BRANCH_LIKELIES and not prev_instruction:
+                            if word[:word.find(' ')] in BRANCH_FUNCTIONS:
+                                # Convert the branch into a branch likely
+                                _word, _params = disasm.encode(word, addr, return_object=True)
+                                _params['mnemonic'] = _word + 'L'
+                                _int = disasm.encode(_params, addr)
+                                word = func[i][0] = disasm.decode(_int, addr)
+                                disasm.split_and_store_bytes(_int, addr, add_to_changes=True)
+                            else:
+                                # To maintain the delay slot for all instructions that require one
+                                next_nop -= 1
+                        if prev_float_branch and word[:2] == 'C.':
+                            # Float comparisons require 1 instruction between the float branch and itself
+                            next_nop -= 1
+
+                        if next_nop > i:
+                            if reversal:
+                                word = func[next_nop][0]
+                            if word[:word.find(' ')] in BRANCH_FUNCTIONS + ['J', 'JAL']:
+                                targ = deci(word[word.find(imm) + 1:])
+                                if disasm.game_address_mode:
+                                    targ -= disasm.game_offset
+                                targ >>= 2
+                                ind_1, ind_2 = (i, next_nop) if not reversal else (next_nop, i)
+                                dictionary = disasm.branches_to if not word[:word.find(' ')] in ['J', 'JAL'] else disasm.jumps_to
+                                disasm.unmap(dictionary, func[ind_1][1], str(targ))
+                                disasm.map(dictionary, func[ind_2][1], str(targ))
+                            _addr = addr if not reversal else func[next_nop][1]
+                            if str(_addr) in disasm.branches_to:
+                                for f, fn in enumerate(func):
+                                    f_word, f_index = fn
+                                    f_word, f_params = disasm.encode(f_word, f_index, return_object=True)
+                                    if f_word in BRANCH_FUNCTIONS:
+                                        f_targ = (deci(f_params['OFFSET'][1:]) - inc) >> 2
+                                        if f_targ == _addr:
+                                            disasm.unmap(disasm.branches_to, f_index, str(f_targ))
+                                            new_targ = func[next_nop][1] if not reversal else func[i][1]
+                                            f_params['mnemonic'] = f_word
+                                            f_params['OFFSET'] = imm + extend_zeroes(hexi((new_targ << 2) + inc), 8)
+                                            func[f][0] = disasm.decode(disasm.encode(f_params, f_index), f_index)
+                                            disasm.map(disasm.branches_to, f_index, str(new_targ))
+                            # Maintain which instruction comments were aligned to
+                            swap_comments(func[i][1], func[next_nop][1])
+                            if not reversal:
+                                func[next_nop][0] = word
+                                func[i][0] = 'NOP'
+                                next_nop += adding
+                                if adding == -1:
+                                    branch_end -= 1
+                            else:
+                                func[i][0] = func[next_nop][0]
+                                func[next_nop][0] = 'NOP'
+                        else:
+                            next_nop = None
+                        # print(func[i][0], '\n')
+
+                    prev_instruction = True
+                    if word[:word.find(' ')] in FLOAT_BRANCHES:
+                        prev_float_branch = True
+                    else:
+                        prev_float_branch = False
+
+                elif not reversal:
+                    prev_instruction = False
+                    if not next_nop:
+                        next_nop = i
+                if reversal:
+
+                    i += 1
+                    next_nop += 1
+                else:
+                    i -= 1
+
+            for word, i in func:
+                _int = disasm.encode(word, i)
+                if _int >= 0:
+                    disasm.split_and_store_bytes(_int, i)
+                else:
+                    user_errors[str(i)] = word
+            # print('---------------------')
+            navigate_to(navigation)
     # The work this function does will be in a race condition with keyboard_events(). keyboard_events() can undo
     #  the work done by this function in the user's current view due to it encoding what is on screen while this
     #  work is being done. This is solved by having this code finish last in the race.
@@ -4999,7 +5165,7 @@ tools_menu = tk.Menu(menu_bar, tearoff=0)
 tools_menu.add_command(label='Float <--> Hex', command=float_to_hex_converter)
 tools_menu.add_command(label='Generate script for batch of addresses', command=generate_script)
 # tools_menu.add_separator()
-# tools_menu.add_command(label='Generate run-time patch script for PJ64D', command=generate_live_patch_script)
+tools_menu.add_command(label='Generate runtime patch script for PJ64D (Ctrl+P)', command=generate_live_patch_script)
 tools_menu.add_separator()
 tools_menu.add_command(label='Re-map jumps', command=remap_jumps)
 # tools_menu.add_separator()
@@ -5062,6 +5228,8 @@ window.bind('<F7>', lambda e: toggle_hex_space())
 window.bind('<F8>', lambda e: toggle_bin_mode())
 window.bind('<Control-s>', lambda e: save_changes_to_file())
 window.bind('<Control-S>', lambda e: save_changes_to_file())
+window.bind('<Control-p>', lambda e: generate_live_patch_script())
+window.bind('<Control-P>', lambda e: generate_live_patch_script())
 window.bind('<MouseWheel>', scroll_callback)
 hack_file_text_box.bind('<Control-g>', lambda e: find_jumps())
 hack_file_text_box.bind('<Control-G>', lambda e: find_jumps())
@@ -5154,6 +5322,8 @@ change_colours()
 if app_config['open_roms_automatically'] and app_config['previous_base_opened'] and app_config['previous_hack_opened']:
     if exists(app_config['previous_base_opened']) and exists(app_config['previous_hack_opened']):
         window.after(1, open_files)
+
+# window.after(600, lambda: (navigate_to(0x000BA8B0 >> 2, center=True), hack_file_text_box.focus_force()))
 
 window.resizable(False, False)
 window.mainloop()
