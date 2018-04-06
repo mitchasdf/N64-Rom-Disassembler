@@ -213,9 +213,12 @@ REGISTERS = {
     'VECTOR': ['V' + extend_zeroes(str(i), 2) for i in range(32)]
 }
 
+BRANCH_FUNCTIONS = ['BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL', 'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL',
+                    'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL', 'BNEL', 'BNE', 'BC1F', 'BC1FL', 'BC1T', 'BC1TL']
+
 CODES_USING_ADDRESSES = ['BC1F', 'BC1FL', 'BC1T', 'BC1TL', 'BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL',
                          'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL', 'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL',
-                         'BNEZ', 'BNEL', 'BNE', 'J', 'JAL']
+                         'BNEL', 'BNE', 'J', 'JAL']
 
 SHWIFTY_INSTRUCTIONS = ['DSLL', 'DSLL32', 'DSRA', 'DSRA32', 'DSRL', 'DSRL32', 'SLL', 'SRA', 'SRL']
 
@@ -444,7 +447,6 @@ DOCUMENTATION = {
     'BLTZAL': 'Branch On Less Than Zero And Link',
     'BLTZALL': 'Branch On Less Than Zero And Link Likely',
     'BLTZL': 'Branch On Less Than Zero Likely',
-    'BNEZ': 'Branch On Not Equal To Zero',
     'BNEL': 'Branch On Not Equal Likely',
     'BNE': 'Branch On Not Equal',
     'J': 'Jump',
@@ -655,7 +657,6 @@ DOC_SYNTAX = {
     'BLTZAL': '',
     'BLTZALL': '',
     'BLTZL': '',
-    'BNEZ': '',
     'BNEL': '',
     'BNE': '',
     'J': '',
@@ -924,6 +925,7 @@ class Disassembler:
         self.encodes = {}
         self.appearances = {}
         self.identifying_bits = {}
+        self.changes_made_during_session = []
         # stack pointer reaches 12078 with the current amount of fitted instructions
         # each stacked layer is 66 long
         # self.opcode_matrix = [0] * (12078 + 66)
@@ -1581,11 +1583,94 @@ class Disassembler:
             return -2
         return int_result
 
-    def split_and_store_bytes(self, int_word, index):
+    def split_and_store_bytes(self, int_word, index, add_to_changes=False):
         ints = get_8_bit_ints_from_32_bit_int(int_word)
+        changed_already = index in self.changes_made_during_session
+        if add_to_changes:
+            if not changed_already:
+                self.changes_made_during_session.append(index)
+        else:
+            if changed_already:
+                self.changes_made_during_session.pop(self.changes_made_during_session.index(index))
         index <<= 2
         for i in range(4):
             self.hack_file[index + i] = ints[i]
+
+    def complete_swap(self, i, j, func, start):
+        i_int = int_of_4_byte_aligned_region(self.hack_file[i:i+4])
+        j_int = int_of_4_byte_aligned_region(self.hack_file[j:j+4])
+        i_decode = self.decode(i_int, i >> 2)
+        j_decode = self.decode(j_int, j >> 2)
+        i_word, i_params = self.encode(i_decode, i >> 2, return_object=True)
+        j_word, j_params = self.encode(j_decode, j >> 2, return_object=True)
+        JUMP = ['J', 'JAL']
+
+        def map_func(word, params, index, proc):
+            dictionary, p = {}, ''
+            if word in JUMP:
+                dictionary = self.jumps_to
+                p = 'ADDRESS'
+            elif word in BRANCH_FUNCTIONS:
+                dictionary = self.branches_to
+                p = 'OFFSET'
+            if p:
+                address = index >> 2
+                _int = deci(params[p][1:])
+                if self.game_address_mode:
+                    _int -= self.game_offset
+                target = str(_int >> 2)
+                proc(dictionary, address, target)
+
+        def fix_func(func, dif, compare):
+            imm = self.immediate_identifier
+            i = 0
+            changes = []
+            for word, index in func:
+                if word[:word.find(' ')] in BRANCH_FUNCTIONS:
+                    imm_i = word.find(imm)
+                    first_part = word[:imm_i + 1]
+                    targ = deci(word[imm_i + 1:])
+                    new_part = extend_zeroes(hexi(targ + dif), 8)
+                    if self.game_address_mode:
+                        targ -= self.game_offset
+                    _targ = targ + dif
+                    if str(targ >> 2) == compare:
+                        change = {
+                            'index': index,
+                            'old_targ': str(targ >> 2),
+                            'new_targ': str(_targ >> 2),
+                            'i': i,
+                            'i_old_text': func[i][0],
+                            'i_new_text': first_part + new_part
+                        }
+                        changes.append(change)
+                        # self.unmap(self.branches_to, index, str(targ >> 2))
+                        # func[i][0] = first_part + new_part
+                        # self.map(self.branches_to, index, str(_targ >> 2))
+                i += 1
+            return changes
+
+        map_func(i_word, i_params, i, self.unmap)
+        map_func(j_word, j_params, j, self.unmap)
+        diff = j - i
+        # func_i = (i >> 2) - start
+        # func_j = (j >> 2) - start
+        i_key = str(i >> 2)
+        j_key = str(j >> 2)
+        changes = []
+        i_in = i_key in self.branches_to
+        if i_in:
+            changes += fix_func(func, diff, i_key)
+        j_in = j_key in self.branches_to
+        if j_in:
+            changes += fix_func(func, -diff, j_key)
+        map_func(i_word, i_params, j, self.map)
+        map_func(j_word, j_params, i, self.map)
+        i_int = self.encode(i_decode, j >> 2)
+        j_int = self.encode(j_decode, i >> 2)
+        self.split_and_store_bytes(i_int, j >> 2, add_to_changes=True)
+        self.split_and_store_bytes(j_int, i >> 2, add_to_changes=True)
+        return changes
 
     def map_jumps(self, text_box, skip_loading=False, cut=1000):
         if not skip_loading:
@@ -1727,21 +1812,29 @@ class Disassembler:
     def unmap(self, dict, address, target):
         unmapped_target = False
         unmapped_address = False
+        # print('\nUnmap', extend_zeroes(hexi((address << 2) + self.game_offset), 8))
+        # print('target in dict:',target in dict)
+        # addr = extend_zeroes(hexi((int(target) << 2) + self.game_offset), 8)
         if target in dict:
             try:
                 place = dict[target].index(address)
                 dict[target].pop(place)
                 unmapped_address = True
+                # print('unmapped', addr)
                 if not dict[target]:
                     del dict[target]
                     unmapped_target = True
             except:
+                # print(addr, 'not indexed in dict[target]')
                 ''
         return unmapped_target, unmapped_address
 
     def map(self, dict, address, target):
         mapped_target = False
         mapped_address = False
+        # print('\nMap', extend_zeroes(hexi((address << 2) + self.game_offset), 8))
+        # print('target in dict:',target in dict)
+        # addr = extend_zeroes(hexi((int(target) << 2) + self.game_offset), 8)
         if not target in dict:
             dict[target] = []
             mapped_target = True
@@ -1752,6 +1845,7 @@ class Disassembler:
                     i += 1
                     break
                 i += 1
+            # print('mapped', addr)
             dict[target].insert(i, address)
             mapped_address = True
         return mapped_target, mapped_address
