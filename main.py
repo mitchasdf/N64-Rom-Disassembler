@@ -1645,25 +1645,64 @@ def keyboard_events(handle, max_char, event, buffer = None, hack_function = Fals
     # The strange way I have gone about this is so that jumps and branches are automatically mapped or unmapped by
     #   apply_hack_changes(), and also to account for both hex and assembly mode.
     if restore_original:
-        base_text = get_text_content(base_file_text_box).split('\n')
-        start = line if not sel_start_line else sel_start_line
-        end = line if not sel_start_line else sel_end_line
-        curs_1 = cursor_value(start, 0)
-        curs_2 = cursor_value(end, len(split_text[end - 1]))
-        replace_text = base_text[start-1:end]
-        to_fix = []
-        for i in range(len(replace_text)):
-            if replace_text[i] == 'UNKNOWN/NOT AN INSTRUCTION':
-                to_fix.append((start - 1) + i + navigation)
-                replace_text[i] = 'NOP'
-        handle.delete(curs_1, curs_2)
-        handle.insert(curs_1, '\n'.join(replace_text))
-        apply_hack_changes()
-        # print(get_text_content(hack_file_text_box))
-        for i in to_fix:
-            navi = i << 2
-            disasm.split_and_store_bytes(int_of_4_byte_aligned_region(disasm.base_file[navi:navi+4]), i,
-                                         add_to_changes=not bin_hex)
+        if shift_held:
+            # Restore the whole function
+            _, start, end = disasm.find_jumps(navigation + line, apply_offsets=False)
+            end += 4
+            _start = start >> 2
+            inc = disasm.game_offset if disasm.game_address_mode else 0
+
+            def task(func, map_func):
+                for i in range(len(func)):
+                    index = i + _start
+                    instr = func[i]
+                    word, params = disasm.encode(instr, index, return_object=True)
+                    targ = 0
+                    dictionary = None
+                    if word in BRANCH_FUNCTIONS:
+                        targ = deci(params['OFFSET'][1:])
+                        dictionary = disasm.branches_to
+                    if word in ['J', 'JAL']:
+                        targ = deci(params['ADDRESS'][1:])
+                        dictionary = disasm.jumps_to
+                    if targ:
+                        targ = (targ - inc) >> 2
+                        map_func(dictionary, index, str(targ))
+                    if map_func == disasm.map:
+                        _int = disasm.encode(instr, index)
+                        disasm.split_and_store_bytes(_int, index, add_to_changes=True)
+
+            ints = ints_of_4_byte_aligned_region(disasm.hack_file[start:end])
+            func = [disasm.decode(ints[i], i + _start) for i in range(len(ints))]
+
+            task(func, disasm.unmap)
+
+
+            ints = ints_of_4_byte_aligned_region(disasm.base_file[start:end])
+            func = [disasm.decode(ints[i], i + _start) for i in range(len(ints))]
+
+            task(func, disasm.map)
+
+        else:
+            base_text = get_text_content(base_file_text_box).split('\n')
+            start = line if not sel_start_line else sel_start_line
+            end = line if not sel_start_line else sel_end_line
+            curs_1 = cursor_value(start, 0)
+            curs_2 = cursor_value(end, len(split_text[end - 1]))
+            replace_text = base_text[start-1:end]
+            to_fix = []
+            for i in range(len(replace_text)):
+                if replace_text[i] == 'UNKNOWN/NOT AN INSTRUCTION':
+                    to_fix.append((start - 1) + i + navigation)
+                    replace_text[i] = 'NOP'
+            handle.delete(curs_1, curs_2)
+            handle.insert(curs_1, '\n'.join(replace_text))
+            apply_hack_changes()
+            # print(get_text_content(hack_file_text_box))
+            for i in to_fix:
+                navi = i << 2
+                disasm.split_and_store_bytes(int_of_4_byte_aligned_region(disasm.base_file[navi:navi+4]), i,
+                                             add_to_changes=not bin_hex)
         navigate_to(navigation)
         return
 
@@ -4909,24 +4948,6 @@ def optimise_function():
     reset_scratch(i)
     after_nop_count = calc_free_slots()
 
-    # jr_ra_delay_filled = func[-1][0] != 'NOP'
-    # sp_mod = False
-    # ra_get = False
-    #
-    # i -= 3
-    # while i > 0:
-    #     word, params = disasm.encode(func[i][0], func[i][1], return_object=True)
-    #     if not word in ['NOP'] + BRANCH_FUNCTIONS + JUMP_FUNCTIONS and not jr_ra_delay_filled:
-    #         params['mnemonic'] = word
-    #         func[-1][0] = disasm.decode(disasm.encode(params, func[-1][1]), func[-1][1])
-    #         func[i][0] = 'NOP'
-    #         params = {}
-    #         word = 'NOP'
-    #         jr_ra_delay_filled = True
-    #         change_map[i] = True
-    #         change_map[-1] = True
-    #
-    #     i -= 1
     def fin():
         for i in range(len(func)):
             if change_map[i]:
@@ -4941,6 +4962,7 @@ def optimise_function():
             deleting = True
             prev_instruction = False
             prev_float_branch = False
+            m_func_index = [True if i == m_index else False for i in range(len(func))]
             i = len(func) - 3
             inc = disasm.game_offset if disasm.game_address_mode else 0
             reversal = False
@@ -4956,8 +4978,12 @@ def optimise_function():
                     disasm.comments[str(j)] = comm_i
                 if comm_j:
                     disasm.comments[str(i)] = comm_j
+            def swap_m_index(i, j):
+                m_i, m_j = m_func_index[i], m_func_index[j]
+                m_func_index[i] = m_j
+                m_func_index[j] = m_i
 
-            # Group all NOPs toward the top of the function
+            # Group all NOPs toward the top of the function, then back to the cursor location
             while i >= 0:
                 word = func[i][0]
                 adding = -2 if next_nop == len(func) - 1 else -1
@@ -4971,7 +4997,7 @@ def optimise_function():
                         i += 1
                         next_nop += 1
                         continue
-                if reversal and (i == m_index or next_nop == len(func) - 2):
+                if reversal and next_nop == len(func) - 2:
                     break
                 if not word == 'NOP' or reversal:
                     b_or_j = word[:word.find(' ')] in BRANCH_FUNCTIONS + JUMP_FUNCTIONS
@@ -5049,6 +5075,7 @@ def optimise_function():
                                             disasm.map(disasm.branches_to, f_index, str(new_targ))
                             # Maintain which instruction comments were aligned to
                             swap_comments(func[i][1], func[next_nop][1])
+                            swap_m_index(i, next_nop)
                             if not reversal:
                                 func[next_nop][0] = word
                                 func[i][0] = 'NOP'
@@ -5073,7 +5100,8 @@ def optimise_function():
                     if not next_nop:
                         next_nop = i
                 if reversal:
-
+                    if m_func_index[i]:
+                        break
                     i += 1
                     next_nop += 1
                 else:
