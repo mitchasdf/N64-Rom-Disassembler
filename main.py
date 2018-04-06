@@ -5017,19 +5017,8 @@ def optimise_function():
                     if next_nop:
                         # print(extend_zeroes(hexi((addr << 2) + inc), 8), word)
                         # print('i:',i,'','next_nop:',next_nop)
-                        if b_or_j and not word[:word.find(' ')] in BRANCH_LIKELIES and not prev_instruction:
-                            if word[:word.find(' ')] in BRANCH_FUNCTIONS:
-                                # Convert the branch into a branch likely
-                                _word, _params = disasm.encode(word, addr, return_object=True)
-                                _params['mnemonic'] = _word + 'L'
-                                _int = disasm.encode(_params, addr)
-                                word = func[i][0] = disasm.decode(_int, addr)
-                                disasm.split_and_store_bytes(_int, addr, add_to_changes=True)
-                            else:
-                                # To maintain the delay slot for all instructions that require one
-                                next_nop -= 1
-                        if prev_float_branch and word[:2] == 'C.':
-                            # Float comparisons require 1 instruction between the float branch and itself
+                        if (b_or_j and not prev_instruction) or (prev_float_branch and word[:2] == 'C.'):
+                            # To maintain the delay slot for all instructions that require one
                             next_nop -= 1
 
                         if next_nop > i:
