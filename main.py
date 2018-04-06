@@ -360,7 +360,7 @@ def wait_ctrl_release(callback):
     if is_pressed('ctrl'):
         window.after(20, lambda: wait_ctrl_release(callback))
     else:
-        callback()
+        window.after(100, callback)
 
 
 def disassembler_loaded():
@@ -4578,7 +4578,7 @@ def generate_live_patch_script():
         address = extend_zeroes(hexi(address), 8)
         val = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
         decoded = disasm.decode(val, i >> 2, apply_offsets=True)
-        out_script += 'mem.u32[0x{}] = 0x{};\n'.format(address, val)
+        out_script += 'mem.u32[0x{}] = 0x{};\n'.format(address, extend_zeroes(hexi(val), 8))
         out_script += 'console.log(\'Wrote to 0x{}: {}\');\n\n'.format(address, decoded)
     out_script += 'console.log(\'\\nApplied patch - script will now terminate.\');\n'
     with open(file_path, 'w') as file:
@@ -5075,6 +5075,7 @@ def optimise_function():
                                             disasm.map(disasm.branches_to, f_index, str(new_targ))
                             # Maintain which instruction comments were aligned to
                             swap_comments(func[i][1], func[next_nop][1])
+                            # Maintain where the cursor location was before everything was compressed
                             swap_m_index(i, next_nop)
                             if not reversal:
                                 func[next_nop][0] = word
@@ -5110,7 +5111,7 @@ def optimise_function():
             for word, i in func:
                 _int = disasm.encode(word, i)
                 if _int >= 0:
-                    disasm.split_and_store_bytes(_int, i)
+                    disasm.split_and_store_bytes(_int, i, add_to_changes=True)
                 else:
                     user_errors[str(i)] = word
             # print('---------------------')
