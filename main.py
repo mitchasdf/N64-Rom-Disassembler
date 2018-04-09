@@ -7,7 +7,7 @@ import webbrowser
 from function_defs import *
 from math import ceil
 from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS, CIC, DOCUMENTATION, \
-                         BRANCH_FUNCTIONS
+                         BRANCH_FUNCTIONS, REGISTERS
 
 # This prevents a bug when first using ctrl to highlight paste space consumption by initialising keyboard's components
 is_pressed('ctrl')
@@ -52,7 +52,8 @@ FRESH_APP_CONFIG = {
     'immediate_identifier': '$',
     'hex_mode': False,
     'bin_mode': False,
-    'string_mode': False,
+    'string_mode': False,  # not implement yet
+    'group_nops_on_optimise': True,
     'hex_space_separation': True,
     'game_address_mode': {},
     'CIC': {},
@@ -2316,10 +2317,10 @@ def open_files(mode = ''):
         if os.path.exists(hack_file_path):
             simpledialog.messagebox._show('Sorry', 'That file already exists')
             return
-        else:
-            with open(base_file_path, 'rb') as base_file:
-                with open(hack_file_path, 'wb') as hack_file:
-                    hack_file.write(base_file.read())
+        # else:
+        #     with open(base_file_path, 'rb') as base_file:
+        #         with open(hack_file_path, 'wb') as hack_file:
+        #             hack_file.write(base_file.read())
 
     timer_reset()
 
@@ -2653,6 +2654,12 @@ def toggle_hex_space():
     highlight_stuff(skip_moving_cursor=True)
 
 
+def toggle_nop_group():
+    app_config['group_nops_on_optimise'] = not app_config['group_nops_on_optimise']
+    save_config()
+    updateToggleNopGroup()
+
+
 def change_immediate_id():
     accepted_symbols = ['<', '>', ':', ';', '\'', '"', '{', '}',
                         '=', '+', '-', '_', '&', '^', '%', '$', '#',
@@ -2753,7 +2760,11 @@ def help_box():
         'Ctrl+F: Follow jump/branch at text insert cursor',
         'Ctrl+G: Find all jumps to function enveloping text insert cursor',
         'Ctrl+R: Restore multi-line selection or line at text insert cursor to original code',
+        'Ctrl+Shift+R: Restore whole function (only works in disassembly view)',
         'Ctrl+B: Replace current line with "BEQ R0, R0, {}"'.format(imm_id),
+        'Ctrl+O: Optimise the current function. This will remove redundant pointers and branches, freeing up room for '
+        'your own logic. You may toggle an option to group NOPs at the cursor location when optimising.',
+        'Ctrl+P: Generate a script for PJ64d to patch all assembly changes made during this session.',
         'Shift+Delete or Shift+Backspace: Remove line of text at text insert cursor',
         'Return: Move to end of next line',
         'Shift+Return: Move to end of previous line',
@@ -2762,6 +2773,10 @@ def help_box():
         '',
         'For the sake of a 100% accurate decoding process and performance, no pseudo-instructions '
         'were able to be implemented.',
+        '',
+        'Keep in mind when optimising a function, any comments you had will be moved with the instruction it was aligned to. '
+        'But, if you want to Ctrl+Shift+R and restore the entire function, your comments will no longer be aligned to the '
+        'instruction they were intended for.',
         '',
         'When making a multi-line selection, you don\'t need to worry about highlighting '
         'the entirety of the start and end column, that will be done automatically when you attempt '
@@ -2775,15 +2790,11 @@ def help_box():
         '',
         'Any NOP instruction will automatically be typed over if you attempt to type on that line.',
         '',
-        'Shift+Delete/Shift+Backspace, Return, Shift+Return, Undo and Redo can be used on the comments '
+        'Return, Shift+Return, Undo and Redo can be used on the comments '
         'textbox as well as the hack textbox.',
         '',
         'The hacked rom text box and comments text box have separate undo/redo buffers. '
-        'Both buffers can hold up to 20,000  frames each.',
-        '',
-        'The selection highlighting may seem buggy at times, but it causes no harm. I had to write a '
-        'work-around to override the default highlighting software because the default methods it '
-        'provides programmers to modify the text selection were just plain not working.'
+        'Both buffers can hold up to 5,000  frames each.',
     ])
     simpledialog.messagebox._show('Help', message)
     simpledialog.messagebox._show('Help (continued)', message_2)
@@ -3048,7 +3059,7 @@ def view_comments():
         return
     comments_window = tk.Tk()
     comments_window.title('Comments')
-    comments_window.geometry('{}x{}'.format(comments_win_w + scrollBarWidth,comments_win_h))
+    comments_window.geometry('{}x{}'.format(comments_win_w,comments_win_h))
     scrollbar = tk.Scrollbar(comments_window)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     comments_list_box = tk.Listbox(comments_window, font=('Courier', main_font_size), yscrollcommand=scrollbar.set)
@@ -3087,7 +3098,8 @@ def view_comments():
     def populate_list():
         if comments_window:
             comments_list_box.delete(0, tk.END)
-            filtering = filter_text.get('1.0', tk.END).split('\n')[0].lower()
+            text = filter_text.get('1.0', tk.END)
+            filtering = text.split('\n')[0].lower()
             for key in sorted([int(key) for key in disasm.comments
                                if tags_in_text(filtering, disasm.comments[key].lower())][:5000]):
                 address = key << 2
@@ -3095,6 +3107,12 @@ def view_comments():
                     address = disasm.region_align(address)
                 comments_list_box.insert(tk.END, '{}: {}'.format(extend_zeroes(hexi(address + increment()), 8),
                                                                  disasm.comments[str(key)]))
+            if '\n' in text[:-1]:
+                filter_text.delete('1.0', tk.END)
+                filter_text.insert('1.0', text.replace('\n', ''))
+                comments_list_callback(event=None, override=True)
+
+            # filter_text.replace('1.0', tk.END, '\n', '')
 
     comments_hack_checkbox = tk.Checkbutton(comments_window, text='Auto-focus hack textbox',
                                    command=lambda: window.after(1, lambda: hack_checkbox_callback()))
@@ -3114,15 +3132,22 @@ def view_comments():
 
     populate_list()
 
-    def comments_list_callback(event):
+    def comments_list_callback(event, override=False):
         global comments_curselection
-        curselect = comments_list_box.curselection()
-        if not curselect:
-            return
-        comments_curselection = curselect[0]
+        if override:
+            _list = comments_list_box.get(0, tk.END)
+            if len(_list) > 1:
+                return
+            _ind = 0
+        else:
+            curselect = comments_list_box.curselection()
+            if not curselect:
+                return
+            _ind = curselect[0]
+        comments_curselection = _ind
+        navi = deci(comments_list_box.get(_ind)[:8]) >> 2
         apply_hack_changes()
         apply_comment_changes()
-        navi = deci(comments_list_box.get(curselect[0])[:8]) >> 2
         if disasm.game_address_mode:
             navi -= disasm.game_offset >> 2
         reset_target()
@@ -3611,7 +3636,7 @@ def set_widget_sizes(new_size=0, new_max_lines=0):
     comments_y = 35
     comments_w = (font_w * (10 + comments_max_chars)) + 6
     comments_h = (font_h * 25) + 4
-    comments_win_w = comments_x + comments_w + 5
+    comments_win_w = comments_x + comments_w + 5 + scrollBarWidth
     comments_win_h = comments_y + comments_h + 5
     if comments_window:
         _, __, comments_win_x, comments_win_y = geometry(comments_window.geometry())
@@ -4734,19 +4759,35 @@ def optimise_function():
     func = [[disasm.decode(i, j+_start), j+_start]
             for j, i in enumerate(ints_of_4_byte_aligned_region(disasm.hack_file[start:end+4]))]
 
-    change_map = []
+    imm = app_config['immediate_identifier']
+    inc = 0 if not disasm.game_address_mode else disasm.game_offset
+    change_map = [True] * len(func)
     scratch = {}
     pointer_creation = {}
     anchored = []
     replacing = {}
     prev_start = {'': 0}  # So there it no need for global scope
+    pointer_usage = {}
+    released = 0
+    branch_pulled = []
 
     def calc_free_slots():
         count = 0
-        for i in func:
-            word, params = disasm.encode(i[0], i[1], return_object=True)
-            if word == 'NOP':
+        prev_bj = False
+        for i in range(len(func)):
+            word, params = disasm.encode(func[i][0], func[i][1], return_object=True)
+            if word == 'NOP' and not prev_bj:
                 count += 1
+            bj = False
+            if word in BRANCH_FUNCTIONS + JUMP_FUNCTIONS:
+                bj = True
+            if word[:2] == 'C.':
+                if func[i+2][0][:3] == 'BC1':
+                    bj = True
+            if bj:
+                prev_bj = True
+            else:
+                prev_bj = False
         return count
 
     def dict_append(dict, key, item):
@@ -4755,21 +4796,33 @@ def optimise_function():
         dict[key].append(item)
 
     def reset_scratch(j):
-        for i in ['T' + str(i) for i in range(10)] + ['AT']:
+        for i in ['T' + str(i) for i in range(10)] + ['AT', 'SP']:
             scratch[i] = ''
+        for i in REGISTERS_ENCODE:
+            pointer_usage[i] = ''
         scratch['R0'] = 0
         anchored[:] = []
-        [change_map.append(change) for _ in range(j - prev_start[''])]
+        # branch_pulled[:] = []
+        # [change_map.append(change) for _ in range(j - prev_start[''])]
         prev_start[''] = j
         while pointer_creation:
             del pointer_creation[list(pointer_creation)[0]]
         while replacing:
             del replacing[list(replacing)[0]]
 
-    def next_free_reg():
+    def next_free_reg(reg_type='', index=0):
+        if reg_type:
+            _list = REGISTERS[reg_type]
+        else:
+            _list = ['T' + str(i) for i in range(10)] + ['AT']
+
         used = []
         delay_slot = 0
-        i = prev_start['']
+        if index:
+            _start = index
+        else:
+            _start = prev_start['']
+        i = _start
         while i < len(func):
             word, params = disasm.encode(func[i][0], func[i][1], return_object=True)
             navi = _start + i
@@ -4777,26 +4830,26 @@ def optimise_function():
                 delay_slot -= 1
                 if not delay_slot:
                     break
-            if str(navi) in disasm.branches_to and i > prev_start['']:
+            if str(navi) in disasm.branches_to and i > _start:
                 break
             if word in JUMP_FUNCTIONS:
                 delay_slot = 2
             for param in params:
-                if params[param] in scratch:
+                if params[param] in _list:
                     if not params[param] in used:
                         used.append(params[param])
             i += 1
         _anchored = [replacing[key] for key in replacing]
-        for i in ['T' + str(i) for i in range(10)] + ['AT']:
+        for i in _list:
             if i not in used:
                 return i
-        for i in ['T' + str(i) for i in range(10)] + ['AT']:
+        for i in _list:
             if i not in _anchored and scratch[i] == '':
                 return i
-        for i in ['T' + str(i) for i in range(10)] + ['AT']:
+        for i in _list:
             if i not in _anchored:
                 return i
-        return 'AT'
+        return _list[-1]
 
     def wipe(dict, key):
         if key in dict:
@@ -4815,7 +4868,7 @@ def optimise_function():
                 j_delay_slot -= 1
                 if not j_delay_slot:
                     break
-            if str(navj) in disasm.branches_to:
+            if str(navj) in disasm.branches_to and j != i:
                 break
             if j_word in JUMP_FUNCTIONS:
                 j_delay_slot = 2
@@ -4828,6 +4881,28 @@ def optimise_function():
                 j_params['mnemonic'] = j_word
                 func[j][0] = disasm.decode(disasm.encode(j_params, func[j][1]), func[j][1])
             j += 1
+
+    def swap_branches(addr, new_addr):
+        if str(addr) in disasm.branches_to:
+            branches = disasm.branches_to[str(addr)].copy()
+            for ind in branches:
+                _int = int_of_4_byte_aligned_region(disasm.hack_file[ind << 2:(ind << 2) + 4])
+                this_word = disasm.decode(_int, ind)
+                # if this_word[:this_word.find(' ')] not in BRANCH_FUNCTIONS:
+                #     print('asdf {}'.format(hexi((ind << 2) + disasm.game_offset)))
+                disasm.unmap(disasm.branches_to, ind, str(addr))
+                disasm.map(disasm.branches_to, ind, str(new_addr))
+                newval = new_addr << 2
+                if disasm.game_address_mode:
+                    newval += disasm.game_offset
+                this_word = this_word[:this_word.find(imm) + 1] + extend_zeroes(hexi(newval), 8)
+                _int = disasm.encode(this_word, ind)
+                disasm.split_and_store_bytes(_int, ind, add_to_changes=True)
+                for l in range(len(func)):
+                    l_word, l_index = func[l]
+                    if l_index == ind:
+                        func[l][0] = l_word[:l_word.find(imm)] + this_word[this_word.find(imm):]
+                        disasm.split_and_store_bytes(disasm.encode(func[l][0], l_index), l_index, add_to_changes=True)
 
     nop_count = calc_free_slots()
     reset_scratch(0)
@@ -4856,46 +4931,166 @@ def optimise_function():
             reset_scratch(i)
             change = False
         if word in JUMP_FUNCTIONS:
-            delay_slot = 2
+            delay = True
+            if word == 'JAL':
+                # targ = disasm.region_unalign(deci(params['ADDRESS'][1:]), game_offset=not disasm.game_address_mode)
+                targ = deci(params['ADDRESS'][1:])
+                if disasm.game_address_mode:
+                    targ -= disasm.game_offset
+                targ >>= 2
+                __, __start, __end = disasm.find_jumps(targ, apply_offsets=False)
+                __length = (__end - __start) >> 2
+                if __length < 3:
+                    delay_filled = not func[i+1][0] == 'NOP'
+                    if __length == 1:
+                        delay = False
+                        that_word = disasm.decode(int_of_4_byte_aligned_region(disasm.hack_file[__end:__end+4]), __end >> 2)
+                        if delay_filled:
+                            func[i][0] = func[i+1][0]
+                            func[i+1][0] = that_word
+                        else:
+                            func[i][0] = that_word
+                            released += 1
+                    elif not delay_filled:
+                        delay = False
+                        first_word = disasm.decode(int_of_4_byte_aligned_region(disasm.hack_file[__start:__start+4], __start >> 2))
+                        next_word = disasm.decode(int_of_4_byte_aligned_region(disasm.hack_file[__end:__end + 4]), __end >> 2)
+                        func[i][0] = first_word
+                        func[i+1][0] = next_word
+                    if not delay:
+                        change = True
+                        disasm.unmap(disasm.jumps_to, func[i][1], str(targ))
+                        continue
+            if delay:
+                delay_slot = 2
+        if word in BRANCH_FUNCTIONS and not word in BRANCH_LIKELIES:
+            # asdf = lambda a: hexi((a << 2) + inc)
+            if func[i+1][0] == 'NOP':
+                # print('\n', asdf(func[i][1]) + ':', func[i][0])
+                l = i + 2
+                while l < len(func):
+                    if not func[l][0] == 'NOP':
+                        break
+                    l += 1
+                # print('targeting', asdf(func[l][1]) + ':', func[l][0])
+                branch_registers = []
+                unusable = []
+                not_allowed = ['R0', 'SP']
+                if 'RS' in params:
+                    if params['RS'] not in not_allowed:
+                        if params['RS'] in scratch:
+                            branch_registers.append(params['RS'])
+                        else:
+                            unusable.append(params['RS'])
+                if 'RT' in params:
+                    if params['RT'] not in branch_registers and params['RT'] not in not_allowed:
+                        if params['RT'] in scratch:
+                            branch_registers.append(params['RT'])
+                        else:
+                            unusable.append(params['RT'])
+                # print('branch_registers:',branch_registers)
+                # print('unusable:',unusable)
+                l_word, l_params = disasm.encode(func[l][0], func[l][1], return_object=True)
+                if not (l_word in LOAD_AND_STORE_FUNCTIONS and l_word[0] == 'S') and \
+                        not l_word in JUMP_FUNCTIONS + BRANCH_FUNCTIONS:
+                    # print('passing')
+                    to_replace = []
+                    for p in l_params:
+                        if p in ['RS', 'RT', 'RD']:
+                            if l_params[p] in branch_registers:
+                                if not l_params[p] in to_replace:
+                                    to_replace.append(l_params[p])
+                                # newreg = next_free_reg(index=l)
+                                # replace(l_params[p], newreg, l)
+                            elif l_params[p] in unusable and p == 'RD':
+                                to_replace[:] = []
+                                break
+                    # print('to_replace:',to_replace,'\n')
+                    if to_replace:
+                        for r in to_replace:
+                            newreg = next_free_reg(index=l)
+                            replace(r, newreg, l)
+                        change = True
+                    swap_branches(func[l][1], func[i+1][1])
+                    func[i + 1][0] = func[l][0]
+                    func[l][0] = 'NOP'
+                    released += 1
+                    branch_pulled.append(i + 1)
+                    # print('\n', hexi(inc + (func[i][1] << 2)) + ':', func[i][0])
+                    # print('Pulled',hexi(inc + (func[i+1][1] << 2)))
+                    # print(func[i+1][0])
+                    # print('branch_pulled:',branch_pulled)
+
         switch = False
         for p in params:
             if params[p] in replacing:
                 if p == 'RD':
                     _replace = params[p]
                     _with = next_free_reg()
-                    replace(_replace, _with, i + 1)
+                    replace(_replace, _with, i)
                 params[p] = replacing[params[p]]
                 switch = True
         if switch:
             params['mnemonic'] = word
             func[i][0] = disasm.decode(disasm.encode(params, func[i][1]), func[i][1])
+            del params['mnemonic']
         if word in LOAD_AND_STORE_FUNCTIONS:
             _d_in = 'RD' in params
             if _d_in:
                 _d_in = params['RD'] in scratch
             _base = params['BASE']
+            bsp = _base == 'SP'
             if _base in scratch:
-                if scratch[_base] == '':
-                    scratch[_base] = 0
-                pointer = '{} {}'.format(scratch[_base], deci(params['IMMEDIATE'][1:]))
+                if not bsp:
+                    if scratch[_base] == '':
+                        scratch[_base] = 0
+                if bsp:
+                    pointer = '{} {} {}'.format(word, 'SP', deci(params['IMMEDIATE'][1:]))
+                else:
+                    pointer = '{} {} {}'.format(word, scratch[_base], deci(params['IMMEDIATE'][1:]))
                 if scratch[_base] is None and _d_in:
                     scratch[params['RD']] = None
                     wipe(pointer_creation, params['RD'])
                 elif _d_in:
                     existent = ''
                     for j in scratch:
-                        if scratch[j] == pointer:
+                        if scratch[j] == pointer and not j == 'SP':
                             existent = j
                             break
                     if existent:
                         replacing[params['RD']] = existent
-                        if params['RD'] in pointer_creation:
+                        del_branch_pull = []
+                        if params['RD'] in pointer_creation and not bsp:
                             for j in pointer_creation[params['RD']]:
                                 func[j][0] = 'NOP'
+                                # print('\n','testing:',j,'\n')
+                                if j in branch_pulled:
+                                    del_branch_pull.append(branch_pulled.pop(branch_pulled.index(j)))
+                                else:
+                                    released += 1
                         change = True
                         func[i][0] = 'NOP'
-                        scratch[params['RD']] = ''
-                        wipe(pointer_creation, params['RD'])
+                        if i in branch_pulled:
+                            del_branch_pull.append(branch_pulled.pop(branch_pulled.index(i)))
+                        else:
+                            released += 1
+                        if not scratch[params['RD']] == pointer:
+                            scratch[params['RD']] = ''
+                            wipe(pointer_creation, params['RD'])
+                        if del_branch_pull:
+                            for k in del_branch_pull:
+                                m = k
+                                while func[m][0] == 'NOP' and m < len(func):
+                                    m += 1
+                                swap_branches(func[k][1], func[m][1])
+                            i = min(del_branch_pull) - 1
+                            while str(func[i][1]) not in disasm.branches_to and i > 0:
+                                if func[i][0][func[i][0].find(' ')] in BRANCH_FUNCTIONS + JUMP_FUNCTIONS:
+                                    i += 2
+                                    break
+                                i -= 1
+                            reset_scratch(i)
+                            continue
                     else:
                         if params['RD'] == params['BASE']:
                             new_reg = next_free_reg()
@@ -4905,13 +5100,23 @@ def optimise_function():
                             func[i][0] = disasm.decode(disasm.encode(params, func[i][1]), func[i][1])
                         scratch[params['RD']] = pointer
                         dict_append(pointer_creation, params['RD'], i)
-
             elif _d_in:
+
+                # pointer = '{} {} {}'.format(word, params['BASE'], deci(params['IMMEDIATE'][1:]))
+                # existent = ''
+                # d_reg_type = 'MAIN'
+                # if params['RD']
+                # for p in pointer_usage:
+                #     if pointer_usage[p] == pointer:
+                #         existent = p
+                #         break
+                # if existent:
+
                 scratch[params['RD']] = None
                 wipe(pointer_creation, params['RD'])
         elif 'RD' in params:
             _rd = params['RD']
-            if _rd in scratch and _rd != 'R0':
+            if _rd in scratch and _rd not in  ['R0', 'SP']:
                 if word == 'LUI':
                     wipe(pointer_creation, _rd)
                     scratch[_rd] = deci(params['IMMEDIATE'][1:]) << 16
@@ -4946,26 +5151,31 @@ def optimise_function():
                     wipe(pointer_creation, _rd)
         i += 1
     reset_scratch(i)
-    after_nop_count = calc_free_slots()
 
-    def fin():
+    def fin(m_index, released):
         for i in range(len(func)):
             if change_map[i]:
                 _int = disasm.encode(func[i][0], func[i][1])
                 disasm.split_and_store_bytes(_int, func[i][1], add_to_changes=True)
-        navigate_to(navigation)
-        if messagebox.askyesno('', 'Do you wish to arrange all NOPs around your cursor location?'):
+        if not app_config['group_nops_on_optimise']:
+            navigate_to(navigation)
+        else:
             get_addr = lambda word: deci(word[word.find(app_config['immediate_identifier']) + 1:])
             next_nop = (len(func) - 1) if func[-1][0] == 'NOP' else None
             branch_end = func[-2][1]
-            imm = app_config['immediate_identifier']
             deleting = True
             prev_instruction = False
             prev_float_branch = False
-            m_func_index = [True if i == m_index else False for i in range(len(func))]
+            m_func_index = [False] * len(func)
+            # The NOPs become jumbled, as will the expected NOP pool location, so grab the previous non-NOP instruction
+            while func[m_index][0] == 'NOP' and m_index >= 0:
+                m_index -= 1
+            m_func_index[m_index] = True
             i = len(func) - 3
             inc = disasm.game_offset if disasm.game_address_mode else 0
             reversal = False
+            prev_instr = len(func) - 2
+
             def swap_comments(i, j):
                 comm_i = comm_j = ''
                 if str(i) in disasm.comments:
@@ -4978,6 +5188,7 @@ def optimise_function():
                     disasm.comments[str(j)] = comm_i
                 if comm_j:
                     disasm.comments[str(i)] = comm_j
+
             def swap_m_index(i, j):
                 m_i, m_j = m_func_index[i], m_func_index[j]
                 m_func_index[i] = m_j
@@ -4985,7 +5196,9 @@ def optimise_function():
 
             # Group all NOPs toward the top of the function, then back to the cursor location
             while i >= 0:
+
                 word = func[i][0]
+                instruction = word[:word.find(' ')]
                 adding = -2 if next_nop == len(func) - 1 else -1
                 addr = func[i][1]
                 next_word = func[i - 1][0]
@@ -5000,10 +5213,24 @@ def optimise_function():
                 if reversal and next_nop == len(func) - 2:
                     break
                 if not word == 'NOP' or reversal:
-                    b_or_j = word[:word.find(' ')] in BRANCH_FUNCTIONS + JUMP_FUNCTIONS
+                    b_or_j = instruction in BRANCH_FUNCTIONS + JUMP_FUNCTIONS
                     if next_word[:next_word.find(' ')] in BRANCH_FUNCTIONS + JUMP_FUNCTIONS and \
                             'BEQ R0, R0' not in next_word:
                         deleting = False
+                    if not reversal:
+                        if (instruction in BRANCH_FUNCTIONS and instruction not in BRANCH_LIKELIES) or \
+                                (instruction in BRANCH_LIKELIES and not prev_instruction):
+                            _targ = (deci(word[word.find(imm) + 1:]) - inc) >> 2
+                            if _targ == func[prev_instr][1]:
+                                swap_branches(addr, _targ)
+                                disasm.unmap(disasm.branches_to, func[i][1], str(_targ))
+                                disasm.split_and_store_bytes(0, func[i][1], add_to_changes=True)
+                                func[i][0] = 'NOP'
+                                released += 2 if not prev_instruction else 1
+                                if next_nop is None:
+                                    next_nop = i
+                                i -= 1
+                                continue
                     if 'BEQ R0, R0' in word and deleting and not reversal:
                         # Remove redundant branches at the bottom
                         b_addr = get_addr(word)
@@ -5014,27 +5241,13 @@ def optimise_function():
                             deleting = False
                             # Don't increment i
                             continue
-                        if str(addr) in disasm.branches_to:
-                            branches = disasm.branches_to[str(addr)].copy()
-                            for ind in branches:
-                                _int = int_of_4_byte_aligned_region(disasm.hack_file[ind<<2:(ind<<2)+4])
-                                this_word = disasm.decode(_int, ind)
-                                disasm.unmap(disasm.branches_to, ind, str(addr))
-                                disasm.map(disasm.branches_to, ind, str(branch_end))
-                                newval = branch_end << 2
-                                if disasm.game_address_mode:
-                                    newval += disasm.game_offset
-                                this_word = this_word[:this_word.find(imm)+1] + extend_zeroes(hexi(newval), 8)
-                                _int = disasm.encode(this_word, ind)
-                                disasm.split_and_store_bytes(_int, ind, add_to_changes = True)
-                                for l in range(len(func)):
-                                    l_word, l_index = func[l]
-                                    if l_index == ind:
-                                        func[l][0] = l_word[:l_word.find(imm)] + this_word[this_word.find(imm):]
+                        swap_branches(addr, branch_end)
                         disasm.unmap(disasm.branches_to, func[i][1], str(b_addr))
                         disasm.split_and_store_bytes(0, func[i][1], add_to_changes = True)
                         func[i][0] = 'NOP'
-
+                        released += 2 if not prev_instruction else 1
+                        if next_nop is None:
+                            next_nop = i
                         i -= 1
                         continue
                     elif b_or_j or ('RA' not in word and 'SP' not in word and 'V0' not in word and 'V1' not in word):
@@ -5050,39 +5263,59 @@ def optimise_function():
                         if next_nop > i:
                             if reversal:
                                 word = func[next_nop][0]
-                            if word[:word.find(' ')] in BRANCH_FUNCTIONS + ['J', 'JAL']:
+                                instruction = word[:word.find(' ')]
+                            _addr = addr if not reversal else func[next_nop][1]
+                            _nddr = addr if reversal else func[next_nop][1]
+                            swap_branches(_addr, _nddr)
+                            if instruction in BRANCH_FUNCTIONS + ['J', 'JAL']:
                                 targ = deci(word[word.find(imm) + 1:])
                                 if disasm.game_address_mode:
                                     targ -= disasm.game_offset
                                 targ >>= 2
                                 ind_1, ind_2 = (i, next_nop) if not reversal else (next_nop, i)
-                                dictionary = disasm.branches_to if not word[:word.find(' ')] in ['J', 'JAL'] else disasm.jumps_to
+                                dictionary = disasm.branches_to if not instruction in ['J', 'JAL'] else disasm.jumps_to
                                 disasm.unmap(dictionary, func[ind_1][1], str(targ))
                                 disasm.map(dictionary, func[ind_2][1], str(targ))
-                            _addr = addr if not reversal else func[next_nop][1]
-                            if str(_addr) in disasm.branches_to:
-                                for f, fn in enumerate(func):
-                                    f_word, f_index = fn
-                                    f_word, f_params = disasm.encode(f_word, f_index, return_object=True)
-                                    if f_word in BRANCH_FUNCTIONS:
-                                        f_targ = (deci(f_params['OFFSET'][1:]) - inc) >> 2
-                                        if f_targ == _addr:
-                                            disasm.unmap(disasm.branches_to, f_index, str(f_targ))
-                                            new_targ = func[next_nop][1] if not reversal else func[i][1]
-                                            f_params['mnemonic'] = f_word
-                                            f_params['OFFSET'] = imm + extend_zeroes(hexi((new_targ << 2) + inc), 8)
-                                            func[f][0] = disasm.decode(disasm.encode(f_params, f_index), f_index)
-                                            disasm.map(disasm.branches_to, f_index, str(new_targ))
+                            # Refactored, but keeping here just in case
+                            # if str(_addr) in disasm.branches_to:
+                            #     for f, fn in enumerate(func):
+                            #         f_word, f_index = fn
+                            #         f_word, f_params = disasm.encode(f_word, f_index, return_object=True)
+                            #         if f_word in BRANCH_FUNCTIONS:
+                            #             f_targ = (deci(f_params['OFFSET'][1:]) - inc) >> 2
+                            #             if f_targ == _addr:
+                            #                 _, __ = disasm.unmap(disasm.branches_to, f_index, str(f_targ))
+                            #                 # if not _:
+                            #                 #     print('oh no target not in dict')
+                            #                 if not __:
+                            #                     print('oh no address not in target')
+                            #                 new_targ = func[next_nop][1] if not reversal else func[i][1]
+                            #                 # if func[new_targ - _start][0] == 'NOP':
+                            #                 #     print('WTF')
+                            #                 f_params['mnemonic'] = f_word
+                            #                 f_params['OFFSET'] = imm + extend_zeroes(hexi((new_targ << 2) + inc), 8)
+                            #                 f_int = disasm.encode(f_params, f_index)
+                            #                 func[f][0] = disasm.decode(f_int, f_index)
+                            #                 disasm.map(disasm.branches_to, f_index, str(new_targ))
+                            #                 disasm.split_and_store_bytes(f_int, f_index)
                             # Maintain which instruction comments were aligned to
                             swap_comments(func[i][1], func[next_nop][1])
                             # Maintain where the cursor location was before everything was compressed
                             swap_m_index(i, next_nop)
+                            nddr = func[next_nop][1]
+                            this_one = func[i][0]
+                            next_one = func[next_nop][0]
+                            prev_instr = next_nop
+                            disasm.split_and_store_bytes(disasm.encode(this_one, nddr), nddr, add_to_changes=True)
+                            disasm.split_and_store_bytes(disasm.encode(next_one, addr), addr, add_to_changes=True)
                             if not reversal:
                                 func[next_nop][0] = word
                                 func[i][0] = 'NOP'
                                 next_nop += adding
                                 if adding == -1:
                                     branch_end -= 1
+                                else:
+                                    released += 1
                             else:
                                 func[i][0] = func[next_nop][0]
                                 func[next_nop][0] = 'NOP'
@@ -5091,7 +5324,7 @@ def optimise_function():
                         # print(func[i][0], '\n')
 
                     prev_instruction = True
-                    if word[:word.find(' ')] in FLOAT_BRANCHES:
+                    if instruction in FLOAT_BRANCHES:
                         prev_float_branch = True
                     else:
                         prev_float_branch = False
@@ -5113,13 +5346,20 @@ def optimise_function():
                 if _int >= 0:
                     disasm.split_and_store_bytes(_int, i, add_to_changes=True)
                 else:
-                    user_errors[str(i)] = word
+                    user_errors[str(i)] = [_int, word]
             # print('---------------------')
+            after_nop_count = calc_free_slots()
             navigate_to(navigation)
+            if after_nop_count != nop_count:
+                NOPs1 = 'NOPs' if after_nop_count > 1 else 'NOP'
+                NOPs2 = 'NOPs' if released > 1 else 'NOP'
+                wait_ctrl_release(lambda: status_text.set('{} {} available. {} {} were released during optimisation.'.format(
+                    after_nop_count, NOPs1, released, NOPs2)))
+
     # The work this function does will be in a race condition with keyboard_events(). keyboard_events() can undo
     #  the work done by this function in the user's current view due to it encoding what is on screen while this
     #  work is being done. This is solved by having this code finish last in the race.
-    window.after(5, fin)
+    window.after(5, lambda: fin(m_index, released))
 
 
 
@@ -5130,8 +5370,11 @@ auto_open.set(app_config['open_roms_automatically'])
 
 #toggle-button state vars
 buttonStates = {}
-for i in ["baseFile","statusBar","savePrompt","address","hex","bin","hexSpace"]:
+for i in ["baseFile","statusBar","savePrompt","address","hex","bin","hexSpace","nopGroup"]:
     buttonStates[i] = tk.BooleanVar()
+
+def updateToggleNopGroup():
+    buttonStates["nopGroup"].set(app_config['group_nops_on_optimise'])
 
 def updateToggleBaseFileLabel():
     buttonStates["baseFile"].set(app_config["toggle_base_file"])
@@ -5214,6 +5457,8 @@ opts_menu.add_checkbutton(label='Toggle hex/bin space separation (F7)', command=
 updateToggleHexSpaceLabel()
 opts_menu.add_checkbutton(label='Toggle bin mode (F8)', command=toggle_bin_mode, variable = buttonStates["bin"])
 updateToggleBinLabel()
+opts_menu.add_checkbutton(label='Toggle NOP grouping when optimising', command=toggle_nop_group, variable=buttonStates['nopGroup'])
+updateToggleNopGroup()
 opts_menu.add_separator()
 opts_menu.add_checkbutton(label='Prompt Save on Exit', command=toggle_save_prompt, variable = buttonStates["savePrompt"])
 updateSavePromptLabel()
@@ -5341,7 +5586,7 @@ if app_config['open_roms_automatically'] and app_config['previous_base_opened'] 
     if exists(app_config['previous_base_opened']) and exists(app_config['previous_hack_opened']):
         window.after(1, open_files)
 
-# window.after(600, lambda: (navigate_to(0x000BA8B0 >> 2, center=True), hack_file_text_box.focus_force()))
+# window.after(150, lambda: (navigate_to(0x0001FCE4 >> 2, center=True), hack_file_text_box.focus_force()))
 
 window.resizable(False, False)
 window.mainloop()
