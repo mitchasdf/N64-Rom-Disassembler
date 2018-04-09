@@ -793,10 +793,12 @@ class Disassembler:
         global decoder_fitted
         def open_rom(file_path):
             if self.base_file and not exists(file_path):
+                file_data = bytearray(self.base_file)
                 with open(file_path, 'wb') as hack_file:
-                    hack_file.write(self.base_file)
-            with open(file_path, 'rb') as file:
-                file_data = bytearray(file.read())
+                    hack_file.write(file_data)
+            else:
+                with open(file_path, 'rb') as file:
+                    file_data = bytearray(file.read())
             part_at = file_path.rfind('\\') + 1
             folder = file_path[:part_at]
             file_name = file_path[part_at:]
@@ -805,17 +807,19 @@ class Disassembler:
             if rom_validation == '37804012':
                 rom_type = 'byte-swap'
                 if not self.base_file:
-                    status_bar.set('{} is byte-swapped, swapping now...'.format(file_name))
+                    text = '{} is byte-swapped, swapping now...'.format(file_name)
+                    status_bar.set(text)
                     window.update()
-                # Rom is byte-swapped, so swap it to the right order
-                file_data = self.byte_swap(file_data)
+                    # Rom is byte-swapped, so swap it to the right order
+                    self.byte_swap(file_data, window, status_bar, text)
             elif rom_validation == '40123780':
                 rom_type = 'little-end'
                 if not self.base_file:
-                    status_bar.set('{} is in little-endian, reversing now...'.format(file_name))
+                    text = '{} is in little-endian, reversing now...'.format(file_name)
+                    status_bar.set(text)
                     window.update()
-                # Rom is in little-endian, swap to big
-                file_data = self.byte_reverse(file_data)
+                    # Rom is in little-endian, swap to big
+                    self.byte_reverse(file_data, window, status_bar, text)
             elif rom_validation != '80371240':
                 raise Exception('"{}" Not a rom file'.format(file_path))
             elif self.base_file:
@@ -842,6 +846,7 @@ class Disassembler:
             with open(self.hack_folder + self.hack_file_name, 'wb') as file:
                 file.write(self.hack_file)
 
+
         self.header_items = {
             # Section labeled   [data_start, data_end (not inclusive)]
             'Rom Validate':     [0x0000, 0x0004],
@@ -860,6 +865,7 @@ class Disassembler:
 
         self.comments_file = '{} comments.txt'.format(self.hack_folder + self.hack_file_name)
         self.comments = {}
+        self.orig_comments = {}
         self.file_length = len(self.base_file)
         def fresh_comments():
             # Start new comments off with some header labels
@@ -1184,17 +1190,17 @@ class Disassembler:
             self.fit('DIV.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 3]],  [FD, FS, FT])
             self.fit('DIV.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 3]],  [FD, FS, FT])
             self.fit('DMFC1',      [[OPCODE, 17], [FMT, 1], RD, FS, 11],                [RD, FS])
-            self.fit('DMTC1',      [[OPCODE, 17], [FMT, 5], RT, FS, 11],                [RT, FS])
+            self.fit('DMTC1',      [[OPCODE, 17], [FMT, 5], RT, FD, 11],                [RT, FD])
             self.fit('FLOOR.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 11]],  [FD, FS])
             self.fit('FLOOR.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 11]],  [FD, FS])
             self.fit('FLOOR.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 15]],  [FD, FS])
             self.fit('FLOOR.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 15]],  [FD, FS])
-            self.fit('LDC1',       [[OPCODE, 53], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
-            self.fit('LWC1',       [[OPCODE, 49], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
+            self.fit('LDC1',       [[OPCODE, 53], BASE, FD, IMMEDIATE],                 [FD, IMMEDIATE, BASE])
+            self.fit('LWC1',       [[OPCODE, 49], BASE, FD, IMMEDIATE],                 [FD, IMMEDIATE, BASE])
             self.fit('MFC1',       [[OPCODE, 17], [FMT, 0], RD, FS, 11],                [RD, FS])
             self.fit('MOV.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 6]],   [FD, FS])
             self.fit('MOV.D',      [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 6]],   [FD, FS])
-            self.fit('MTC1',       [[OPCODE, 17], [FMT, 4], RT, FS, 11],                [RT, FS])
+            self.fit('MTC1',       [[OPCODE, 17], [FMT, 4], RT, FD, 11],                [RT, FD])
             self.fit('MUL.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 2]],  [FD, FS, FT])
             self.fit('MUL.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 2]],  [FD, FS, FT])
             self.fit('NEG.S',      [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 7]],   [FD, FS])
@@ -1203,12 +1209,12 @@ class Disassembler:
             self.fit('ROUND.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 8]],   [FD, FS])
             self.fit('ROUND.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 12]],  [FD, FS])
             self.fit('ROUND.W.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 12]],  [FD, FS])
-            self.fit('SDC1',       [[OPCODE, 61], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
+            self.fit('SDC1',       [[OPCODE, 61], BASE, FS, IMMEDIATE],                 [FS, IMMEDIATE, BASE])
             self.fit('SQRT.S',     [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 4]],   [FD, FS])
             self.fit('SQRT.D',     [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 4]],   [FD, FS])
             self.fit('SUB.S',      [[OPCODE, 17], [FMT, 16], FT, FS, FD, [OPCODE, 1]],  [FD, FS, FT])
             self.fit('SUB.D',      [[OPCODE, 17], [FMT, 17], FT, FS, FD, [OPCODE, 1]],  [FD, FS, FT])
-            self.fit('SWC1',       [[OPCODE, 57], BASE, FT, IMMEDIATE],                 [FT, IMMEDIATE, BASE])
+            self.fit('SWC1',       [[OPCODE, 57], BASE, FS, IMMEDIATE],                 [FS, IMMEDIATE, BASE])
             self.fit('TRUNC.L.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 9]],   [FD, FS])
             self.fit('TRUNC.L.D',  [[OPCODE, 17], [FMT, 17], 5, FS, FD, [OPCODE, 9]],   [FD, FS])
             self.fit('TRUNC.W.S',  [[OPCODE, 17], [FMT, 16], 5, FS, FD, [OPCODE, 13]],  [FD, FS])
@@ -1263,6 +1269,11 @@ class Disassembler:
 
         # So the python DLL doesn't crash when fitting a 2nd time (when user opens more than 1 rom in a session)
         decoder_fitted = True
+
+    # def comment(self, index, text):
+    #
+    #
+    # def del_comment(self, index):
 
     def fit(self, mnemonic, encoding, appearance):
         appearance_bit_correspondence = {}
@@ -1833,7 +1844,7 @@ class Disassembler:
         mapped_target = False
         mapped_address = False
         # print('\nMap', extend_zeroes(hexi((address << 2) + self.game_offset), 8))
-        # print('target in dict:',target in dict)
+        # print('target in dict: True')
         # addr = extend_zeroes(hexi((int(target) << 2) + self.game_offset), 8)
         if not target in dict:
             dict[target] = []
@@ -1850,23 +1861,36 @@ class Disassembler:
             mapped_address = True
         return mapped_target, mapped_address
 
-    def byte_swap(self, bytes):
-        new_bytes = bytearray()
-        for i in range(0, len(bytes), 4):
-            new_bytes.append(bytes[i + 1])
-            new_bytes.append(bytes[i])
-            new_bytes.append(bytes[i + 3])
-            new_bytes.append(bytes[i + 2])
-        return new_bytes
+    def byte_swap(self, bytes, window, status_bar, text):
+        # new_bytes = bytearray()
+        i = 0
+        lenb = len(bytes)
+        percent = (lenb >> 2) // 100
+        while i < lenb:
+            bytes[i], bytes[i+1], bytes[i+2], bytes[i+3] = \
+            bytes[i+1], bytes[i], bytes[i+3], bytes[i+2]
+            i += 4
+            if not (i >> 2) & percent:
+                status_bar.set('{}{}%'.format(text, (i >> 2) // percent))
+                window.update()
+        # for i in range(0, len(bytes), 4):
+        #     new_bytes.append(bytes[i + 1])
+        #     new_bytes.append(bytes[i])
+        #     new_bytes.append(bytes[i + 3])
+        #     new_bytes.append(bytes[i + 2])
+        # return new_bytes
 
-    def byte_reverse(self, bytes):
-        new_bytes = bytearray()
-        for i in range(0, len(bytes), 4):
-            new_bytes.append(bytes[i+3])
-            new_bytes.append(bytes[i+2])
-            new_bytes.append(bytes[i+1])
-            new_bytes.append(bytes[i])
-        return new_bytes
+    def byte_reverse(self, bytes, window, status_bar, text):
+        i = 0
+        lenb = len(bytes)
+        percent = (lenb >> 2) // 100
+        while i < lenb:
+            bytes[i], bytes[i+1], bytes[i+2], bytes[i+3] = \
+            bytes[i+3], bytes[i+2], bytes[i+1], bytes[i]
+            i += 4
+            if not (i >> 2) & percent:
+                status_bar.set('{}{}%'.format(text, (i >> 2) // percent))
+                window.update()
 
     # data from http://n64dev.org/n64crc.html
     def calc_checksum(self):
