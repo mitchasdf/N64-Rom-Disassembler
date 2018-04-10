@@ -1869,7 +1869,10 @@ class Disassembler:
 
     def get_pointers_in(self, index):
         pointers = {}
-        scratch = {'R0': 0}
+        scratch = {'R0': 0, 'SP': None}
+        for i in REGISTERS_ENCODE:
+            if i not in ['R0', 'SP']:
+                scratch[i] = None
         _, start, end = self.find_jumps(index, apply_offsets=False)
         if not start:
             return {}
