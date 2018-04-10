@@ -3921,6 +3921,8 @@ def scour_changes():
             elif app_config['changes_auto_focus_comments']:
                 widget = comments_text_box
             navigate_to(address + increment, center=True, widget=widget, region_treatment=goff, region_override=goff)
+            if widget:
+                widget.focus_force()
 
         def hack_checkbox_callback():
             if app_config['changes_auto_focus_hack']:
@@ -3950,6 +3952,10 @@ def scour_changes():
                                           command=lambda: window.after(1, lambda: comments_checkbox_callback()))
         changes_hack_checkbox.place(x=6, y=6)
         changes_comment_checkbox.place(x=175, y=6)
+        if app_config['changes_auto_focus_hack']:
+            changes_hack_checkbox.select()
+        if app_config['changes_auto_focus_comments']:
+            changes_comment_checkbox.select()
         changes_hack_checkbox.place()
         changes_list_box.bind('<<ListboxSelect>>', lambda _: list_callback())
         changes_list_box.place(x=5, y=35, width=890, height=498)
