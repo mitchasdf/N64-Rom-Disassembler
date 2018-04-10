@@ -216,6 +216,12 @@ REGISTERS = {
 BRANCH_FUNCTIONS = ['BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL', 'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL',
                     'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL', 'BNEL', 'BNE', 'BC1F', 'BC1FL', 'BC1T', 'BC1TL']
 
+LOAD_AND_STORE_FUNCTIONS = ['LB', 'LBU', 'LD', 'LDL', 'LDR','LH', 'LHU', 'LL', 'LLD', 'LW', 'LWL',
+                            'LWR','LWU','SB', 'SC', 'SCD', 'SD', 'SDL', 'SDR', 'SH', 'SW', 'SWL', 'SWR',
+                            'CACHE', 'LDC1', 'LWC1', 'SDC1', 'SWC1']
+
+JUMP_FUNCTIONS = ['J', 'JR', 'JAL', 'JALR']
+
 CODES_USING_ADDRESSES = ['BC1F', 'BC1FL', 'BC1T', 'BC1TL', 'BEQ', 'BEQL', 'BGEZ', 'BGEZAL', 'BGEZALL',
                          'BGEZL', 'BGTZ', 'BGTZL', 'BLEZ', 'BLEZL', 'BLTZ', 'BLTZAL', 'BLTZALL', 'BLTZL',
                          'BNEL', 'BNE', 'J', 'JAL']
@@ -1860,6 +1866,59 @@ class Disassembler:
             dict[target].insert(i, address)
             mapped_address = True
         return mapped_target, mapped_address
+
+    def get_pointers_in(self, index):
+        pointers = {}
+        scratch = {'R0': 0}
+        _, start, end = self.find_jumps(index, apply_offsets=False)
+        if not start:
+            return {}
+        for i in range(start, end + 4, 4):
+            _int = int_of_4_byte_aligned_region(self.hack_file[i:i+4])
+            navi = i >> 2
+            word, params = self.encode(self.decode(_int, navi), navi, return_object=True)
+            if word in LOAD_AND_STORE_FUNCTIONS:
+                _d_in = 'RD' in params
+                b_in = params['BASE'] in scratch
+                if b_in:
+                    b_in = not scratch[params['BASE']] is None
+                _base = params['BASE']
+                if b_in:
+                    pointer = '{} {}'.format(scratch[_base], deci(params['IMMEDIATE'][1:]))
+                elif params['BASE'] == 'SP':
+                    pointer = 'SP {}'.format(deci(params['IMMEDIATE'][1:]))
+                    b_in = True
+                if b_in:
+                    if _d_in:
+                        scratch[params['RD']] = pointer
+                    pointers[str(navi)] = pointer
+                elif _d_in:
+                    scratch[params['RD']] = None
+            elif 'RD' in params:
+                _rd = params['RD']
+                if _rd not in ['R0', 'SP']:
+                    if word == 'LUI':
+                        scratch[_rd] = deci(params['IMMEDIATE'][1:]) << 16
+                    elif word in ['ADDIU', 'ADDI', 'ORI']:
+                        _rs = params['RS']
+                        if isinstance(scratch[_rd], str) or scratch[_rd] is None:
+                            scratch[_rd] = 0
+                        if scratch[_rs] is None:
+                            scratch[_rd] = None
+                        else:
+                            val = deci(params['IMMEDIATE'][1:])
+                            if word != 'ORI':
+                                val = sign_16_bit_value(val)
+                            if not isinstance(scratch[_rs], str) or scratch[_rs] == '':
+                                if scratch[_rs] == '':
+                                    scratch[_rd] = val
+                                else:
+                                    scratch[_rd] = scratch[_rs] + val
+                            else:
+                                scratch[_rd] = None
+                    else:
+                        scratch[_rd] = None
+        return pointers
 
     def byte_swap(self, bytes, window, status_bar, text):
         # new_bytes = bytearray()
