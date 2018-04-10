@@ -1463,7 +1463,7 @@ class Disassembler:
                     if is_address and not self.game_address_mode:
                         inner_value = self.region_unalign(inner_value, game_offset=True)
                     elif is_offset and self.game_address_mode:
-                        inner_value = self.region_align(inner_value, game_offset=True)
+                        inner_value = self.region_align(inner_value, game_offset=False)
                 if self.game_address_mode and (is_address or is_offset):
                     inner_value += self.game_offset
                 decode_text = self.immediate_identifier + extend_zeroes(hexi(inner_value), HEX_EXTEND[param_name])
