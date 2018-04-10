@@ -93,6 +93,7 @@ FRESH_APP_CONFIG = {
         'out_of_range': '#BB2222',
         'nop': '#606060',
         'function_end': '#303060',
+        'same_pointer': '#0094AE',
         'liken': '#308A30',
         'text_pasting': '#654545',
         'highlighted_text_bg': '#3399FF'
@@ -364,7 +365,7 @@ def change_colours():
     [label[0].config(bg=app_config['differ_colour']) for label in differ_labels]
     if change_rom_name_button:
         change_rom_name_button.config(bg=text_bg, fg=text_fg, activebackground=text_bg, activeforeground=text_fg)
-    highlight_stuff(skip_moving_cursor=True)
+    highlight_stuff(skip_moving_cursor=True, widget=hack_file_text_box)
 
 
 def wait_ctrl_release(callback):
@@ -556,6 +557,23 @@ def highlight_stuff(widget=None, skip_moving_cursor=False, ctrl_held=False):
         mnemonic = decoded[:cut]
         if mnemonic in disasm.documentation:
             new_text = '{}: {}'.format(mnemonic, disasm.documentation[mnemonic])
+        if widget is hack_file_text_box and mnemonic in LOAD_AND_STORE_FUNCTIONS and \
+                not app_config['hex_mode'] and not app_config['bin_mode']:
+            pointers = disasm.get_pointers_in(prev_cursor_location)
+            if str(prev_cursor_location) in pointers:
+                targ_pointer = pointers[str(prev_cursor_location)]
+                _pointers = pointers.copy()
+                for key in _pointers:
+                    if pointers[key] != targ_pointer:
+                        del pointers[key]
+                if len(pointers) == 1:
+                    pointers = {}
+            else:
+                pointers = {}
+        else:
+            pointers = {}
+    else:
+        pointers = {}
     if new_text:
         status_text.set(new_text)
 
@@ -611,6 +629,13 @@ def highlight_stuff(widget=None, skip_moving_cursor=False, ctrl_held=False):
             line_text = text[i]
             this_word = line_text[:line_text.find(' ')]
             imm_id = text[i].find(app_config['immediate_identifier'])
+
+            # Highlight load/store instructions immediate and base parameters if they
+            #   point to the same data as the selected load/store instruction
+            if key in pointers and imm_id > 0:
+                hack_file_text_box.tag_add('same_pointer',
+                                           cursor_value(line, imm_id),
+                                           cursor_value(line, len(text[i])))
 
             # Highlight the end of each function
             if text[i] == 'JR RA':
@@ -3307,6 +3332,7 @@ def set_colour_scheme():
         'window_background_colour': 'Window background',
         'cursor_line_colour': 'Input cursor line',
         'liken': 'Selected register',
+        'same_pointer': 'Load/Stores with same memory pointer',
         'target': 'Target of selected Jump/Branch',
         'jump_from': 'Jumps/Branches to selected instruction',
         'jump_to': 'Targets of any Jump',
@@ -3354,7 +3380,8 @@ def set_colour_scheme():
         'copied_text': '#ff0000',
         'text_pasting': '#ffd8d8',
         'highlighted_text_bg': '#3399FF',
-        'highlighted_text_fg': '#FFFFFF'
+        'highlighted_text_fg': '#FFFFFF',
+        'same_pointer': '#9dccff'
     }
     custom_buttons = {}
     previous_setting_buttons = {}
@@ -3366,7 +3393,7 @@ def set_colour_scheme():
         default_bright_buttons[tag] = tk.Button(colours_window)
         default_dark_buttons[tag] = tk.Button(colours_window)
 
-    # For some reason, I cannot set the command inside a loop. It sets all callbacks with 'text_pasting', the final iteration
+    # For some reason, I cannot set the command inside a loop. It sets all callbacks with the final iteration
     custom_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour'))
     custom_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour'))
     custom_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour'))
@@ -3387,6 +3414,7 @@ def set_colour_scheme():
     custom_buttons['text_pasting'].config(command=lambda: colour_buttons_callback('text_pasting'))
     custom_buttons['highlighted_text_bg'].config(command=lambda: colour_buttons_callback('highlighted_text_bg'))
     custom_buttons['highlighted_text_fg'].config(command=lambda: colour_buttons_callback('highlighted_text_fg'))
+    custom_buttons['same_pointer'].config(command=lambda: colour_buttons_callback('same_pointer'))
     previous_setting_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour',current_colours['differ_colour']))
     previous_setting_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',current_colours['text_bg_colour']))
     previous_setting_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',current_colours['text_fg_colour']))
@@ -3407,6 +3435,7 @@ def set_colour_scheme():
     previous_setting_buttons['text_pasting'].config(command=lambda: colour_buttons_callback('text_pasting',current_colours['text_pasting']))
     previous_setting_buttons['highlighted_text_bg'].config(command=lambda: colour_buttons_callback('highlighted_text_bg',current_colours['highlighted_text_bg']))
     previous_setting_buttons['highlighted_text_fg'].config(command=lambda: colour_buttons_callback('highlighted_text_fg',current_colours['highlighted_text_fg']))
+    previous_setting_buttons['same_pointer'].config(command=lambda: colour_buttons_callback('same_pointer',current_colours['same_pointer']))
     default_dark_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour',dark_colours['differ_colour']))
     default_dark_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',dark_colours['text_bg_colour']))
     default_dark_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',dark_colours['text_fg_colour']))
@@ -3427,6 +3456,7 @@ def set_colour_scheme():
     default_dark_buttons['text_pasting'].config(command=lambda: colour_buttons_callback('text_pasting',dark_colours['text_pasting']))
     default_dark_buttons['highlighted_text_bg'].config(command=lambda: colour_buttons_callback('highlighted_text_bg',dark_colours['highlighted_text_bg']))
     default_dark_buttons['highlighted_text_fg'].config(command=lambda: colour_buttons_callback('highlighted_text_fg',dark_colours['highlighted_text_fg']))
+    default_dark_buttons['same_pointer'].config(command=lambda: colour_buttons_callback('same_pointer',dark_colours['same_pointer']))
     default_bright_buttons['differ_colour'].config(command=lambda: colour_buttons_callback('differ_colour',bright_colours['differ_colour']))
     default_bright_buttons['text_bg_colour'].config(command=lambda: colour_buttons_callback('text_bg_colour',bright_colours['text_bg_colour']))
     default_bright_buttons['text_fg_colour'].config(command=lambda: colour_buttons_callback('text_fg_colour',bright_colours['text_fg_colour']))
@@ -3447,6 +3477,7 @@ def set_colour_scheme():
     default_bright_buttons['text_pasting'].config(command=lambda: colour_buttons_callback('text_pasting',bright_colours['text_pasting']))
     default_bright_buttons['highlighted_text_bg'].config(command=lambda: colour_buttons_callback('highlighted_text_bg',bright_colours['highlighted_text_bg']))
     default_bright_buttons['highlighted_text_fg'].config(command=lambda: colour_buttons_callback('highlighted_text_fg',bright_colours['highlighted_text_fg']))
+    default_bright_buttons['same_pointer'].config(command=lambda: colour_buttons_callback('same_pointer',bright_colours['same_pointer']))
 
     def change_all(colour_dict):
         [colour_buttons_callback(tag, colour_dict[tag]) for tag in colour_dict]
