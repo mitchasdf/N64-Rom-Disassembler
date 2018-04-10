@@ -64,6 +64,8 @@ FRESH_APP_CONFIG = {
     'comments_auto_focus_hack': False,
     'jumps_auto_focus_comments': False,
     'jumps_auto_focus_hack': False,
+    'changes_auto_focus_comments': False,
+    'changes_auto_focus_hack': False,
     'mem_edit_offset': {},
     'memory_regions': {},
     'jumps_displaying': {},
@@ -316,6 +318,7 @@ def change_colours():
         labels.append(change_colours_label)
     if jumps_window:
         backgrounds.append(jumps_window)
+        buttons.append(auto_label_button)
         [labels.append(i) for i in [functions_label, jumps_label]]
         [listboxes.append(i) for i in [function_list_box, jump_list_box]]
         [check_buttons.append(i) for i in [jumps_comment_checkbox, jumps_hack_checkbox]]
@@ -328,6 +331,7 @@ def change_colours():
     if changes_win:
         listboxes.append(changes_list_box)
         backgrounds.append(changes_win)
+        [check_buttons.append(i) for i in [changes_hack_checkbox, changes_comment_checkbox]]
     if opcodes_win:
         backgrounds.append(opcodes_win)
         listboxes.append(codes_list_box)
@@ -844,21 +848,23 @@ def apply_hack_changes(ignore_slot = None):
 
     current_text = get_text_content(hack_file_text_box).upper()
     split_text = current_text.split('\n')
-    for i, text in enumerate(split_text):
-        try:
-            space_in = text.find(' ')
-            immid_in = text.rfind(app_config['immediate_identifier'])
-            if space_in >= 0 and immid_in >= 0:
-                if text[:space_in] in BRANCH_FUNCTIONS + ['J', 'JAL']:
-                    address = deci(text[immid_in + 1:])
-                    if text[:space_in] in ['J', 'JAL'] and not disasm.game_address_mode:
-                        address = disasm.region_align(address)
-                    elif text[:space_in] in BRANCH_FUNCTIONS and disasm.game_address_mode:
-                        address = disasm.region_unalign(address)
-                    new_text = text[:immid_in + 1] + extend_zeroes(hexi(address), 8)
-                    split_text[i] = new_text
-        except:
-            ''
+    # for i, text in enumerate(split_text):
+    #     why the hell was this here. i spent a good 2 hours looking for why
+    #       addresses were being offset differently "somewhere" down the line
+    #     try:
+    #         space_in = text.find(' ')
+    #         immid_in = text.rfind(app_config['immediate_identifier'])
+    #         if space_in >= 0 and immid_in >= 0:
+    #             if text[:space_in] in BRANCH_FUNCTIONS + ['J', 'JAL']:
+    #                 address = deci(text[immid_in + 1:])
+    #                 if text[:space_in] in ['J', 'JAL'] and not disasm.game_address_mode:
+    #                     address = disasm.region_align(address)
+    #                 elif text[:space_in] in BRANCH_FUNCTIONS and disasm.game_address_mode:
+    #                     address = disasm.region_unalign(address)
+    #                 new_text = text[:immid_in + 1] + extend_zeroes(hexi(address), 8)
+    #                 split_text[i] = new_text
+    #     except:
+    #         ''
     lines = min([max_lines, len(split_text)])
     for i in range(lines):
         navi = navigation + i
@@ -908,6 +914,7 @@ def apply_hack_changes(ignore_slot = None):
             unmap(decoded_word, navi, int_word)
 
         elif split_text[i] != 'UNKNOWN/NOT AN INSTRUCTION':
+            # print(split_text[i], decoded)
             encoded_int = disasm.encode(split_text[i], navi)
             if encoded_int >= 0:
                 disasm.split_and_store_bytes(encoded_int, navi, add_to_changes=True)
@@ -2545,11 +2552,11 @@ def toggle_address_mode(buffering=True):
     def fix_listbox(listbox, see):
         list_contents = listbox.get(0, tk.END)
         list_addresses = [deci(i[:8]) if i else 0 for i in list_contents]
-        realigned_addresses = [0 if not i else (disasm.region_align(i) if toggle_to else disasm.region_unalign(i)) for i in list_addresses]
+        # realigned_addresses = [0 if not i else (disasm.region_align(i) if toggle_to else disasm.region_unalign(i)) for i in list_addresses]
         if listbox is phrases_list_box:
-            addresses = [extend_zeroes(hexi(i + increment), 8) if i else '' for i in realigned_addresses]
+            addresses = [extend_zeroes(hexi(i + increment), 8) if i else '' for i in list_addresses]
         else:
-            addresses = [extend_zeroes(hexi(i + increment), 8) for i in realigned_addresses]
+            addresses = [extend_zeroes(hexi(i + increment), 8) for i in list_addresses]
         listbox.delete(0, tk.END)
         for i, address in enumerate(addresses):
             if address or not listbox is phrases_list_box:
@@ -2853,13 +2860,14 @@ jump_list_box = None
 jumps_label = None
 functions_label = None
 jumps_comment_checkbox = jumps_hack_checkbox = None
+auto_label_button = None
 function_select = ''
 jumps_displaying = {}
 function_curselect = 0
 jumps_curselect = 0
 def find_jumps(just_window=False):
     global function_select, jumps_window, function_list_box, jump_list_box, jumps_label, functions_label, \
-        jumps_comment_checkbox, jumps_hack_checkbox, function_curselect, jumps_curselect
+        jumps_comment_checkbox, jumps_hack_checkbox, function_curselect, jumps_curselect, auto_label_button
     if not disassembler_loaded():
         return
     if just_window:
@@ -2939,6 +2947,34 @@ def find_jumps(just_window=False):
             if widget:
                 widget.focus_force()
 
+        def auto_label_callback():
+            curselect = function_list_box.curselection()
+            if not curselect:
+                return
+            key = function_list_box.get(curselect[0])
+            new_comment = simpledialog.askstring('', 'Input the new comment for all jumps to {}'.format(key[:8]))
+            if not new_comment:
+                return
+            new_comment = new_comment.replace('\n','')
+            increment = 0 if not disasm.game_address_mode else -disasm.game_offset
+            func_addr = disasm.region_align(deci(key[:8]) + increment) >> 2
+            j_key = str(func_addr)
+            if j_key in disasm.jumps_to:
+                for jump_addr in disasm.jumps_to[j_key]:
+                    if str(jump_addr) in disasm.comments:
+                        _new_comment = disasm.comments[str(jump_addr)] + ' | ' + new_comment
+                    else:
+                        _new_comment = new_comment
+                    disasm.comments[str(jump_addr)] = _new_comment[:comments_max_chars]
+            for i, entry in enumerate(jumps_displaying[key]):
+                if len(entry) > 8:
+                    _new_comment = entry + ' | ' + new_comment
+                else:
+                    _new_comment = entry + ' ' + new_comment
+                jumps_displaying[key][i] = _new_comment[:comments_max_chars + 9]
+            function_list_callback()
+
+
         def function_list_key(event):
             if event.keysym == 'Delete':
                 curselect = function_list_box.curselection()
@@ -2972,6 +3008,7 @@ def find_jumps(just_window=False):
             if widget:
                 widget.focus_force()
 
+        auto_label_button = tk.Button(jumps_window, text='Label all jumps to selected function', command=auto_label_callback)
         function_list_box.bind('<<ListboxSelect>>', lambda _: function_list_callback())
         jump_list_box.bind('<<ListboxSelect>>', lambda _: jump_list_callback())
         function_list_box.bind('<Key>', function_list_key)
@@ -2981,14 +3018,18 @@ def find_jumps(just_window=False):
         jumps_label = tk.Label(jumps_window, text='Jumps to Function')
         function_list_box.place(x=func_list_x,y=func_list_y,width=func_list_w,height=func_list_h)
         jump_list_box.place(x=jumps_list_x,y=jumps_list_y,width=jumps_list_w,height=jumps_list_h)
-        functions_label.place(x=6,y=5)
-        jumps_label.place(x=jumps_list_x,y=jumps_label_y)
+        functions_label.place(x=6,y=7)
+        jumps_label.place(x=jumps_list_x,y=jumps_label_y+1)
+        auto_label_button.place(x=150, y=jumps_label_y-1)
+        # window.after(100, lambda: print(geometry(auto_label_button.winfo_geometry())))
+        # window.update_idletasks()
+        # print(geometry(auto_label_button.winfo_geometry()))
         def jumps_window_equals_none():
-            global jumps_window, function_select, jumps_curselect, function_curselect
+            global jumps_window, function_select, jumps_curselect, function_curselect, auto_label_button
             jumps_curselect = function_curselect = 0
             jumps_window.destroy()
             function_select = ''
-            jumps_window = None
+            jumps_window = auto_label_button = None
         jumps_window.protocol('WM_DELETE_WINDOW', jumps_window_equals_none)
         jumps_window.bind('<Escape>', lambda e: jumps_window_equals_none())
         jumps_window.bind('<F1>', lambda e: view_comments())
@@ -3656,7 +3697,8 @@ def set_widget_sizes(new_size=0, new_max_lines=0):
         [i.config(font=('Courier', main_font_size)) for i in [jump_list_box, function_list_box]]
         jump_list_box.place(x=jumps_list_x, y=jumps_list_y, width=jumps_list_w, height=jumps_list_h)
         function_list_box.place(x=func_list_x, y=func_list_y, width=func_list_w, height=func_list_h)
-        jumps_label.place(x=jumps_list_x, y=jumps_label_y)
+        jumps_label.place(x=jumps_list_x, y=jumps_label_y+1)
+        auto_label_button.place(x=150, y=jumps_label_y-1)
         jumps_window.geometry('{}x{}+{}+{}'.format(jumps_win_w, jumps_win_h, jumps_win_x, jumps_win_y))
 
 
@@ -3807,10 +3849,10 @@ def toggle_calc_crc():
     save_config()
 
 
-changes_win = changes_list_box = None
+changes_win = changes_list_box = changes_hack_checkbox = changes_comment_checkbox = None
 changes_curselect = 0
 def scour_changes():
-    global changes_win, changes_list_box, changes_curselect
+    global changes_win, changes_list_box, changes_curselect, changes_hack_checkbox, changes_comment_checkbox
     if not disassembler_loaded():
         return
     ch_ch_changes = []  # don't wanna be a richer man
@@ -3832,7 +3874,7 @@ def scour_changes():
             instruction = 'UNKNOWN/NOT AN INSTRUCTION'
         hex_of = hex_space(disasm.hack_file[i:i+4].hex().upper())
         if disasm.game_address_mode:
-            i = disasm.region_align(i)
+            # i = disasm.region_align(i)
             i += disasm.game_offset
         address = extend_zeroes(hexi(i), 8)
         the_text = '{}: {}    {}'.format(address,hex_of,instruction)
@@ -3841,8 +3883,10 @@ def scour_changes():
         display_list.append(the_text)
 
     def changes_win_equals_none():
-        global changes_win, changes_curselect
+        global changes_win, changes_curselect, changes_hack_checkbox, changes_comment_checkbox
         changes_curselect = 0
+        changes_hack_checkbox = None
+        changes_comment_checkbox = None
         changes_win.destroy()
         changes_win = None
 
@@ -3851,7 +3895,7 @@ def scour_changes():
     if display_list:
         changes_win = tk.Tk()
         changes_win.title('{} Differences'.format(len(display_list)))
-        changes_win.geometry('{0}x500+50+50'.format(900+scrollBarWidth))
+        changes_win.geometry('{0}x538+50+50'.format(900+scrollBarWidth))
         scrollbar = tk.Scrollbar(changes_win)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         changes_list_box = tk.Listbox(changes_win, font=('Courier', 10),yscrollcommand=scrollbar.set)
@@ -3870,10 +3914,45 @@ def scour_changes():
             increment = 0 if not disasm.game_address_mode else -(disasm.game_offset >> 2)
             address = deci(entry[:8]) >> 2
             reset_target()
-            navigate_to(address + increment, center=True, widget=None, region_treatment=True, region_override=True)
+            goff = disasm.game_address_mode
+            widget = None
+            if app_config['changes_auto_focus_hack']:
+                widget = hack_file_text_box
+            elif app_config['changes_auto_focus_comments']:
+                widget = comments_text_box
+            navigate_to(address + increment, center=True, widget=widget, region_treatment=goff, region_override=goff)
 
+        def hack_checkbox_callback():
+            if app_config['changes_auto_focus_hack']:
+                app_config['changes_auto_focus_hack'] = False
+                changes_hack_checkbox.deselect()
+            else:
+                app_config['changes_auto_focus_comments'] = False
+                app_config['changes_auto_focus_hack'] = True
+                changes_hack_checkbox.select()
+                changes_comment_checkbox.deselect()
+            save_config()
+
+        def comments_checkbox_callback():
+            if app_config['changes_auto_focus_comments']:
+                app_config['changes_auto_focus_comments'] = False
+                changes_comment_checkbox.deselect()
+            else:
+                app_config['changes_auto_focus_hack'] = False
+                app_config['changes_auto_focus_comments'] = True
+                changes_comment_checkbox.select()
+                changes_hack_checkbox.deselect()
+            save_config()
+
+        changes_hack_checkbox = tk.Checkbutton(changes_win, text='Auto-focus hack textbox',
+                                       command=lambda: window.after(1, lambda: hack_checkbox_callback()))
+        changes_comment_checkbox = tk.Checkbutton(changes_win, text='Auto-focus comments textbox',
+                                          command=lambda: window.after(1, lambda: comments_checkbox_callback()))
+        changes_hack_checkbox.place(x=6, y=6)
+        changes_comment_checkbox.place(x=175, y=6)
+        changes_hack_checkbox.place()
         changes_list_box.bind('<<ListboxSelect>>', lambda _: list_callback())
-        changes_list_box.place(x=5, y=5, width=890, height=490)
+        changes_list_box.place(x=5, y=35, width=890, height=498)
         changes_win.protocol('WM_DELETE_WINDOW', changes_win_equals_none)
         changes_win.bind('<Escape>', lambda _: changes_win_equals_none())
         changes_win.bind('<F1>', lambda e: view_comments())
