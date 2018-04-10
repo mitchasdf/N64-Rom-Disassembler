@@ -8,8 +8,6 @@ from function_defs import *
 from math import ceil
 from disassembler import Disassembler, REGISTERS_ENCODE, BRANCH_INTS, JUMP_INTS, CIC, DOCUMENTATION, \
                          BRANCH_FUNCTIONS, REGISTERS
-import threading
-import socketserver
 import socket
 
 # This prevents a bug when first using ctrl to highlight paste space consumption by initialising keyboard's components
@@ -4714,87 +4712,45 @@ def generate_live_patch_script():
             sock.sendall(bytes(message, 'ascii'))
 
 
-    if tcp_patch_server:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sending = ''
-            for i in disasm.changes_made_during_session:
-                # print(i)
-                if sending:
-                    sending += '\n'
-                i <<= 2
-                address = disasm.region_align(i) + disasm.game_offset
-                hex_address = extend_zeroes(hexi(address), 8)
-                val = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
-                decoded = disasm.decode(val, i >> 2, apply_offsets=True)
-                sending += '{}\n{}\n{}'.format(address, val, 'Patched {} at 0x{}'.format(decoded, hex_address))
-            try:
-                sock.connect(('localhost', 8329))
-                sock.sendall(bytes(sending, 'ascii'))
-                wait_ctrl_release(lambda: status_text.set('Applied patch.'))
-            except Exception as e:
-                # print('failed to send data to pj64d script')
-                print(e)
-    else:
-        if app_config['script_output_dir'] == working_dir:
-            out_dir = filedialog.askdirectory(title='Target your scripts dir within PJ64d')
-            if not out_dir:
-                return
-            out_dir = os.path.realpath(out_dir) + '\\'
-            app_config['script_output_dir'] = out_dir
-            save_config()
-        else:
-            out_dir = app_config['script_output_dir']
-        file_path = out_dir + disasm.hack_file_name[:disasm.hack_file_name.rfind('.')] + ' patch.js'
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sending = ''
         for i in disasm.changes_made_during_session:
+            # print(i)
+            if sending:
+                sending += '\n'
             i <<= 2
             address = disasm.region_align(i) + disasm.game_offset
-            address = extend_zeroes(hexi(address), 8)
+            hex_address = extend_zeroes(hexi(address), 8)
             val = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
             decoded = disasm.decode(val, i >> 2, apply_offsets=True)
-            out_script += 'mem.u32[0x{}] = 0x{};\n'.format(address, extend_zeroes(hexi(val), 8))
-            out_script += 'console.log(\'Wrote to 0x{}: {}\');\n\n'.format(address, decoded)
-            out_script += 'console.log(\'\\nApplied patch - script will now terminate.\');\n'
-        with open(file_path, 'w') as file:
-            file.write(out_script)
-        wait_ctrl_release(lambda: status_text.set('Wrote patch script to scripts dir.'))
-
-
-def run_local_patch_server():
-    global tcp_patch_server
-    if not disassembler_loaded():
-        return
-    if tcp_patch_server is None:
-        class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
-            def handle(self):
-                data = str(self.request.recv(1024), 'ascii')
-                print(data)
-
-        class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-            pass
-
+            sending += '{}\n{}\n{}'.format(address, val, 'Patched {} at 0x{}'.format(decoded, hex_address))
         try:
-            tcp_patch_server = ThreadedTCPServer(('localhost', 8319), ThreadedTCPRequestHandler)
-            # with tcp_patch_server:
-            # Start a thread with the server -- that thread will then start one
-            # more thread for each request
-            server_thread = threading.Thread(target=tcp_patch_server.serve_forever)
-
-            # Exit the server thread when the main thread terminates
-            server_thread.daemon = True
-
-            server_thread.start()
-            # tcp_patch_server.shutdown()
-
-            buttonStates['server'].set(True)
-            status_text.set('Successfully started patch server. Will now listen for PJ64d.')
-        except Exception as e:
-            simpledialog.messagebox._show('Error', 'Could not start local patch server.'
-                                                   '\n\nError details: \n\n{}'.format(e))
-    else:
-        tcp_patch_server.shutdown()
-        tcp_patch_server = None
-        buttonStates['server'].set(False)
-        status_text.set('Patch server was shut down.')
+            sock.connect(('localhost', 8329))
+            sock.sendall(bytes(sending, 'ascii'))
+            wait_ctrl_release(lambda: status_text.set('Applied patch.'))
+        except:
+            if app_config['script_output_dir'] == working_dir:
+                out_dir = filedialog.askdirectory(title='Target your scripts dir within PJ64d')
+                if not out_dir:
+                    return
+                out_dir = os.path.realpath(out_dir) + '\\'
+                app_config['script_output_dir'] = out_dir
+                save_config()
+            else:
+                out_dir = app_config['script_output_dir']
+            file_path = out_dir + disasm.hack_file_name[:disasm.hack_file_name.rfind('.')] + ' patch.js'
+            for i in disasm.changes_made_during_session:
+                i <<= 2
+                address = disasm.region_align(i) + disasm.game_offset
+                address = extend_zeroes(hexi(address), 8)
+                val = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
+                decoded = disasm.decode(val, i >> 2, apply_offsets=True)
+                out_script += 'mem.u32[0x{}] = 0x{};\n'.format(address, extend_zeroes(hexi(val), 8))
+                out_script += 'console.log(\'Wrote to 0x{}: {}\');\n\n'.format(address, decoded)
+                out_script += 'console.log(\'\\nApplied patch - script will now terminate.\');\n'
+            with open(file_path, 'w') as file:
+                file.write(out_script)
+            wait_ctrl_release(lambda: status_text.set('Wrote patch script to scripts dir.'))
 
 
 def decode_mio0(index, thisone=0, max=0):
@@ -5610,10 +5566,10 @@ menu_bar.add_cascade(label='Navigation', menu=nav_menu)
 
 tools_menu = tk.Menu(menu_bar, tearoff=0)
 tools_menu.add_command(label='Float <--> Hex', command=float_to_hex_converter)
-tools_menu.add_command(label='Generate script for batch of addresses', command=generate_script)
 tools_menu.add_separator()
+tools_menu.add_command(label='Generate script for batch of addresses', command=generate_script)
 tools_menu.add_command(label='Generate live patch for PJ64d (Ctrl+P)', command=generate_live_patch_script)
-tools_menu.add_checkbutton(label='Run PJ64d local patch server', command=run_local_patch_server, variable=buttonStates['server'])
+# tools_menu.add_checkbutton(label='Run PJ64d local patch server', command=run_local_patch_server, variable=buttonStates['server'])
 tools_menu.add_separator()
 tools_menu.add_command(label='Re-map jumps', command=remap_jumps)
 # tools_menu.add_separator()
