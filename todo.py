@@ -36,6 +36,9 @@ Tweak jump mapping to be a little smarter. I aim to have it calculate target add
 
 None I know of right now. I always fix major bugs as soon as I encounter them and then commit the changes.
 
+If any users encounter bugs, then I likely don't know about them yet. Feel free to let me know and I will have them
+  fixed ASAP.
+
 '''
 
 
