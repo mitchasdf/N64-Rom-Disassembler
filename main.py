@@ -4711,46 +4711,55 @@ def generate_live_patch_script():
             sock.connect((ip, port))
             sock.sendall(bytes(message, 'ascii'))
 
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sending = ''
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sending = ['']
+    for i in disasm.changes_made_during_session:
+        # print(i)
+        i <<= 2
+        address = disasm.region_align(i) + disasm.game_offset
+        hex_address = extend_zeroes(hexi(address), 8)
+        val = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
+        decoded = disasm.decode(val, i >> 2, apply_offsets=True)
+        new_addition = '{}\n{}\n{}'.format(address, val, 'Patched {} at 0x{}'.format(decoded, hex_address))
+        if len(sending[-1] + new_addition) > 2040:
+            sending.append('')
+        if sending[-1]:
+            sending[-1] += '\n'
+        sending[-1] += new_addition
+    try:
+        sock.connect(('localhost', 8329))
+        def buff_changes(to_send):
+            if to_send:
+                buff = to_send.pop(0)
+                sock.sendall(bytes(buff, 'ascii'))
+                window.after(10, lambda: buff_changes(to_send))
+            else:
+                sock.close()
+                wait_ctrl_release(lambda: status_text.set('Applied patch.'))
+        buff_changes(sending)
+    except:
+        if app_config['script_output_dir'] == working_dir:
+            out_dir = filedialog.askdirectory(title='Target your scripts dir within PJ64d')
+            if not out_dir:
+                return
+            out_dir = os.path.realpath(out_dir) + '\\'
+            app_config['script_output_dir'] = out_dir
+            save_config()
+        else:
+            out_dir = app_config['script_output_dir']
+        file_path = out_dir + disasm.hack_file_name[:disasm.hack_file_name.rfind('.')] + ' patch.js'
         for i in disasm.changes_made_during_session:
-            # print(i)
-            if sending:
-                sending += '\n'
             i <<= 2
             address = disasm.region_align(i) + disasm.game_offset
-            hex_address = extend_zeroes(hexi(address), 8)
+            address = extend_zeroes(hexi(address), 8)
             val = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
             decoded = disasm.decode(val, i >> 2, apply_offsets=True)
-            sending += '{}\n{}\n{}'.format(address, val, 'Patched {} at 0x{}'.format(decoded, hex_address))
-        try:
-            sock.connect(('localhost', 8329))
-            sock.sendall(bytes(sending, 'ascii'))
-            wait_ctrl_release(lambda: status_text.set('Applied patch.'))
-        except:
-            if app_config['script_output_dir'] == working_dir:
-                out_dir = filedialog.askdirectory(title='Target your scripts dir within PJ64d')
-                if not out_dir:
-                    return
-                out_dir = os.path.realpath(out_dir) + '\\'
-                app_config['script_output_dir'] = out_dir
-                save_config()
-            else:
-                out_dir = app_config['script_output_dir']
-            file_path = out_dir + disasm.hack_file_name[:disasm.hack_file_name.rfind('.')] + ' patch.js'
-            for i in disasm.changes_made_during_session:
-                i <<= 2
-                address = disasm.region_align(i) + disasm.game_offset
-                address = extend_zeroes(hexi(address), 8)
-                val = int_of_4_byte_aligned_region(disasm.hack_file[i:i+4])
-                decoded = disasm.decode(val, i >> 2, apply_offsets=True)
-                out_script += 'mem.u32[0x{}] = 0x{};\n'.format(address, extend_zeroes(hexi(val), 8))
-                out_script += 'console.log(\'Wrote to 0x{}: {}\');\n\n'.format(address, decoded)
-                out_script += 'console.log(\'\\nApplied patch - script will now terminate.\');\n'
-            with open(file_path, 'w') as file:
-                file.write(out_script)
-            wait_ctrl_release(lambda: status_text.set('Wrote patch script to scripts dir.'))
+            out_script += 'mem.u32[0x{}] = 0x{};\n'.format(address, extend_zeroes(hexi(val), 8))
+            out_script += 'console.log(\'Wrote to 0x{}: {}\');\n\n'.format(address, decoded)
+            out_script += 'console.log(\'\\nApplied patch - script will now terminate.\');\n'
+        with open(file_path, 'w') as file:
+            file.write(out_script)
+        wait_ctrl_release(lambda: status_text.set('Wrote patch script to scripts dir.'))
 
 
 def decode_mio0(index, thisone=0, max=0):
