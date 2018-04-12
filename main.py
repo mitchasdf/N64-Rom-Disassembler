@@ -4711,6 +4711,8 @@ def generate_live_patch_script():
             sock.connect((ip, port))
             sock.sendall(bytes(message, 'ascii'))
 
+    apply_hack_changes()
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sending = ['']
     for i in disasm.changes_made_during_session:
@@ -4913,12 +4915,15 @@ def optimise_function():
     change_map = [True] * len(func)
     scratch = {}
     pointer_creation = {}
+    scratch_restore = {}
     anchored = []
     replacing = {}
     prev_start = {'': 0}  # So there it no need for global scope
     pointer_usage = {}
     released = 0
     branch_pulled = []
+
+    # pointers_of_function = disasm.get_pointers_in(_start)
 
     def calc_free_slots():
         count = 0
@@ -4958,20 +4963,28 @@ def optimise_function():
             del pointer_creation[list(pointer_creation)[0]]
         while replacing:
             del replacing[list(replacing)[0]]
+        while scratch_restore:
+            del scratch_restore[list(scratch_restore)[0]]
 
-    def next_free_reg(reg_type='', index=0):
+    def next_free_reg(reg_type='', index=0, soft_index=0):
         if reg_type:
             _list = REGISTERS[reg_type]
         else:
             _list = ['T' + str(i) for i in range(10)] + ['AT']
 
+        # for i in _list:
+        #     if scratch[i] == '':
+        #         return i
+
         used = []
+        soft_used = []
+        definitely_available = []
         delay_slot = 0
         if index:
-            _start = index
+            __start = index
         else:
-            _start = prev_start['']
-        i = _start
+            __start = prev_start['']
+        i = __start
         while i < len(func):
             word, params = disasm.encode(func[i][0], func[i][1], return_object=True)
             navi = _start + i
@@ -4979,25 +4992,62 @@ def optimise_function():
                 delay_slot -= 1
                 if not delay_slot:
                     break
-            if str(navi) in disasm.branches_to and i > _start:
+            if str(navi) in disasm.branches_to and i > __start:
                 break
             if word in JUMP_FUNCTIONS:
                 delay_slot = 2
             for param in params:
                 if params[param] in _list:
                     if not params[param] in used:
-                        used.append(params[param])
+                        if i <= soft_index:
+                            used.append(params[param])
+                    if not params[param] in soft_used:
+                        if i >= soft_index:
+                            avail = False
+                            if param == 'RD':
+                                avail = True
+                                if 'RS' in params:
+                                    if params['RS'] == params['RD']:
+                                        avail = False
+                                if 'RT' in params:
+                                    if params['RT'] == params['RD']:
+                                        avail = False
+                                if 'BASE' in params:
+                                    if params['BASE'] == params['RD']:
+                                        avail = False
+
+                            if avail and scratch[params[param]] == '':
+                                definitely_available.append(params[param])
+                            soft_used.append(params[param])
             i += 1
-        _anchored = [replacing[key] for key in replacing]
+        # _anchored = [replacing[key] for key in replacing] + [key for key in replacing]
+        # print('index:',hexi((func[soft_index][1] << 2) + inc))
+        # print('anchored:',_anchored)
+        # print('used:', used)
+        # print('def:', definitely_available)
+        # print('scratch:', scratch)
         for i in _list:
-            if i not in used:
+            if i not in used and i not in soft_used:
                 return i
         for i in _list:
-            if i not in _anchored and scratch[i] == '':
+            if i in used and i not in soft_used:
                 return i
-        for i in _list:
-            if i not in _anchored:
+        for i in reversed(soft_used):
+            if not i in used:
                 return i
+        # if definitely_available:
+        #     for i in reversed(definitely_available):
+        #         if i not in _anchored:
+        #             print(i)
+        #             return i
+        # for i in _list:
+        #     if i not in to_be_used:
+        # for i in _list:
+        #     if i not in _anchored and scratch[i] == '':
+        #         return i
+        # for i in _list:
+        #     if i not in _anchored:
+        #         return i
         return _list[-1]
 
     def wipe(dict, key):
@@ -5022,13 +5072,43 @@ def optimise_function():
             if j_word in JUMP_FUNCTIONS:
                 j_delay_slot = 2
             _switch = False
+            # breaking = False
+            _p_in = 'RD' in j_params
+            if _p_in:
+                _p_in = j_params['RD'] == _replace
+
             for _p in j_params:
-                if j_params[_p] == _replace:
+                if j_params[_p] == _replace and not _p == 'RD':
+                    # if _p == 'RD':
+                    #     __replace = j_params['RD']
+                    #     __with = next_free_reg(soft_index=j)
+                    #     replace(__replace, __with, j + 1)
+                    #     j_params['RD'] = __with
+                    #     j_params['mnemonic'] = j_word
+                    #     func[j][0] = disasm.decode(disasm.encode(j_params, func[j][1]), func[j][1])
+                    #     del j_params['mnemonic']
+                    # else:
                     j_params[_p] = _with
                     _switch = True
             if _switch:
                 j_params['mnemonic'] = j_word
                 func[j][0] = disasm.decode(disasm.encode(j_params, func[j][1]), func[j][1])
+            if 'RD' in j_params:
+                if j_params['RD'] == _replace:
+                    __replace = j_params['RD']
+                    # print('replace1')
+                    # if j == 15:
+                    #     print(j_params)
+                    __with = next_free_reg(soft_index=j)
+                    replace(__replace, __with, j + 1)
+                    j_params['RD'] = __with
+                    j_params['mnemonic'] = j_word
+                    func[j][0] = disasm.decode(disasm.encode(j_params, func[j][1]), func[j][1])
+                    del j_params['mnemonic']
+                    # breaking = True
+            # if breaking:
+            #     break
+
             j += 1
 
     def swap_branches(addr, new_addr):
@@ -5059,6 +5139,7 @@ def optimise_function():
     change = False
     i = 0
     while i < len(func):
+        scratch_restore[str(i)] = scratch.copy()
         word, params = disasm.encode(func[i][0], func[i][1], return_object=True)
         navi = _start + i
         if delay_slot:
@@ -5157,7 +5238,8 @@ def optimise_function():
                     # print('to_replace:',to_replace,'\n')
                     if to_replace:
                         for r in to_replace:
-                            newreg = next_free_reg(index=l)
+                            print('replace2')
+                            newreg = next_free_reg(soft_index=l)
                             replace(r, newreg, l)
                         change = True
                     swap_branches(func[l][1], func[i+1][1])
@@ -5171,18 +5253,37 @@ def optimise_function():
                     # print('branch_pulled:',branch_pulled)
 
         switch = False
-        for p in params:
-            if params[p] in replacing:
-                if p == 'RD':
-                    _replace = params[p]
-                    _with = next_free_reg()
-                    replace(_replace, _with, i)
-                params[p] = replacing[params[p]]
-                switch = True
+        replace_rd = False
+        if 'RD' in params:
+            # if params['RD'] in list(replacing) + [replacing[key] for key in replacing]:
+            #     for p in params:
+            #         if p != 'RD' and params[p] in replacing:
+            #             params[p] = replacing[params[p]]
+            #             switch = True
+            #     replace_rd = True
+            if params['RD'] in scratch:
+                if isinstance(scratch[params['RD']], int) or \
+                        (isinstance(scratch[params['RD']], str) and scratch[params['RD']]):
+                    replace_rd = True
+        # else:
+        #     for p in params:
+        #         if params[p] in replacing:
+        #             # if p == 'RD':
+        #             params[p] = replacing[params[p]]
+        #             switch = True
         if switch:
             params['mnemonic'] = word
             func[i][0] = disasm.decode(disasm.encode(params, func[i][1]), func[i][1])
             del params['mnemonic']
+        if replace_rd:
+            # [print(func[a][0]) for a in range(prev_start[''], i)]
+            _replace = params['RD']
+            # print('replace2')
+            _with = next_free_reg(soft_index=i)
+            replace(_replace, _with, i+1)
+            params['RD'] = _with
+            params['mnemonic'] = word
+            func[i][0] = disasm.decode(disasm.encode(params, func[i][1]), func[i][1])
         if word in LOAD_AND_STORE_FUNCTIONS:
             _d_in = 'RD' in params
             if _d_in:
@@ -5207,22 +5308,30 @@ def optimise_function():
                             existent = j
                             break
                     if existent:
-                        replacing[params['RD']] = existent
+                        # replacing[params['RD']] = existent
                         del_branch_pull = []
-                        if params['RD'] in pointer_creation and not bsp:
-                            for j in pointer_creation[params['RD']]:
-                                func[j][0] = 'NOP'
-                                # print('\n','testing:',j,'\n')
-                                if j in branch_pulled:
-                                    del_branch_pull.append(branch_pulled.pop(branch_pulled.index(j)))
-                                else:
-                                    released += 1
+                        # if params['RD'] in pointer_creation and not bsp:
+                        #     ind = min(pointer_creation[params['RD']])
+                        #     for j in pointer_creation[params['RD']]:
+                        #         print(j, pointer_creation[params['RD']])
+                        #         j_word, j_params = disasm.encode(func[j][0], func[j][1], return_object=True)
+                        #         if 'RD' in j_params and str(j) in scratch_restore:
+                        #             scratch[j_params['RD']] = scratch_restore[str(j)][j_params['RD']]
+                        #         func[j][0] = 'NOP'
+                        #         # print('\n','testing:',j,'\n')
+                        #         if j in branch_pulled:
+                        #             del_branch_pull.append(branch_pulled.pop(branch_pulled.index(j)))
+                        #         else:
+                        #             released += 1
+                        #     wipe(pointer_creation, params['RD'])
                         change = True
+                        # replace(params['RD'], existent, i)
                         func[i][0] = 'NOP'
                         if i in branch_pulled:
                             del_branch_pull.append(branch_pulled.pop(branch_pulled.index(i)))
                         else:
                             released += 1
+                        replace(params['RD'], existent, i + 1)
                         if not scratch[params['RD']] == pointer:
                             scratch[params['RD']] = ''
                             wipe(pointer_creation, params['RD'])
@@ -5242,7 +5351,8 @@ def optimise_function():
                             continue
                     else:
                         if params['RD'] == params['BASE']:
-                            new_reg = next_free_reg()
+                            # print('replace3')
+                            new_reg = next_free_reg(soft_index=i)
                             replace(params['RD'], new_reg, i + 1)
                             params['RD'] = new_reg
                             params['mnemonic'] = word
@@ -5265,15 +5375,49 @@ def optimise_function():
                 wipe(pointer_creation, params['RD'])
         elif 'RD' in params:
             _rd = params['RD']
-            if _rd in scratch and _rd not in  ['R0', 'SP']:
+            if _rd in scratch and _rd not in ['R0', 'SP']:
                 if word == 'LUI':
-                    wipe(pointer_creation, _rd)
-                    scratch[_rd] = deci(params['IMMEDIATE'][1:]) << 16
-                    dict_append(pointer_creation, _rd, i)
+                    val = deci(params['IMMEDIATE'][1:]) << 16
+                    existent = ''
+                    for __key in scratch:
+                        if scratch[__key] == val:
+                            existent = __key
+                            break
+                    if existent:
+                        del_branch_pull = []
+                        replace(params['RD'], existent, i + 1)
+                        func[i][0] = 'NOP'
+                        if i in branch_pulled:
+                            del_branch_pull.append(branch_pulled.pop(branch_pulled.index(i)))
+                        if del_branch_pull:
+                            for k in del_branch_pull:
+                                m = k
+                                while func[m][0] == 'NOP' and m < len(func):
+                                    m += 1
+                                swap_branches(func[k][1], func[m][1])
+                            i = min(del_branch_pull) - 1
+                            while str(func[i][1]) not in disasm.branches_to and i > 0:
+                                if func[i][0][func[i][0].find(' ')] in JUMP_FUNCTIONS:
+                                    i += 2
+                                    break
+                                i -= 1
+                            reset_scratch(i)
+                            continue
+                    else:
+                        wipe(pointer_creation, _rd)
+                        dict_append(pointer_creation, _rd, i)
+                        scratch[_rd] = val
                 elif word in ['ADDIU', 'ADDI', 'ORI']:
                     _rs = params['RS']
                     if _rs in scratch:
-                        if isinstance(scratch[_rd], str):
+                        if _rs == _rd:
+                            new_reg = next_free_reg(soft_index=i)
+                            replace(params['RD'], new_reg, i + 1)
+                            params['RD'] = new_reg
+                            _rd = new_reg
+                            params['mnemonic'] = word
+                            func[i][0] = disasm.decode(disasm.encode(params, func[i][1]), func[i][1])
+                        if isinstance(scratch[_rd], str) or scratch[_rd] is None:
                             scratch[_rd] = 0
                             wipe(pointer_creation, _rd)
                         if scratch[_rs] is None:
@@ -5284,11 +5428,53 @@ def optimise_function():
                             if word != 'ORI':
                                 val = sign_16_bit_value(val)
                             if not isinstance(scratch[_rs], str) or scratch[_rs] == '':
-                                if scratch[_rs] == '':
-                                    scratch[_rd] = val
+                                _val = val
+                                if not scratch[_rs] == '':
+                                    _val += scratch[_rs]
+                                existent = ''
+                                for __key in scratch:
+                                    if scratch[__key] == _val:
+                                        existent = __key
+                                        break
+                                if existent:
+                                    del_branch_pull = []
+                                    replace(params['RD'], existent, i + 1)
+                                    func[i][0] = 'NOP'
+                                    # if _rd in pointer_creation:
+                                    #     # ind = min(pointer_creation[_rd])
+                                    #     # scratch[_rd] = scratch_restore[str(ind)][_rd]
+                                    #     ind = min(pointer_creation[params['RD']])
+                                    #     for j in reversed(pointer_creation[params['RD']]):
+                                    #         j_word, j_params = disasm.encode(func[j][0], func[j][1], return_object=True)
+                                    #         if 'RD' in j_params and str(j) in scratch_restore \
+                                    #                 and j_params['RD'] in scratch:
+                                    #             scratch[j_params['RD']] = scratch_restore[str(j)][j_params['RD']]
+                                    #         func[j][0] = 'NOP'
+                                    #         # print('\n','testing:',j,'\n')
+                                    #         if j in branch_pulled:
+                                    #             del_branch_pull.append(branch_pulled.pop(branch_pulled.index(j)))
+                                    #         else:
+                                    #             released += 1
+                                    #     wipe(pointer_creation, _rd)
+                                    if i in del_branch_pull:
+                                        del_branch_pull.append(branch_pulled.pop(branch_pulled.index(i)))
+                                    if del_branch_pull:
+                                        for k in del_branch_pull:
+                                            m = k
+                                            while func[m][0] == 'NOP' and m < len(func):
+                                                m += 1
+                                            swap_branches(func[k][1], func[m][1])
+                                        i = min(del_branch_pull) - 1
+                                        while str(func[i][1]) not in disasm.branches_to and i > 0:
+                                            if func[i][0][func[i][0].find(' ')] in JUMP_FUNCTIONS:
+                                                i += 2
+                                                break
+                                            i -= 1
+                                        reset_scratch(i)
+                                        continue
                                 else:
-                                    scratch[_rd] = scratch[_rs] + val
-                                dict_append(pointer_creation, _rd, i)
+                                    scratch[_rd] = _val
+                                    dict_append(pointer_creation, _rd, i)
                             else:
                                 scratch[_rd] = None
                                 wipe(pointer_creation, _rd)
@@ -5738,7 +5924,7 @@ if app_config['open_roms_automatically'] and app_config['previous_base_opened'] 
     if exists(app_config['previous_base_opened']) and exists(app_config['previous_hack_opened']):
         window.after(1, open_files)
 
-# window.after(150, lambda: (navigate_to(0x0001FCE4 >> 2, center=True), hack_file_text_box.focus_force()))
+# window.after(150, lambda: (navigate_to(0x0000FFD4 >> 2, center=True), hack_file_text_box.focus_force()))
 
 window.resizable(False, False)
 window.mainloop()
